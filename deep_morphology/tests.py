@@ -11,7 +11,7 @@ import tempfile
 import os
 import yaml
 
-from deep_morphology.data import LabeledDataset, Vocab
+from deep_morphology.data import LabeledDataset, Vocab, TaggingDataset
 from deep_morphology.config import Config
 from deep_morphology.experiment import Experiment
 from deep_morphology.inference import Inference
@@ -28,7 +28,7 @@ def create_toy_config_and_data(dirname, train_data, dev_data, cfg_update=None):
         'train_file': train_fn,
         'dev_file': dev_fn,
         'experiment_dir': dirname,
-        'model': 'HardMonotonicAttentionSeq2seq',
+        'model': 'DummyModel',
         'dropout': 0,
         'embedding_size_src': 20,
         'embedding_size_tgt': 20,
@@ -149,6 +149,37 @@ class LabeledDatasetTest(unittest.TestCase):
             self.assertEqual(train_data.Y[0, 0], train_data.Y[1, 0])
             self.assertListEqual(list(train_data.X_len), [3, 4])
             self.assertListEqual(list(train_data.Y_len), [3, 2])
+
+
+class TaggingDatasetTest(unittest.TestCase):
+
+    def test_filtering(self):
+        data = [
+            ("ab a a", "2 1 1"),
+            ("ab a a", "2 1"),
+            ("ab a", "2 1 1"),
+            ("ab b b d e", "2 1 1 4 3"),
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg = create_toy_config_and_data(
+                tmpdir, data, data, cfg_update={'use_eos': False})
+            data = TaggingDataset(cfg, cfg.train_file)
+            self.assertEqual(data.X.shape, data.Y.shape)
+            self.assertEqual(data.Y.shape, (2, 5))
+
+    def test_padding(self):
+        data = [
+            ("ab a a a", "2 1 1 1"),
+            ("ab a", "2 1"),
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg = create_toy_config_and_data(
+                tmpdir, data, data, cfg_update={'use_eos': False})
+            data = TaggingDataset(cfg, cfg.train_file)
+            self.assertEqual(data.X[0, 0], data.X[1, 0])
+            # PAD
+            self.assertEqual(data.X[1, 2], data.X[1, 3])
+            self.assertEqual(data.X[1, 2], data.Y[1, 2])
 
 
 class ExperimentTest(unittest.TestCase):
