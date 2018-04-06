@@ -1,0 +1,14 @@
+model: HardMonotonicAttentionSeq2seq
+embedding_size_src: 32
+embedding_size_tgt: 32
+hidden_size_src: 512
+hidden_size_tgt: 512
+num_layers_src: 2
+num_layers_tgt: 2
+dropout: 0.5
+
+epochs: 2
+batch_size: 256
+
+experiment_dir: exps/hard_monotonic_attention
+save_min_epoch: 0 
