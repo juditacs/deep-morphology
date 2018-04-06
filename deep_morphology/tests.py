@@ -190,6 +190,14 @@ class ExperimentTest(unittest.TestCase):
             for i in range(e.config.save_min_epoch):
                 self.assertNotIn('model.epoch_{0:04d}'.format(i), ls)
 
+    def test_toy_eval(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            create_toy_config_and_data(tmpdir, toy_data, toy_data,
+                                       cfg_update={'toy_eval': ["a", "b"]})
+            cfg_fn = os.path.join(tmpdir, 'config.yaml')
+            with Experiment(cfg_fn) as e:
+                e.run()
+
 
 class InferenceTest(unittest.TestCase):
 
