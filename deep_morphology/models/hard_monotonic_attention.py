@@ -22,6 +22,12 @@ from deep_morphology.models.base import BaseModel
 use_cuda = torch.cuda.is_available()
 
 
+def to_cuda(var):
+    if use_cuda:
+        return var.cuda()
+    return var
+
+
 class EncoderRNN(nn.Module):
     def __init__(self, config, input_size):
         super().__init__()
@@ -88,106 +94,46 @@ class HardMonotonicAttentionSeq2seq(BaseModel):
         dec_opt = opt_type(self.decoder.parameters(), **kwargs)
         self.optimizers = [enc_opt, dec_opt]
 
-    def run_epoch(self, data, do_train):
-        self.encoder.train(do_train)
-        self.decoder.train(do_train)
-        epoch_loss = 0
-        for bi, batch in enumerate(data):
-            X, Y, x_len, y_len = [Variable(b.long()) for b in batch]
-            if use_cuda:
-                X = X.cuda()
-                Y = Y.cuda()
-                x_len = x_len.cuda()
-                y_len = y_len.cuda()
-            batch_size = X.size(0)
-            seqlen_src = X.size(1)
-            seqlen_tgt = Y.size(1)
+    def compute_loss(self, target, output):
+        Y = to_cuda(Variable(target[1].long()))
+        Y_len = to_cuda(Variable(target[3].long()))
+        return masked_cross_entropy(output.contiguous(), Y, Y_len)
 
-            enc_outputs, enc_hidden = self.encoder(X)
-            all_output = Variable(
-                torch.zeros(batch_size, seqlen_tgt, self.output_size))
-            dec_input = Variable(torch.LongTensor(
-                np.ones(batch_size) * Vocab.CONSTANTS['SOS']))
-            attn_pos = Variable(torch.LongTensor([0] * batch_size))
-            range_helper = Variable(torch.LongTensor(np.arange(batch_size)),
-                                    requires_grad=False)
+    def forward(self, batch):
+        has_target = len(batch) > 2
 
-            if use_cuda:
-                all_output = all_output.cuda()
-                dec_input = dec_input.cuda()
-                attn_pos = attn_pos.cuda()
-                range_helper = range_helper.cuda()
+        X = to_cuda(Variable(batch[0].long()))
+        if has_target:
+            Y = to_cuda(Variable(batch[1].long()))
 
-            hidden = tuple(e[:self.decoder.num_layers, :, :].contiguous()
-                           for e in enc_hidden)
+        batch_size = X.size(0)
+        seqlen_src = X.size(1)
+        seqlen_tgt = batch[1].size(1) if has_target else seqlen_src * 4
 
-            for ts in range(seqlen_tgt):
-                dec_out, hidden = self.decoder(
-                    dec_input, enc_outputs[range_helper, attn_pos], hidden)
-                topv, top_idx = dec_out.max(-1)
-                attn_pos = attn_pos + torch.eq(top_idx,
-                                               Vocab.CONSTANTS['<STEP>']).long()
-                attn_pos = torch.clamp(attn_pos, 0, seqlen_src-1)
-                attn_pos = attn_pos.squeeze(0).contiguous()
+        enc_outputs, enc_hidden = self.encoder(X)
+
+        all_output = to_cuda(Variable(
+            torch.zeros(batch_size, seqlen_tgt, self.output_size)))
+        dec_input = to_cuda(Variable(torch.LongTensor(
+            np.ones(batch_size) * Vocab.CONSTANTS['SOS'])))
+        attn_pos = to_cuda(Variable(torch.LongTensor([0] * batch_size)))
+        range_helper = to_cuda(Variable(torch.LongTensor(np.arange(batch_size)),
+                                requires_grad=False))
+
+        hidden = tuple(e[:self.decoder.num_layers, :, :].contiguous()
+                        for e in enc_hidden)
+
+        for ts in range(seqlen_tgt):
+            dec_out, hidden = self.decoder(
+                dec_input, enc_outputs[range_helper, attn_pos], hidden)
+            topv, top_idx = dec_out.max(-1)
+            attn_pos = attn_pos + torch.eq(top_idx,
+                                            Vocab.CONSTANTS['<STEP>']).long()
+            attn_pos = torch.clamp(attn_pos, 0, seqlen_src-1)
+            attn_pos = attn_pos.squeeze(0).contiguous()
+            all_output[:, ts] = dec_out
+            if has_target:
                 dec_input = Y[:, ts].contiguous()
-                all_output[:, ts] = dec_out
-
-            for opt in self.optimizers:
-                opt.zero_grad()
-            loss = masked_cross_entropy(all_output.contiguous(), Y, y_len)
-            epoch_loss += loss.data[0]
-            if do_train:
-                loss.backward()
-                for opt in self.optimizers:
-                    opt.step()
-        epoch_loss /= (bi+1)
-        return epoch_loss
-
-    def run_inference(self, data, mode, **kwargs):
-        if mode != 'greedy':
-            raise ValueError("Unsupported inference type: {}".format(mode))
-
-        self.encoder.train(False)
-        self.decoder.train(False)
-
-        all_output = []
-
-        for bi, batch in enumerate(data):
-            X = Variable(batch[0].long())
-            if use_cuda:
-                X = X.cuda()
-            batch_size = X.size(0)
-            seqlen_src = X.size(1)
-            seqlen_tgt = seqlen_src * 4
-            batch_out = Variable(torch.LongTensor(batch_size, seqlen_tgt))
-
-            enc_outputs, enc_hidden = self.encoder(X)
-
-            dec_input = Variable(torch.LongTensor(
-                np.ones(batch_size) * Vocab.CONSTANTS['SOS']))
-            attn_pos = Variable(torch.LongTensor([0] * batch_size))
-            range_helper = Variable(torch.LongTensor(np.arange(batch_size)),
-                                    requires_grad=False)
-
-            if use_cuda:
-                batch_out = batch_out.cuda()
-                dec_input = dec_input.cuda()
-                attn_pos = attn_pos.cuda()
-                range_helper = range_helper.cuda()
-
-            hidden = tuple(e[:self.decoder.num_layers, :, :].contiguous()
-                           for e in enc_hidden)
-
-            for ts in range(seqlen_tgt):
-                dec_out, hidden = self.decoder(
-                    dec_input, enc_outputs[range_helper, attn_pos], hidden)
-                topv, top_idx = dec_out.max(-1)
-                attn_pos = attn_pos + torch.eq(top_idx,
-                                               Vocab.CONSTANTS['<STEP>']).long()
-                attn_pos = torch.clamp(attn_pos, 0, seqlen_src-1)
-                attn_pos = attn_pos.squeeze(0).contiguous()
+            else:
                 dec_input = top_idx.squeeze(0)
-                batch_out[:, ts] = dec_input
-            all_output.append(batch_out)
-        all_output = torch.cat(all_output)
-        return all_output.cpu().data.numpy()
+        return all_output

@@ -26,9 +26,11 @@ class BaseModel(nn.Module):
         self.init_optimizers()
 
         for epoch in range(self.config.epochs):
+            self.train(True)
             train_loss = self.run_epoch(train_data, do_train=True)
             result.train_loss.append(train_loss)
             if dev_data is not None:
+                self.train(False)
                 dev_loss = self.run_epoch(dev_data, do_train=False)
                 result.dev_loss.append(dev_loss)
             else:
@@ -39,9 +41,23 @@ class BaseModel(nn.Module):
             if toy_data:
                 self.run_toy_eval(toy_data)
 
+    def run_epoch(self, data, do_train):
+        epoch_loss = 0
+        for bi, batch in enumerate(data):
+            output = self.forward(batch)
+            for opt in self.optimizers:
+                opt.zero_grad()
+            loss = self.compute_loss(batch, output)
+            if do_train:
+                loss.backward()
+                for opt in self.optimizers:
+                    opt.step()
+            epoch_loss += loss.data[0]
+        return epoch_loss / (bi+1)
+
     def run_toy_eval(self, toy_data):
         toy_output = self.run_inference(toy_data, 'greedy')
-        words = toy_data.dataset.decode(toy_output.cpu().data.numpy())
+        words = toy_data.dataset.decode(toy_output)
 
         logging.info("Toy eval\n{}".format(
             "\n".join("  {}\t{}".format(
@@ -63,11 +79,21 @@ class BaseModel(nn.Module):
             logging.info("Saving model to {}".format(save_path))
             torch.save(self.state_dict(), save_path)
 
-    def run_epoch(self, data, do_train):
-        raise NotImplementedError("Subclass should implement run_epoch")
-
     def run_inference(self, data, mode, **kwargs):
-        raise NotImplementedError("Subclass should implement run_inference")
+        if mode != 'greedy':
+            raise ValueError("Unsupported decoding mode: {}".format(mode))
+        self.train(False)
+        all_output = []
+        for bi, batch in enumerate(data):
+            output = self.forward(batch)
+            all_output.append(output)
+        all_output = torch.cat(all_output)
+        if all_output.dim() == 3:
+            all_output = all_output.max(-1)[1]
+        return all_output.cpu().data.numpy()
 
     def init_optimizers(self):
         raise NotImplementedError("Subclass should implement init_optimizers")
+
+    def compute_loss(self):
+        raise NotImplementedError("Subclass should implement compute_loss")
