@@ -24,12 +24,12 @@ use_cuda = torch.cuda.is_available()
 
 
 class Inference(Experiment):
-    def __init__(self, experiment_dir, stream_or_file, spaces=False,
+    def __init__(self, experiment_dir, stream_or_file, spaces=True,
                  model_file=None):
         self.config = InferenceConfig.from_yaml(
             os.path.join(experiment_dir, 'config.yaml'))
         self.test_data = UnlabeledDataset(
-            self.config, stream_or_file, spaces=spaces)
+            self.config, stream_or_file, spaces)
         self.init_model(model_file)
 
     def init_model(self, model_file=None):
@@ -88,11 +88,14 @@ def main():
     args = parse_args()
     jch = " " if args.keep_spaces else ""
     if args.test_file:
-        inf = Inference(args.experiment_dir, test_file)
+        inf = Inference(args.experiment_dir, args.test_file)
     else:
         inf = Inference(args.experiment_dir, stdin, spaces=False)
     words = inf.run()
-    print(words)
+    for i, raw_word in enumerate(inf.test_data.raw_src):
+        print("{}\t{}".format(
+            jch.join(raw_word), jch.join(words[i])
+        ))
 
 
 if __name__ == '__main__':

@@ -185,8 +185,8 @@ class InferenceTest(unittest.TestCase):
                 e.run()
             test_file = os.path.join(e.config.experiment_dir, '..', 'train')
             inf = Inference(e.config.experiment_dir, test_file, spaces=False)
-            self.assertEqual(inf.test_data.X.shape, (2, 5))
-            self.assertEqual(inf.test_data.X[0, 0], inf.test_data.X[1, 1])
+            self.assertEqual(inf.test_data.X.shape, (2, 8))
+            self.assertEqual(inf.test_data.X[0, 0], inf.test_data.X[1, 2])
 
     def test_greedy(self):
         with tempfile.TemporaryDirectory() as tmpdir:

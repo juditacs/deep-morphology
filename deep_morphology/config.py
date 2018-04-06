@@ -33,11 +33,11 @@ class Config:
         'model',
         'embedding_size_src', 'embedding_size_tgt', 'batch_size',
         'num_layers_src', 'num_layers_tgt', 'dropout',
-        'cell_type', 'hidden_size_src', 'hidden_size_tgt', 'input_size', 'output_size',
+        'cell_type', 'hidden_size_src', 'hidden_size_tgt',
         'attention', 'optimizer', 'optimizer_kwargs',
         'train_schedule', 'teacher_forcing_ratio',
         'epochs', 'save_min_epoch',
-        'toy_eval', 'eval_batch_size',
+        'toy_eval',
     ) + path_variables + tuple(defaults.keys())
 
     @classmethod

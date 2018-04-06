@@ -58,11 +58,11 @@ class LabeledDataset(Dataset):
     def __init__(self, config, stream_or_file):
         super().__init__()
         self.config = config
-        self.__load_or_create_vocabs()
-        self.__load_stream_or_file(stream_or_file)
-        self.__create_padded_matrices()
+        self.load_or_create_vocabs()
+        self.load_stream_or_file(stream_or_file)
+        self.create_padded_matrices()
 
-    def __load_or_create_vocabs(self):
+    def load_or_create_vocabs(self):
         if os.path.exists(self.config.vocab_path_src):
             self.vocab_src = Vocab(file=self.config.vocab_path_src, frozen=True)
         else:
@@ -75,14 +75,14 @@ class LabeledDataset(Dataset):
         else:
             self.vocab_tgt = Vocab(frozen=False)
 
-    def __load_stream_or_file(self, stream_or_file):
+    def load_stream_or_file(self, stream_or_file):
         if isinstance(stream_or_file, str):
             with open(stream_or_file) as stream:
-                self.__load_stream(stream)
+                self.load_stream(stream)
         else:
-            self.__load_stream(stream_or_file)
+            self.load_stream(stream_or_file)
 
-    def __load_stream(self, stream):
+    def load_stream(self, stream):
         self.raw_src = []
         self.raw_tgt = []
 
@@ -98,7 +98,7 @@ class LabeledDataset(Dataset):
     def is_valid_sample(self, src, tgt):
         return True
 
-    def __create_padded_matrices(self):
+    def create_padded_matrices(self):
         x = []
         y = []
         x_len = []
@@ -158,13 +158,13 @@ class UnlabeledDataset(LabeledDataset):
         self.spaces = spaces
         super().__init__(config, stream_or_file)
 
-    def __load_stream(self, stream):
+    def load_stream(self, stream):
         if self.spaces is True:
             self.raw_src = [l.rstrip("\n").split("\t")[0].split(" ") for l in stream]
         else:
             self.raw_src = [list(l.rstrip("\n").split("\t")[0]) for l in stream]
 
-    def __create_padded_matrices(self):
+    def create_padded_matrices(self):
         self.X_len = np.array([len(s) for s in self.raw_src], dtype=np.int16)
         x = []
         self.maxlen_src = self.X_len.max()
