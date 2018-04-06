@@ -91,9 +91,11 @@ class LabeledDataset(Dataset):
 
         for line in stream:
             src, tgt = line.rstrip("\n").split("\t")
+            src = src.split(" ")
+            tgt = tgt.split(" ")
             if self.is_valid_sample(src, tgt):
-                self.raw_src.append(src.split(" "))
-                self.raw_tgt.append(tgt.split(" "))
+                self.raw_src.append(src)
+                self.raw_tgt.append(tgt)
 
         self.maxlen_src = max(len(r) for r in self.raw_src)
         self.maxlen_tgt = max(len(r) for r in self.raw_tgt)
