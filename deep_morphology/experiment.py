@@ -14,7 +14,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from deep_morphology.config import Config
-from deep_morphology.data import LabeledDataset
+from deep_morphology.data import LabeledDataset, ToyDataset
 from deep_morphology import models
 
 
@@ -52,8 +52,15 @@ class Experiment:
     def __init__(self, config_fn, train_data=None, dev_data=None):
         self.config = Config.from_yaml(config_fn)
         self.__load_data(train_data, dev_data)
+        self.create_toy_dataset()
         logging.info("Data loaded")
         self.init_model()
+
+    def create_toy_dataset(self):
+        if self.config.toy_eval is None:
+            self.toy_data = None
+        else:
+            self.toy_data = ToyDataset(self.config, self.config.toy_eval)
 
     def __load_data(self, train_data, dev_data):
         if train_data is None and dev_data is None:
@@ -96,6 +103,13 @@ class Experiment:
         self.result.save(self.config.experiment_dir)
 
     def run(self):
-        train_loader = DataLoader(self.train_data, batch_size=self.config.batch_size)
-        dev_loader = DataLoader(self.dev_data, batch_size=self.config.batch_size)
-        self.model.run_train(train_loader, self.result, dev_data=dev_loader)
+        train_loader = DataLoader(
+            self.train_data, batch_size=self.config.batch_size)
+        dev_loader = DataLoader(
+            self.dev_data, batch_size=self.config.batch_size)
+        if self.toy_data:
+            toy_loader = DataLoader(self.toy_data, batch_size=1)
+            self.model.run_train(train_loader, self.result, dev_data=dev_loader,
+                                 toy_data=toy_loader)
+        else:
+            self.model.run_train(train_loader, self.result, dev_data=dev_loader)

@@ -11,10 +11,13 @@ import tempfile
 import os
 import yaml
 
-from deep_morphology.data import LabeledDataset, UnlabeledDataset, TaggingDataset
+from deep_morphology.data import LabeledDataset, Vocab
 from deep_morphology.config import Config
 from deep_morphology.experiment import Experiment
 from deep_morphology.inference import Inference
+
+
+models = ['HardMonotonicAttentionSeq2seq']
 
 
 def create_toy_config_and_data(dirname, train_data, dev_data, cfg_update=None):
@@ -78,8 +81,8 @@ class TestToyCreator(unittest.TestCase):
         self.assertFalse(os.path.exists(tmpdir))
 
 
-class LabeledDatasetTest(unittest.TestCase):
-    def test_vocabs(self):
+class VocabTest(unittest.TestCase):
+    def test_frozen(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             cfg = create_toy_config_and_data(tmpdir, toy_data, toy_data)
             train_data = LabeledDataset(cfg, cfg.train_file)
@@ -101,6 +104,26 @@ class LabeledDatasetTest(unittest.TestCase):
             train_data = LabeledDataset(cfg, cfg.train_file)
             self.assertIs(train_data.vocab_src, train_data.vocab_tgt)
 
+    def test_contents(self):
+        data = [("a b", "b a"), ("b b", "a ab")]
+        constants = Vocab.CONSTANTS
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg = create_toy_config_and_data(tmpdir, data, data)
+            dataset = LabeledDataset(cfg, cfg.train_file)
+            self.assertEqual(len(dataset.vocab_src), len(constants) + 2)
+            self.assertEqual(len(dataset.vocab_tgt), len(constants) + 3)
+            self.assertIn("a", dataset.vocab_src)
+            self.assertIn("ab", dataset.vocab_tgt)
+            self.assertEqual(dataset.X[0, 2], constants['EOS'])
+            self.assertEqual(dataset.X[1, 2], constants['EOS'])
+            self.assertEqual(dataset.Y[0, 2], constants['EOS'])
+            self.assertEqual(dataset.Y[1, 2], constants['EOS'])
+            self.assertEqual(dataset.maxlen_src, 3)
+            self.assertEqual(dataset.maxlen_tgt, 3)
+
+
+class LabeledDatasetTest(unittest.TestCase):
+
     def test_toy_data_with_eos(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             cfg = create_toy_config_and_data(tmpdir, toy_data, toy_data)
@@ -113,6 +136,8 @@ class LabeledDatasetTest(unittest.TestCase):
             self.assertEqual(train_data.Y[0, 0], train_data.Y[1, 0])
             # EOS
             self.assertEqual(train_data.Y[0, 3], train_data.Y[1, 2])
+            self.assertListEqual(list(train_data.X_len), [4, 5])
+            self.assertListEqual(list(train_data.Y_len), [4, 3])
 
     def test_toy_data_without_eos(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -122,6 +147,8 @@ class LabeledDatasetTest(unittest.TestCase):
             self.assertEqual(train_data.X.shape, (2, 4))
             self.assertEqual(train_data.Y.shape, (2, 3))
             self.assertEqual(train_data.Y[0, 0], train_data.Y[1, 0])
+            self.assertListEqual(list(train_data.X_len), [3, 4])
+            self.assertListEqual(list(train_data.Y_len), [3, 2])
 
 
 class ExperimentTest(unittest.TestCase):
@@ -165,6 +192,7 @@ class ExperimentTest(unittest.TestCase):
 
 
 class InferenceTest(unittest.TestCase):
+
     def test_data_loading(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             create_toy_config_and_data(tmpdir, toy_data, toy_data)

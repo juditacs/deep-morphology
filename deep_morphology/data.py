@@ -11,7 +11,6 @@ import os
 import numpy as np
 
 import torch
-from torch.autograd import Variable
 from torch.utils.data import Dataset
 
 use_cuda = torch.cuda.is_available()
@@ -21,6 +20,7 @@ class Vocab:
     CONSTANTS = {
         'PAD': 0, 'SOS': 1, 'EOS': 2, 'UNK': 3, '<STEP>': 4,
     }
+
     def __init__(self, file=None, frozen=False):
         self.vocab = Vocab.CONSTANTS.copy()
         if file is not None:
@@ -41,6 +41,9 @@ class Vocab:
 
     def __str__(self):
         return str(self.vocab)
+
+    def __iter__(self):
+        return iter(self.vocab)
 
     def inv_lookup(self, key):
         if self.__inv_vocab is None:
@@ -107,20 +110,22 @@ class LabeledDataset(Dataset):
         PAD = Vocab.CONSTANTS['PAD']
         EOS = Vocab.CONSTANTS['EOS']
         for i, src in enumerate(self.raw_src):
-            x_len.append(len(src))
             tgt = self.raw_tgt[i]
-            y_len.append(len(tgt))
 
             if self.config.use_eos is True:
                 x.append([self.vocab_src[s] for s in src] + [EOS] +
-                    [PAD for _ in range(self.maxlen_src-len(src))])
+                         [PAD for _ in range(self.maxlen_src-len(src))])
                 y.append([self.vocab_tgt[s] for s in tgt] + [EOS] +
-                    [PAD for _ in range(self.maxlen_tgt-len(tgt))])
+                         [PAD for _ in range(self.maxlen_tgt-len(tgt))])
+                x_len.append(len(src) + 1)
+                y_len.append(len(tgt) + 1)
             else:
                 x.append([self.vocab_src[s] for s in src] +
-                    [PAD for _ in range(self.maxlen_src-len(src))])
+                         [PAD for _ in range(self.maxlen_src-len(src))])
                 y.append([self.vocab_tgt[s] for s in tgt] +
-                    [PAD for _ in range(self.maxlen_tgt-len(tgt))])
+                         [PAD for _ in range(self.maxlen_tgt-len(tgt))])
+                x_len.append(len(src))
+                y_len.append(len(tgt))
 
         if self.config.use_eos is True:
             self.maxlen_src += 1
@@ -197,6 +202,15 @@ class UnlabeledDataset(LabeledDataset):
             prediction = [self.vocab_tgt.inv_lookup(s) for s in prediction]
             decoded.append(prediction)
         return decoded
+
+
+class ToyDataset(UnlabeledDataset):
+    def __init__(self, config, samples):
+        Dataset.__init__(self)
+        self.config = config
+        self.load_or_create_vocabs()
+        self.raw_src = [list(s) for s in samples]
+        self.create_padded_matrices()
 
 
 class TaggingDataset(LabeledDataset):

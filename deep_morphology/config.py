@@ -22,6 +22,9 @@ class Config:
         'use_eos': True,
         'vocab_path_src': None,
         'vocab_path_tgt': None,
+        'toy_eval': None,
+        'optimizer': 'Adam',
+        'optimizer_kwargs': {},
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded
@@ -33,11 +36,9 @@ class Config:
         'model',
         'embedding_size_src', 'embedding_size_tgt', 'batch_size',
         'num_layers_src', 'num_layers_tgt', 'dropout',
-        'cell_type', 'hidden_size_src', 'hidden_size_tgt',
-        'attention', 'optimizer', 'optimizer_kwargs',
-        'train_schedule', 'teacher_forcing_ratio',
+        'hidden_size_src', 'hidden_size_tgt',
+        'train_schedule',
         'epochs', 'save_min_epoch',
-        'toy_eval',
     ) + path_variables + tuple(defaults.keys())
 
     @classmethod

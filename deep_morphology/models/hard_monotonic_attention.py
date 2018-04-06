@@ -17,6 +17,7 @@ from torch import optim
 
 from deep_morphology.models.loss import masked_cross_entropy
 from deep_morphology.data import Vocab
+from deep_morphology.models.base import BaseModel
 
 use_cuda = torch.cuda.is_available()
 
@@ -41,7 +42,8 @@ class EncoderRNN(nn.Module):
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
         outputs, hidden = self.cell(embedded)
-        outputs = outputs[:, :, :self.hidden_size] + outputs[:, :, self.hidden_size:]
+        outputs = outputs[:, :, :self.hidden_size] + \
+            outputs[:, :, self.hidden_size:]
         return outputs, hidden
 
 
@@ -73,43 +75,18 @@ class DecoderRNN(nn.Module):
         return output, hidden
 
 
-class HardMonotonicAttentionSeq2seq(nn.Module):
+class HardMonotonicAttentionSeq2seq(BaseModel):
     def __init__(self, config, input_size, output_size):
-        super().__init__()
-        self.config = config
-        self.input_size = input_size
-        self.output_size = output_size
+        super().__init__(config, input_size, output_size)
         self.encoder = EncoderRNN(config, input_size)
         self.decoder = DecoderRNN(config, output_size)
 
-    def run_train(self, train_data, result, dev_data=None):
-
-        self.enc_opt = optim.Adam(self.encoder.parameters())
-        self.dec_opt = optim.Adam(self.decoder.parameters())
-
-        for epoch in range(self.config.epochs):
-            train_loss = self.run_epoch(train_data, do_train=True)
-            result.train_loss.append(train_loss)
-            if dev_data is not None:
-                dev_loss = self.run_epoch(dev_data, do_train=False)
-                result.dev_loss.append(dev_loss)
-            else:
-                dev_loss = None
-            self.save_if_best(train_loss, dev_loss, epoch)
-            logging.info("Epoch {}, Train loss: {}, Dev loss: {}".format(
-                epoch+1, train_loss, dev_loss))
-
-    def save_if_best(self, train_loss, dev_loss, epoch):
-        if epoch < self.config.save_min_epoch:
-            return
-        loss = dev_loss if dev_loss is not None else train_loss
-        if not hasattr(self, 'min_loss') or self.min_loss > loss:
-            self.min_loss = loss
-            save_path = os.path.join(
-                self.config.experiment_dir,
-                "model.epoch_{}".format("{0:04d}".format(epoch)))
-            logging.info("Saving model to {}".format(save_path))
-            torch.save(self.state_dict(), save_path)
+    def init_optimizers(self):
+        opt_type = getattr(optim, self.config.optimizer)
+        kwargs = self.config.optimizer_kwargs
+        enc_opt = opt_type(self.encoder.parameters(), **kwargs)
+        dec_opt = opt_type(self.decoder.parameters(), **kwargs)
+        self.optimizers = [enc_opt, dec_opt]
 
     def run_epoch(self, data, do_train):
         self.encoder.train(do_train)
@@ -155,14 +132,14 @@ class HardMonotonicAttentionSeq2seq(nn.Module):
                 dec_input = Y[:, ts].contiguous()
                 all_output[:, ts] = dec_out
 
-            self.enc_opt.zero_grad()
-            self.dec_opt.zero_grad()
+            for opt in self.optimizers:
+                opt.zero_grad()
             loss = masked_cross_entropy(all_output.contiguous(), Y, y_len)
             epoch_loss += loss.data[0]
             if do_train:
                 loss.backward()
-                self.enc_opt.step()
-                self.dec_opt.step()
+                for opt in self.optimizers:
+                    opt.step()
         epoch_loss /= (bi+1)
         return epoch_loss
 
@@ -213,11 +190,4 @@ class HardMonotonicAttentionSeq2seq(nn.Module):
                 batch_out[:, ts] = dec_input
             all_output.append(batch_out)
         all_output = torch.cat(all_output)
-        return all_output
-        decoded = []
-        inv_idx = {v: k for k, v in data.dataset.vocab_tgt.items()}
-        for sample in all_output.data:
-            dec = [inv_idx[i] for i in sample]
-            decoded.append(dec)
-        return decoded
-
+        return all_output.cpu().data.numpy()

@@ -1,1 +1,2 @@
 from deep_morphology.models.hard_monotonic_attention import HardMonotonicAttentionSeq2seq
+from deep_morphology.models.dummy import DummyModel

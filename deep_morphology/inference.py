@@ -57,7 +57,7 @@ class Inference(Experiment):
         if mode == 'greedy':
             model_output = self.model.run_inference(
                 test_loader, mode=mode, **kwargs)
-            words = self.test_data.decode(model_output.cpu().data.numpy())
+            words = self.test_data.decode(model_output)
             return words
         elif mode == 'beam-search':
             raise ValueError("Beam search not implemented yet")
