@@ -1,2 +1,4 @@
-from deep_morphology.models.hard_monotonic_attention import HardMonotonicAttentionSeq2seq
+from deep_morphology.models.base import BaseModel
 from deep_morphology.models.dummy import DummyModel
+from deep_morphology.models.hard_monotonic_attention import HardMonotonicAttentionSeq2seq
+from deep_morphology.models.lstm_tagger import LSTMTagger

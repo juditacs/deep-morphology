@@ -230,6 +230,17 @@ class ExperimentTest(unittest.TestCase):
                 e.run()
 
 
+class LSTMTaggerTest(unittest.TestCase):
+
+    def test_creation(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            create_toy_config_and_data(tmpdir, toy_data, toy_data,
+                                       cfg_update={'model': 'LSTMTagger',
+                                                   'dataset_class': 'TaggingDataset'})
+            cfg_fn = os.path.join(tmpdir, 'config.yaml')
+            with Experiment(cfg_fn) as e:
+                e.run()
+
 class InferenceTest(unittest.TestCase):
 
     def test_data_loading(self):
