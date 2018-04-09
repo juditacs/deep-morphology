@@ -95,7 +95,7 @@ class LabeledDataset(Dataset):
         self.raw_tgt = []
 
         for line in stream:
-            src, tgt = line.rstrip("\n").split("\t")
+            src, tgt = line.rstrip("\n").split("\t")[:2]
             src = src.split(" ")
             tgt = tgt.split(" ")
             if self.is_valid_sample(src, tgt):
