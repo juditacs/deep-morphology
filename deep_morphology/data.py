@@ -7,6 +7,7 @@
 # Distributed under terms of the MIT license.
 
 import os
+import gzip
 
 import numpy as np
 
@@ -80,8 +81,12 @@ class LabeledDataset(Dataset):
 
     def load_stream_or_file(self, stream_or_file):
         if isinstance(stream_or_file, str):
-            with open(stream_or_file) as stream:
-                self.load_stream(stream)
+            if os.path.splitext(stream_or_file)[-1] == '.gz':
+                with gzip.open(stream_or_file, 'rt') as stream:
+                    self.load_stream(stream)
+            else:
+                with open(stream_or_file) as stream:
+                    self.load_stream(stream)
         else:
             self.load_stream(stream_or_file)
 
