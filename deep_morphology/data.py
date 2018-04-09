@@ -11,10 +11,7 @@ import gzip
 
 import numpy as np
 
-import torch
 from torch.utils.data import Dataset
-
-use_cuda = torch.cuda.is_available()
 
 
 class Vocab:
@@ -22,8 +19,11 @@ class Vocab:
         'PAD': 0, 'SOS': 1, 'EOS': 2, 'UNK': 3, '<STEP>': 4,
     }
 
-    def __init__(self, file=None, frozen=False):
-        self.vocab = Vocab.CONSTANTS.copy()
+    def __init__(self, file=None, frozen=False, use_constants=True):
+        if use_constants:
+            self.vocab = Vocab.CONSTANTS.copy()
+        else:
+            self.vocab = {}
         if file is not None:
             with open(file) as f:
                 for line in f:
@@ -58,6 +58,8 @@ class Vocab:
 
 
 class LabeledDataset(Dataset):
+    def create_vocab(self, **kwargs):
+        return Vocab(use_constants=True, **kwargs)
 
     def __init__(self, config, stream_or_file):
         super().__init__()
@@ -68,16 +70,16 @@ class LabeledDataset(Dataset):
 
     def load_or_create_vocabs(self):
         if os.path.exists(self.config.vocab_path_src):
-            self.vocab_src = Vocab(file=self.config.vocab_path_src, frozen=True)
+            self.vocab_src = self.create_vocab(file=self.config.vocab_path_src, frozen=True)
         else:
-            self.vocab_src = Vocab(frozen=False)
+            self.vocab_src = self.create_vocab(frozen=False)
         if self.config.share_vocab is True:
             self.vocab_tgt = self.vocab_src
             return
         if os.path.exists(self.config.vocab_path_tgt):
-            self.vocab_tgt = Vocab(file=self.config.vocab_path_tgt, frozen=True)
+            self.vocab_tgt = self.create_vocab(file=self.config.vocab_path_tgt, frozen=True)
         else:
-            self.vocab_tgt = Vocab(frozen=False)
+            self.vocab_tgt = self.create_vocab(frozen=False)
 
     def load_stream_or_file(self, stream_or_file):
         if isinstance(stream_or_file, str):
@@ -221,5 +223,8 @@ class ToyDataset(UnlabeledDataset):
 
 
 class TaggingDataset(LabeledDataset):
+    def create_vocab(self, **kwargs):
+        return Vocab(use_constants=False, **kwargs)
+
     def is_valid_sample(self, src, tgt):
         return len(src) == len(tgt)

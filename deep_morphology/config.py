@@ -25,6 +25,7 @@ class Config:
         'toy_eval': None,
         'optimizer': 'Adam',
         'optimizer_kwargs': {},
+        'dataset_class': 'LabeledDataset',
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded

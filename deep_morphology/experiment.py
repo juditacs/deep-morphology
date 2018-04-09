@@ -14,7 +14,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from deep_morphology.config import Config
-from deep_morphology.data import LabeledDataset, ToyDataset
+from deep_morphology import data as data_module
 from deep_morphology import models
 
 
@@ -51,6 +51,7 @@ class Experiment:
     """
     def __init__(self, config_fn, train_data=None, dev_data=None):
         self.config = Config.from_yaml(config_fn)
+        self.data_class = getattr(data_module, self.config.dataset_class)
         self.__load_data(train_data, dev_data)
         self.create_toy_dataset()
         logging.info("Data loaded")
@@ -60,7 +61,8 @@ class Experiment:
         if self.config.toy_eval is None:
             self.toy_data = None
         else:
-            self.toy_data = ToyDataset(self.config, self.config.toy_eval)
+            self.toy_data = data_module.ToyDataset(
+                self.config, self.config.toy_eval)
 
     def __load_data(self, train_data, dev_data):
         if train_data is None and dev_data is None:
@@ -72,17 +74,15 @@ class Experiment:
             dev_fn = dev_data
             self.__load_train_dev_data(train_fn, dev_fn)
         else:
-            assert isinstance(train_data, LabeledDataset)
-            assert isinstance(dev_data, LabeledDataset)
+            assert isinstance(train_data, self.data_class)
+            assert isinstance(dev_data, self.data_class)
             self.train_data = train_data
             self.dev_data = dev_data
 
     def __load_train_dev_data(self, train_fn, dev_fn):
-        with open(train_fn) as f:
-            self.train_data = LabeledDataset(self.config, f)
+        self.train_data = self.data_class(self.config, train_fn)
         self.train_data.save_vocabs()
-        with open(dev_fn) as f:
-            self.dev_data = LabeledDataset(self.config, f)
+        self.dev_data = self.data_class(self.config, dev_fn)
 
     def init_model(self):
         model_class = getattr(models, self.config.model)
