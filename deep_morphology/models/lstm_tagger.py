@@ -12,6 +12,7 @@ from torch import optim
 from torch.autograd import Variable
 
 from deep_morphology.models import BaseModel
+from deep_morphology.data import Vocab
 
 
 use_cuda = torch.cuda.is_available()
@@ -30,9 +31,10 @@ class LSTMTagger(BaseModel):
         self.embedding = nn.Embedding(input_size, self.config.embedding_size_src)
         nn.init.xavier_uniform(self.embedding.weight)
         self.cell = nn.LSTM(self.config.embedding_size_src, self.hidden_size,
+                            batch_first=True,
                             num_layers=self.config.num_layers_src, bidirectional=True)
         self.out_proj = nn.Linear(self.hidden_size, output_size)
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.CrossEntropyLoss(ignore_index=Vocab.CONSTANTS['PAD'])
 
     def forward(self, input):
         input = to_cuda(Variable(input[0].long()))
