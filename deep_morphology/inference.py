@@ -15,7 +15,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from deep_morphology.config import InferenceConfig
-from deep_morphology.data import UnlabeledDataset
+import deep_morphology.data as data_module
 from deep_morphology.experiment import Experiment
 from deep_morphology import models
 
@@ -28,7 +28,8 @@ class Inference(Experiment):
                  model_file=None):
         self.config = InferenceConfig.from_yaml(
             os.path.join(experiment_dir, 'config.yaml'))
-        self.test_data = UnlabeledDataset(
+        dc = getattr(data_module, self.config.dataset_class)
+        self.test_data = getattr(data_module, dc.unlabeled_data_class)(
             self.config, stream_or_file, spaces)
         self.init_model(model_file)
 

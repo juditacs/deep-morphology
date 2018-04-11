@@ -16,26 +16,33 @@ from torch.utils.data import Dataset
 
 class Vocab:
     CONSTANTS = {
-        'PAD': 0, 'SOS': 1, 'EOS': 2, 'UNK': 3, '<STEP>': 4,
+        'PAD': 2, 'SOS': 1, 'EOS': 0, 'UNK': 3, '<STEP>': 4,
     }
 
-    def __init__(self, file=None, frozen=False, use_constants=True):
-        if use_constants:
-            self.vocab = Vocab.CONSTANTS.copy()
-        else:
-            self.vocab = {}
+    def __init__(self, file=None, frozen=False, constants=None):
+        self.vocab = {}
         if file is not None:
             with open(file) as f:
                 for line in f:
                     symbol, id_ = line.rstrip("\n").split("\t")
                     self.vocab[symbol] = int(id_)
+        else:
+            if constants is not None:
+                for const in constants:
+                    self.vocab[const] = Vocab.CONSTANTS[const]
         self.frozen = frozen
         self.__inv_vocab = None
 
     def __getitem__(self, key):
         if self.frozen is True:
             return self.vocab.get(key, Vocab.CONSTANTS['UNK'])
-        return self.vocab.setdefault(key, len(self.vocab))
+        if key not in self.vocab:
+            idx = 0
+            while idx in self.vocab.values():
+                idx += 1
+            self.vocab[key] = idx
+        return self.vocab[key]
+        # return self.vocab.setdefault(key, len(self.vocab))
 
     def __len__(self):
         return len(self.vocab)
@@ -58,8 +65,11 @@ class Vocab:
 
 
 class LabeledDataset(Dataset):
+
+    unlabeled_data_class = 'UnlabeledDataset'
+
     def create_vocab(self, **kwargs):
-        return Vocab(use_constants=True, **kwargs)
+        return Vocab(constants=Vocab.CONSTANTS.keys(), **kwargs)
 
     def __init__(self, config, stream_or_file):
         super().__init__()
@@ -116,8 +126,9 @@ class LabeledDataset(Dataset):
         x_len = []
         y_len = []
 
-        PAD = Vocab.CONSTANTS['PAD']
-        EOS = Vocab.CONSTANTS['EOS']
+        PAD = self.vocab_src['PAD']
+        if self.config.use_eos:
+            EOS = self.vocab_tgt['EOS']
         for i, src in enumerate(self.raw_src):
             tgt = self.raw_tgt[i]
 
@@ -166,11 +177,33 @@ class LabeledDataset(Dataset):
         self.vocab_src.save(vocab_src_path)
         self.vocab_tgt.save(vocab_tgt_path)
 
+    def decode(self, output_idx):
+        decoded = []
+        EOS = Vocab.CONSTANTS['EOS']
+        for i, raw in enumerate(self.raw_src):
+            if 'EOS' in self.vocab_tgt:
+                eos_idx = np.where(output_idx[i] == EOS)[0]
+                if eos_idx.shape[0] > 0:
+                    prediction = output_idx[i, :eos_idx[0]]
+                else:
+                    prediction = output_idx[i]
+            else:
+                prediction = output_idx[i]
+            prediction = [self.vocab_tgt.inv_lookup(s) for s in prediction]
+            decoded.append(prediction)
+        return decoded
+
 
 class UnlabeledDataset(LabeledDataset):
-    def __init__(self, config, stream_or_file, spaces=True):
+    def __init__(self, config, input_, spaces=True):
         self.spaces = spaces
-        super().__init__(config, stream_or_file)
+        super().__init__(config, input_)
+
+    def load_stream_or_file(self, input_):
+        if isinstance(input_, list):
+            self.raw_src = [list(s) for s in input_]
+        else:
+            super().load_stream_or_file(input_)
 
     def load_stream(self, stream):
         if self.spaces is True:
@@ -182,8 +215,8 @@ class UnlabeledDataset(LabeledDataset):
         self.X_len = np.array([len(s) for s in self.raw_src], dtype=np.int16)
         x = []
         self.maxlen_src = self.X_len.max()
-        PAD = Vocab.CONSTANTS['PAD']
-        EOS = Vocab.CONSTANTS['EOS']
+        PAD = self.vocab_src['PAD']
+        EOS = self.vocab_tgt['EOS']
         for src in self.raw_src:
             if self.config.use_eos:
                 x.append([self.vocab_src[s] for s in src] + [EOS] +
@@ -199,19 +232,6 @@ class UnlabeledDataset(LabeledDataset):
     def __getitem__(self, idx):
         return self.X[idx], self.X_len[idx]
 
-    def decode(self, output_idx):
-        decoded = []
-        EOS = Vocab.CONSTANTS['EOS']
-        for i, raw in enumerate(self.raw_src):
-            eos_idx = np.where(output_idx[i] == EOS)[0]
-            if eos_idx.shape[0] > 0:
-                prediction = output_idx[i, :eos_idx[0]]
-            else:
-                prediction = output_idx[i]
-            prediction = [self.vocab_tgt.inv_lookup(s) for s in prediction]
-            decoded.append(prediction)
-        return decoded
-
 
 class ToyDataset(UnlabeledDataset):
     def __init__(self, config, samples):
@@ -223,8 +243,24 @@ class ToyDataset(UnlabeledDataset):
 
 
 class TaggingDataset(LabeledDataset):
+    unlabeled_data_class = 'UnlabeledTaggingDataset'
+
+    def __init__(self, config, stream_or_file, spaces=True):
+        self.use_eos = False
+        super().__init__(config, stream_or_file)
+
     def create_vocab(self, **kwargs):
-        return Vocab(use_constants=False, **kwargs)
+        return Vocab(constants=['PAD'], **kwargs)
 
     def is_valid_sample(self, src, tgt):
         return len(src) == len(tgt)
+
+
+class UnlabeledTaggingDataset(UnlabeledDataset):
+    def decode(self, output_idx):
+        decoded = []
+        for i, raw in enumerate(self.raw_src):
+            prediction = output_idx[i, :len(raw)]
+            prediction = [self.vocab_tgt.inv_lookup(s) for s in prediction]
+            decoded.append(prediction)
+        return decoded

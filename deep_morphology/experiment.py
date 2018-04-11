@@ -52,16 +52,21 @@ class Experiment:
     def __init__(self, config_fn, train_data=None, dev_data=None):
         self.config = Config.from_yaml(config_fn)
         self.data_class = getattr(data_module, self.config.dataset_class)
+        self.unlabeled_data_class = getattr(data_module, self.data_class.unlabeled_data_class)
         self.__load_data(train_data, dev_data)
         self.create_toy_dataset()
-        logging.info("Data loaded")
+        logging.info("Data loaded, X shape{}, Y shape {}\n"
+                     "  X vocab size: {}, Y vocab size: {}".format(
+                         self.train_data.X.shape, self.train_data.Y.shape,
+                         len(self.train_data.vocab_src),
+                         len(self.train_data.vocab_tgt)))
         self.init_model()
 
     def create_toy_dataset(self):
         if self.config.toy_eval is None:
             self.toy_data = None
         else:
-            self.toy_data = data_module.ToyDataset(
+            self.toy_data = self.unlabeled_data_class(
                 self.config, self.config.toy_eval)
 
     def __load_data(self, train_data, dev_data):
