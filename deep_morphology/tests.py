@@ -241,6 +241,19 @@ class LSTMTaggerTest(unittest.TestCase):
             with Experiment(cfg_fn) as e:
                 e.run()
 
+    def test_padding(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data = [
+                ('a b', 'B A'),
+                ('a b a', 'A B A'),
+            ]
+            create_toy_config_and_data(tmpdir, data, data,
+                                       cfg_update={'model': 'LSTMTagger',
+                                                   'dataset_class': 'TaggingDataset'})
+            cfg_fn = os.path.join(tmpdir, 'config.yaml')
+            with Experiment(cfg_fn) as e:
+                e.run()
+
 class InferenceTest(unittest.TestCase):
 
     def test_data_loading(self):
