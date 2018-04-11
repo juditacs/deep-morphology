@@ -11,7 +11,6 @@ import logging
 
 import torch
 import torch.nn as nn
-from torch import optim
 
 
 class BaseModel(nn.Module):
