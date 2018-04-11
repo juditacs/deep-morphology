@@ -55,11 +55,15 @@ class Experiment:
         self.unlabeled_data_class = getattr(data_module, self.data_class.unlabeled_data_class)
         self.__load_data(train_data, dev_data)
         self.create_toy_dataset()
-        logging.info("Data loaded, X shape{}, Y shape {}\n"
-                     "  X vocab size: {}, Y vocab size: {}".format(
+        logging.info("Data loaded")
+        logging.info("Train X shape{}, Y shape {}, X vocab size: {}, Y vocab size: {}".format(
                          self.train_data.X.shape, self.train_data.Y.shape,
                          len(self.train_data.vocab_src),
                          len(self.train_data.vocab_tgt)))
+        logging.info("Dev X shape{}, Y shape {}, X vocab size: {}, Y vocab size: {}".format(
+                         self.dev_data.X.shape, self.dev_data.Y.shape,
+                         len(self.dev_data.vocab_src),
+                         len(self.dev_data.vocab_tgt)))
         self.init_model()
 
     def create_toy_dataset(self):
