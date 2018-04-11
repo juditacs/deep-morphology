@@ -26,6 +26,7 @@ class Config:
         'optimizer': 'Adam',
         'optimizer_kwargs': {},
         'dataset_class': 'LabeledDataset',
+        'early_stopping_ratio': 1.5,
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded
