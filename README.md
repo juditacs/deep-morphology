@@ -84,3 +84,39 @@ An experiment directory contains:
 4. `model.epoch_N` and similar: model parameters after epoch N if the
    validation loss decreased compared to the current minimum.
 
+
+## Hyperparameter tuning
+
+`train_many.py` runs several experiments after each other with parameters
+uniformly sampled from predefined ranges.
+
+Usage:
+
+    python deep_morphology/train_many.py --config <YAML config_file> --param-ranges <YAML ranges file> -N 10 --train <train_file> --dev <dev_file>
+
+Explanation:
+
+* `config`: base configuration file. Loaded before each experiment.
+* `param-ranges`: file containing the predefined parameter ranges, see the
+  example below.
+* `N`: number of experiments to run.
+
+### Parameter ranges file
+
+This file is a list of key-value pairs, where the keys are the parameter name
+(they must be the same as in the Config object) and the values are a list of
+possible parameter values. For example:
+
+~~~yaml
+hidden_size_src: [128, 256, 512, 1024]
+num_layers_src: [1, 2, 3]
+dropout: [0, 0.2, 0.5, 0.8]
+embedding_size_src: [10, 20, 30]
+batch_size: [32, 64, 128]
+~~~
+
+This example can be found
+[here](https://github.com/juditacs/deep-morphology/blob/master/config/tagging/param_ranges.yaml).
+
+Each parameter is replaced in the base config with a randomly samples value
+from the parameter ranges file.
