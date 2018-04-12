@@ -49,8 +49,13 @@ class Experiment:
         4. trains the model
         5. saves the results
     """
-    def __init__(self, config_fn, train_data=None, dev_data=None):
-        self.config = Config.from_yaml(config_fn)
+    def __init__(self, config, train_data=None, dev_data=None):
+        if isinstance(config, str):
+            self.config = Config.from_yaml(config)
+        elif isinstance(config, Config):
+            self.config = config
+        else:
+            raise ValueError("config must be an instance of Config or a filename")
         self.data_class = getattr(data_module, self.config.dataset_class)
         self.unlabeled_data_class = getattr(data_module, self.data_class.unlabeled_data_class)
         self.__load_data(train_data, dev_data)
@@ -79,6 +84,8 @@ class Experiment:
             dev_fn = self.config.dev_file
             self.__load_train_dev_data(train_fn, dev_fn)
         elif isinstance(train_data, str) and isinstance(dev_data, str):
+            self.config.train_file = train_data
+            self.config.dev_file = dev_data
             train_fn = train_data
             dev_fn = dev_data
             self.__load_train_dev_data(train_fn, dev_fn)
