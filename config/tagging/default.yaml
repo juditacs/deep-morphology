@@ -1,0 +1,18 @@
+model: LSTMTagger
+dataset_class: TaggingDataset
+embedding_size_src: 32
+hidden_size_src: 1024
+num_layers_src: 2
+dropout: 0.2
+
+share_vocab: false
+
+use_eos: false
+
+epochs: 100
+batch_size: 64
+
+experiment_dir: exps/tagging
+save_min_epoch: 0
+
+toy_eval: [meghozhatóak, almával]
