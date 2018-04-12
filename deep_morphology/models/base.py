@@ -89,11 +89,11 @@ class BaseModel(nn.Module):
         all_output = []
         for bi, batch in enumerate(data):
             output = self.forward(batch)
-            all_output.append(output)
+            all_output.append(output.data.cpu())
         all_output = torch.cat(all_output)
         if all_output.dim() == 3:
             all_output = all_output.max(-1)[1]
-        return all_output.cpu().data.numpy()
+        return all_output.numpy()
 
     def init_optimizers(self):
         raise NotImplementedError("Subclass should implement init_optimizers")
