@@ -4,6 +4,7 @@ embedding_size_src: 32
 hidden_size_src: 1024
 num_layers_src: 2
 dropout: 0.2
+early_stopping_ratio: 1.2
 
 share_vocab: false
 
@@ -12,7 +13,7 @@ use_eos: false
 epochs: 50
 batch_size: 64
 
-experiment_dir: exps/tagging
+experiment_dir: exps/tagging/most_frequent/
 save_min_epoch: 0
 
 toy_eval: [meghozhatóak, almával]
