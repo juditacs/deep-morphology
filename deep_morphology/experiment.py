@@ -13,7 +13,6 @@ from datetime import datetime
 import numpy as np
 
 import torch
-from torch.utils.data import DataLoader
 
 from deep_morphology.config import Config
 from deep_morphology import data as data_module
@@ -130,13 +129,8 @@ class Experiment:
         self.result.save(self.config.experiment_dir)
 
     def run(self):
-        train_loader = DataLoader(
-            self.train_data, batch_size=self.config.batch_size, collate_fn=collate_batch)
-        dev_loader = DataLoader(
-            self.dev_data, batch_size=self.config.batch_size, collate_fn=collate_batch)
         if self.toy_data:
-            toy_loader = DataLoader(self.toy_data, batch_size=1, collate_fn=collate_batch)
-            self.model.run_train(train_loader, self.result, dev_data=dev_loader,
-                                 toy_data=toy_loader)
+            self.model.run_train(self.train_data, self.result, dev_data=self.dev_data,
+                                 toy_data=self.toy_data)
         else:
-            self.model.run_train(train_loader, self.result, dev_data=dev_loader)
+            self.model.run_train(self.train_data, self.result, dev_data=self.dev_data)

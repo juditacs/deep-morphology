@@ -9,6 +9,8 @@
 import os
 import logging
 
+import numpy as np
+
 import torch
 import torch.nn as nn
 
@@ -46,7 +48,7 @@ class BaseModel(nn.Module):
 
     def run_epoch(self, data, do_train):
         epoch_loss = 0
-        for bi, batch in enumerate(data):
+        for bi, batch in enumerate(data.batched_iter(self.config.batch_size)):
             output = self.forward(batch)
             for opt in self.optimizers:
                 opt.zero_grad()
@@ -60,11 +62,11 @@ class BaseModel(nn.Module):
 
     def run_toy_eval(self, toy_data):
         toy_output = self.run_inference(toy_data, 'greedy')
-        words = toy_data.dataset.decode(toy_output)
+        words = toy_data.decode(toy_output)
 
         logging.info("Toy eval\n{}".format(
             "\n".join("  {}\t{}".format(
-                "".join(toy_data.dataset.raw_src[i]),
+                "".join(toy_data.raw_src[i]),
                 "".join(words[i]).replace("<STEP>", ""))
                 for i in range(len(words))
             )
@@ -87,13 +89,16 @@ class BaseModel(nn.Module):
             raise ValueError("Unsupported decoding mode: {}".format(mode))
         self.train(False)
         all_output = []
-        for bi, batch in enumerate(data):
+        for bi, batch in enumerate(data.batched_iter(self.config.batch_size)):
             output = self.forward(batch)
-            all_output.append(output.data.cpu())
-        all_output = torch.cat(all_output)
-        if all_output.dim() == 3:
-            all_output = all_output.max(-1)[1]
-        return all_output.numpy()
+            start = bi * self.config.batch_size
+            end = (bi+1) * self.config.batch_size
+            output = data.reorganize_batch(output.data.cpu().numpy(), start, end)
+            all_output.append(output)
+        all_output = np.vstack(all_output)
+        if all_output.ndim == 3:
+            all_output = all_output.argmax(axis=-1)
+        return all_output
 
     def init_optimizers(self):
         raise NotImplementedError("Subclass should implement init_optimizers")

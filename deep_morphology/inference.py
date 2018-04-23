@@ -12,7 +12,6 @@ import logging
 from sys import stdin
 
 import torch
-from torch.utils.data import DataLoader
 
 from deep_morphology.config import InferenceConfig
 import deep_morphology.data as data_module
@@ -54,12 +53,9 @@ class Inference(Experiment):
         return os.path.join(self.config.experiment_dir, last_epoch)
 
     def run(self, mode='greedy', **kwargs):
-        test_loader = DataLoader(
-            self.test_data, batch_size=self.config.batch_size,
-            collate_fn=collate_batch)
         if mode == 'greedy':
             model_output = self.model.run_inference(
-                test_loader, mode=mode, **kwargs)
+                self.test_data, mode=mode, **kwargs)
             words = self.test_data.decode(model_output)
             return words
         elif mode == 'beam-search':

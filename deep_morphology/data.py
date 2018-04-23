@@ -11,8 +11,6 @@ import gzip
 
 import numpy as np
 
-from torch.utils.data import Dataset
-
 
 class Vocab:
     CONSTANTS = {
@@ -64,7 +62,7 @@ class Vocab:
                 f.write('{}\t{}\n'.format(symbol, id_))
 
 
-class LabeledDataset(Dataset):
+class LabeledDataset:
 
     unlabeled_data_class = 'UnlabeledDataset'
 
@@ -72,7 +70,6 @@ class LabeledDataset(Dataset):
         return Vocab(constants=Vocab.CONSTANTS.keys(), **kwargs)
 
     def __init__(self, config, stream_or_file):
-        super().__init__()
         self.config = config
         self.load_or_create_vocabs()
         self.load_stream_or_file(stream_or_file)
@@ -117,10 +114,6 @@ class LabeledDataset(Dataset):
         self.maxlen_src = max(len(r) for r in self.raw_src)
         self.maxlen_tgt = max(len(r) for r in self.raw_tgt)
 
-        #z = sorted(zip(self.raw_src, self.raw_tgt), key=lambda x: -len(x[0]))
-        #self.raw_src = [s[0] for s in z]
-        #self.raw_tgt = [s[1] for s in z]
-
     def is_valid_sample(self, src, tgt):
         return True
 
@@ -159,6 +152,32 @@ class LabeledDataset(Dataset):
         self.Y = np.array(y, dtype=np.int32)
         self.X_len = np.array(x_len, dtype=np.int16)
         self.Y_len = np.array(y_len, dtype=np.int16)
+        self.matrices = [self.X, self.X_len, self.Y, self.Y_len]
+
+    def batched_iter(self, batch_size, order_by_length=True):
+        """Batch iteration over the dataset.
+        - batch_size: number of sample in a batch. The last batch
+        may be shorter
+        - order_by_length: if true, samples in a batch are sorted
+        in decreasing order. This is required by pack_padded_batch.
+        """
+        if not hasattr(self, 'order_map'):
+            # cache sorting maps
+            self.order_map = {}
+        for start in range(0, len(self), batch_size):
+            end = start + batch_size
+            batch = [m[start:end] for m in self.matrices]
+            if order_by_length:
+                if (start, end) not in self.order_map:
+                    self.order_map[(start, end)] = np.argsort(-batch[1])
+                ord_map = self.order_map[(start, end)]
+                batch = [b[ord_map] for b in batch]
+            yield batch
+
+    def reorganize_batch(self, batch, start, end):
+        mapping = self.order_map[(start, end)]
+        mapping = np.argsort(mapping)
+        return batch[mapping]
 
     def __len__(self):
         return self.X.shape[0]
@@ -232,6 +251,7 @@ class UnlabeledDataset(LabeledDataset):
             self.maxlen_src += 1
 
         self.X = np.array(x, dtype=np.int32)
+        self.matrices = [self.X, self.X_len]
 
     def __getitem__(self, idx):
         return self.X[idx], self.X_len[idx]
@@ -239,7 +259,6 @@ class UnlabeledDataset(LabeledDataset):
 
 class ToyDataset(UnlabeledDataset):
     def __init__(self, config, samples):
-        Dataset.__init__(self)
         self.config = config
         self.load_or_create_vocabs()
         self.raw_src = [list(s) for s in samples]

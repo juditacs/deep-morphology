@@ -62,7 +62,6 @@ class EncoderRNN(nn.Module):
                                                          batch_first=True)
         outputs, hidden = self.cell(packed)
         outputs, ol = torch.nn.utils.rnn.pad_packed_sequence(outputs)
-        # outputs, hidden = self.cell(embedded)
         outputs = outputs.transpose(0, 1)
         outputs = outputs[:, :, :self.config.hidden_size_src] + \
             outputs[:, :, self.config.hidden_size_src:]
@@ -165,7 +164,7 @@ class LuongAttentionSeq2seq(BaseModel):
         self.optimizers = [enc_opt, dec_opt]
 
     def compute_loss(self, target, output):
-        target = to_cuda(Variable(torch.from_numpy(target[1]).long()))
+        target = to_cuda(Variable(torch.from_numpy(target[2]).long()))
         # output = to_cuda(Variable(torch.from_numpy(output).long()))
         loss = self.criterion(output.view(
             -1, output.size(2)), target.view(-1))
@@ -181,11 +180,11 @@ class LuongAttentionSeq2seq(BaseModel):
 
         X = to_cuda(Variable(torch.from_numpy(batch[0]).long()))
         if has_target:
-            Y = to_cuda(Variable(torch.from_numpy(batch[1]).long()))
+            Y = to_cuda(Variable(torch.from_numpy(batch[2]).long()))
 
         batch_size = X.size(0)
         seqlen_src = X.size(1)
-        src_lens = batch[2] if has_target else batch[1]
+        src_lens = batch[1]
         src_lens = [int(s) for s in src_lens]
         seqlen_tgt = Y.size(1) if has_target else seqlen_src * 4
         encoder_outputs, encoder_hidden = self.encoder(X, src_lens)
