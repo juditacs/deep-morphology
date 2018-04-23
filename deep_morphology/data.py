@@ -117,6 +117,10 @@ class LabeledDataset(Dataset):
         self.maxlen_src = max(len(r) for r in self.raw_src)
         self.maxlen_tgt = max(len(r) for r in self.raw_tgt)
 
+        #z = sorted(zip(self.raw_src, self.raw_tgt), key=lambda x: -len(x[0]))
+        #self.raw_src = [s[0] for s in z]
+        #self.raw_tgt = [s[1] for s in z]
+
     def is_valid_sample(self, src, tgt):
         return True
 

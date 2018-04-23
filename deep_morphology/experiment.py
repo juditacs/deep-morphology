@@ -10,6 +10,8 @@ import os
 import logging
 from datetime import datetime
 
+import numpy as np
+
 import torch
 from torch.utils.data import DataLoader
 
@@ -19,6 +21,15 @@ from deep_morphology import models
 
 
 use_cuda = torch.cuda.is_available()
+
+
+def collate_batch(batch):
+    has_target = len(batch[0]) > 2
+    field = 2 if has_target else 1
+    s = list(sorted(batch, key=lambda x: -x[field]))
+    s = list(zip(*s))
+    s = [np.vstack(b) for b in s]
+    return s
 
 
 class Result:
@@ -120,11 +131,11 @@ class Experiment:
 
     def run(self):
         train_loader = DataLoader(
-            self.train_data, batch_size=self.config.batch_size)
+            self.train_data, batch_size=self.config.batch_size, collate_fn=collate_batch)
         dev_loader = DataLoader(
-            self.dev_data, batch_size=self.config.batch_size)
+            self.dev_data, batch_size=self.config.batch_size, collate_fn=collate_batch)
         if self.toy_data:
-            toy_loader = DataLoader(self.toy_data, batch_size=1)
+            toy_loader = DataLoader(self.toy_data, batch_size=1, collate_fn=collate_batch)
             self.model.run_train(train_loader, self.result, dev_data=dev_loader,
                                  toy_data=toy_loader)
         else:

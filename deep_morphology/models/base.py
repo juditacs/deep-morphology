@@ -56,7 +56,7 @@ class BaseModel(nn.Module):
                 for opt in self.optimizers:
                     opt.step()
             epoch_loss += loss.data[0]
-        return epoch_loss / (bi+1)
+        return epoch_loss / len(data)
 
     def run_toy_eval(self, toy_data):
         toy_output = self.run_inference(toy_data, 'greedy')

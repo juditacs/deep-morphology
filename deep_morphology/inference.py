@@ -18,6 +18,7 @@ from deep_morphology.config import InferenceConfig
 import deep_morphology.data as data_module
 from deep_morphology.experiment import Experiment
 from deep_morphology import models
+from deep_morphology.experiment import collate_batch
 
 
 use_cuda = torch.cuda.is_available()
@@ -54,7 +55,8 @@ class Inference(Experiment):
 
     def run(self, mode='greedy', **kwargs):
         test_loader = DataLoader(
-            self.test_data, batch_size=self.config.batch_size)
+            self.test_data, batch_size=self.config.batch_size,
+            collate_fn=collate_batch)
         if mode == 'greedy':
             model_output = self.model.run_inference(
                 test_loader, mode=mode, **kwargs)
@@ -89,9 +91,11 @@ def main():
     args = parse_args()
     jch = " " if args.keep_spaces else ""
     if args.test_file:
-        inf = Inference(args.experiment_dir, args.test_file)
+        inf = Inference(args.experiment_dir, args.test_file,
+                        model_file=args.model_file)
     else:
-        inf = Inference(args.experiment_dir, stdin, spaces=False)
+        inf = Inference(args.experiment_dir, stdin, spaces=False,
+                        model_file=args.model_file)
     words = inf.run()
     for i, raw_word in enumerate(inf.test_data.raw_src):
         print("{}\t{}".format(

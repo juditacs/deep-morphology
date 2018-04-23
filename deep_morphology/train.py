@@ -8,6 +8,7 @@
 
 from argparse import ArgumentParser
 import logging
+import torch
 
 from deep_morphology.experiment import Experiment
 
