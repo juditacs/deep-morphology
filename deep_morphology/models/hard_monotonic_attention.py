@@ -39,17 +39,19 @@ class EncoderRNN(nn.Module):
         self.embedding = nn.Embedding(input_size, self.embedding_size)
         self.cell = nn.LSTM(self.embedding_size, self.hidden_size,
                             num_layers=self.num_layers,
-                            batch_first=True,
+                            batch_first=False,
                             dropout=config.dropout,
                             bidirectional=True)
-        nn.init.xavier_uniform(self.embedding.weight)
+        nn.init.xavier_uniform_(self.embedding.weight)
 
-    def forward(self, input):
+    def forward(self, input, input_seqlen):
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
-        outputs, hidden = self.cell(embedded)
-        outputs = outputs[:, :, :self.hidden_size] + \
-            outputs[:, :, self.hidden_size:]
+        packed = torch.nn.utils.rnn.pack_padded_sequence(embedded, input_seqlen)
+        outputs, hidden = self.cell(packed)
+        outputs, ol = torch.nn.utils.rnn.pad_packed_sequence(outputs)
+        outputs = outputs[:, :, :self.config.hidden_size_src] + \
+            outputs[:, :, self.config.hidden_size_src:]
         return outputs, hidden
 
 
@@ -64,10 +66,11 @@ class DecoderRNN(nn.Module):
 
         self.embedding_dropout = nn.Dropout(config.dropout)
         self.embedding = nn.Embedding(output_size, self.embedding_size)
-        nn.init.xavier_uniform(self.embedding.weight)
+        nn.init.xavier_uniform_(self.embedding.weight)
         self.cell = nn.LSTM(
             self.embedding_size + self.hidden_size, self.hidden_size,
             dropout=config.dropout,
+            batch_first=False,
             num_layers=self.num_layers, bidirectional=False)
         self.output_proj = nn.Linear(self.hidden_size, output_size)
 
@@ -86,6 +89,7 @@ class HardMonotonicAttentionSeq2seq(BaseModel):
         super().__init__(config, input_size, output_size)
         self.encoder = EncoderRNN(config, input_size)
         self.decoder = DecoderRNN(config, output_size)
+        self.criterion = nn.CrossEntropyLoss(ignore_index=Vocab.CONSTANTS['PAD'])
 
     def init_optimizers(self):
         opt_type = getattr(optim, self.config.optimizer)
@@ -94,46 +98,69 @@ class HardMonotonicAttentionSeq2seq(BaseModel):
         dec_opt = opt_type(self.decoder.parameters(), **kwargs)
         self.optimizers = [enc_opt, dec_opt]
 
-    def compute_loss(self, target, output):
+    def acompute_loss(self, target, output):
         Y = to_cuda(Variable(target[1].long()))
         Y_len = to_cuda(Variable(target[3].long()))
         return masked_cross_entropy(output.contiguous(), Y, Y_len)
 
+    def compute_loss(self, target, output):
+        target = to_cuda(Variable(torch.from_numpy(target[2]).long()))
+        batch_size, seqlen, dim = output.size()
+        output = output.contiguous().view(seqlen * batch_size, dim)
+        target = target.view(seqlen * batch_size)
+        loss = self.criterion(output, target)
+        return loss
+
     def forward(self, batch):
         has_target = len(batch) > 2
 
-        X = to_cuda(Variable(batch[0].long()))
+        X = to_cuda(Variable(torch.from_numpy(batch[0]).long()))
+        X = X.transpose(0, 1)
         if has_target:
-            Y = to_cuda(Variable(batch[1].long()))
+            Y = to_cuda(Variable(torch.from_numpy(batch[2]).long()))
+            Y = Y.transpose(0, 1)
 
-        batch_size = X.size(0)
-        seqlen_src = X.size(1)
-        seqlen_tgt = batch[1].size(1) if has_target else seqlen_src * 4
+        batch_size = X.size(1)
+        seqlen_src = X.size(0)
+        src_lens = batch[1]
+        src_lens = [int(s) for s in src_lens]
+        seqlen_tgt = Y.size(0) if has_target else seqlen_src * 4
+        encoder_outputs, encoder_hidden = self.encoder(X, src_lens)
 
-        enc_outputs, enc_hidden = self.encoder(X)
+        decoder_hidden = self.init_decoder_hidden(encoder_hidden)
+        decoder_input = Variable(torch.LongTensor(
+            [Vocab.CONSTANTS['SOS']] * batch_size))
+        decoder_input = to_cuda(decoder_input)
 
-        all_output = to_cuda(Variable(
-            torch.zeros(batch_size, seqlen_tgt, self.output_size)))
-        dec_input = to_cuda(Variable(torch.LongTensor(
-            np.ones(batch_size) * Vocab.CONSTANTS['SOS'])))
+        all_decoder_outputs = Variable(torch.zeros((
+            seqlen_tgt, batch_size, self.output_size)))
+        all_decoder_outputs = to_cuda(all_decoder_outputs)
+
         attn_pos = to_cuda(Variable(torch.LongTensor([0] * batch_size)))
         range_helper = to_cuda(Variable(torch.LongTensor(np.arange(batch_size)),
                                 requires_grad=False))
 
-        hidden = tuple(e[:self.decoder.num_layers, :, :].contiguous()
-                        for e in enc_hidden)
+        src_maxindex = encoder_outputs.size(0) - 1
 
         for ts in range(seqlen_tgt):
-            dec_out, hidden = self.decoder(
-                dec_input, enc_outputs[range_helper, attn_pos], hidden)
-            topv, top_idx = dec_out.max(-1)
-            attn_pos = attn_pos + torch.eq(top_idx,
-                                            Vocab.CONSTANTS['<STEP>']).long()
-            attn_pos = torch.clamp(attn_pos, 0, seqlen_src-1)
+            decoder_output, decoder_hidden = self.decoder(
+                decoder_input, encoder_outputs[attn_pos, range_helper], decoder_hidden)
+            topv, top_idx = decoder_output.max(-1)
+            attn_pos = attn_pos + torch.eq(top_idx, Vocab.CONSTANTS['<STEP>']).long()
+            attn_pos = torch.clamp(attn_pos, 0, src_maxindex)
             attn_pos = attn_pos.squeeze(0).contiguous()
-            all_output[:, ts] = dec_out
+            all_decoder_outputs[ts] = decoder_output
             if has_target:
-                dec_input = Y[:, ts].contiguous()
+                dec_input = Y[ts].contiguous()
             else:
                 dec_input = top_idx.squeeze(0)
-        return all_output
+        return all_decoder_outputs.transpose(0, 1)
+
+    def init_decoder_hidden(self, encoder_hidden):
+        num_layers = self.config.num_layers_tgt
+        if self.config.cell_type == 'LSTM':
+            decoder_hidden = tuple(e[:num_layers, : :]
+                                   for e in encoder_hidden)
+        else:
+            decoder_hidden = encoder_hidden[:num_layers]
+        return decoder_hidden
