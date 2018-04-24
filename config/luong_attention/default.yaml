@@ -12,7 +12,7 @@ use_eos: true
 epochs: 200
 batch_size: 128
 
-early_stopping_ratio: 100
+early_stopping_ratio: 1.5
 
 optimizer: Adam
 
