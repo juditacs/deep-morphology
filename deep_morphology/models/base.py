@@ -57,7 +57,7 @@ class BaseModel(nn.Module):
                 loss.backward()
                 for opt in self.optimizers:
                     opt.step()
-            epoch_loss += loss.data[0]
+            epoch_loss += loss.item()
         return epoch_loss / len(data)
 
     def run_toy_eval(self, toy_data):
