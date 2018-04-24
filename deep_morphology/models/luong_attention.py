@@ -61,7 +61,6 @@ class EncoderRNN(nn.Module):
         packed = torch.nn.utils.rnn.pack_padded_sequence(embedded, input_seqlen)
         outputs, hidden = self.cell(packed)
         outputs, ol = torch.nn.utils.rnn.pad_packed_sequence(outputs)
-        # outputs = outputs.transpose(0, 1)
         outputs = outputs[:, :, :self.config.hidden_size_src] + \
             outputs[:, :, self.config.hidden_size_src:]
         return outputs, hidden
