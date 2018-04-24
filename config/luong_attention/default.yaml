@@ -1,8 +1,8 @@
 model: LuongAttentionSeq2seq
 embedding_size_src: 32
 embedding_size_tgt: 32
-hidden_size_src: 128
-hidden_size_tgt: 128
+hidden_size_src: 256
+hidden_size_tgt: 256
 num_layers_src: 1
 num_layers_tgt: 1
 dropout: 0.0
@@ -15,8 +15,6 @@ batch_size: 128
 early_stopping_ratio: 100
 
 optimizer: Adam
-optimizer_kwargs:
-    lr: 0.0001
 
 experiment_dir: exps/luong_attention
 save_min_epoch: 0
