@@ -94,10 +94,9 @@ class BaseModel(nn.Module):
             start = bi * self.config.batch_size
             end = (bi+1) * self.config.batch_size
             output = data.reorganize_batch(output.data.cpu().numpy(), start, end)
-            all_output.append(output)
-        all_output = np.vstack(all_output)
-        if all_output.ndim == 3:
-            all_output = all_output.argmax(axis=-1)
+            if output.ndim == 3:
+                output = output.argmax(axis=2)
+            all_output.extend(list(output))
         return all_output
 
     def init_optimizers(self):

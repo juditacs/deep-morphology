@@ -204,14 +204,15 @@ class LabeledDataset:
         decoded = []
         EOS = Vocab.CONSTANTS['EOS']
         for i, raw in enumerate(self.raw_src):
+            output = list(output_idx[i])
             if 'EOS' in self.vocab_tgt:
-                eos_idx = np.where(output_idx[i] == EOS)[0]
-                if eos_idx.shape[0] > 0:
-                    prediction = output_idx[i, :eos_idx[0]]
-                else:
-                    prediction = output_idx[i]
+                try:
+                    end = output.index(EOS)
+                except ValueError:
+                    end = len(output)
+                prediction = output[:end]
             else:
-                prediction = output_idx[i]
+                prediction = output
             prediction = [self.vocab_tgt.inv_lookup(s) for s in prediction]
             decoded.append(prediction)
         return decoded
@@ -283,7 +284,7 @@ class UnlabeledTaggingDataset(UnlabeledDataset):
     def decode(self, output_idx):
         decoded = []
         for i, raw in enumerate(self.raw_src):
-            prediction = output_idx[i, :len(raw)]
+            prediction = output_idx[i][:len(raw)]
             prediction = [self.vocab_tgt.inv_lookup(s) for s in prediction]
             decoded.append(prediction)
         return decoded
