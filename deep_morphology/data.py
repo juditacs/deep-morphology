@@ -237,6 +237,8 @@ class UnlabeledDataset(LabeledDataset):
 
     def create_padded_matrices(self):
         self.X_len = np.array([len(s) for s in self.raw_src], dtype=np.int16)
+        if self.config.use_eos:
+            self.X_len += 1
         x = []
         self.maxlen_src = self.X_len.max()
         PAD = self.vocab_src['PAD']
