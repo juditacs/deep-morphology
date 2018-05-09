@@ -146,9 +146,9 @@ class HardMonotonicAttentionSeq2seq(BaseModel):
             decoder_output, decoder_hidden = self.decoder(
                 decoder_input, encoder_outputs[attn_pos, range_helper], decoder_hidden)
             topv, top_idx = decoder_output.max(-1)
-            attn_pos = attn_pos + torch.eq(top_idx, Vocab.CONSTANTS['<STEP>']).long()
+            eq = torch.eq(top_idx, Vocab.CONSTANTS['<STEP>']).long()
+            attn_pos = attn_pos + eq.squeeze(0)
             attn_pos = torch.clamp(attn_pos, 0, src_maxindex)
-            attn_pos = attn_pos.squeeze(0).contiguous()
             all_decoder_outputs[ts] = decoder_output
             if has_target:
                 dec_input = Y[ts].contiguous()
