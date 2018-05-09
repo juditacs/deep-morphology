@@ -8,7 +8,6 @@
 
 from argparse import ArgumentParser
 import logging
-import torch
 
 from deep_morphology.experiment import Experiment
 
@@ -29,6 +28,7 @@ def main():
     args = parse_args()
     with Experiment(args.config, train_data=args.train_file,
                     dev_data=args.dev_file) as e:
+        logging.info("Experiment dir: {}".format(e.config.experiment_dir))
         e.run()
 
 
