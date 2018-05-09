@@ -9,10 +9,12 @@ dropout: 0.5
 
 use_eos: true
 
-epochs: 50
+epochs: 200
 batch_size: 256
 
+early_stopping_ratio: 1.5
+
 experiment_dir: exps/hard_monotonic_attention
-save_min_epoch: 0 
+save_min_epoch: 5
 
 toy_eval: [almával, megette, kutyát]
