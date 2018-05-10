@@ -151,9 +151,9 @@ class HardMonotonicAttentionSeq2seq(BaseModel):
             attn_pos = torch.clamp(attn_pos, 0, src_maxindex)
             all_decoder_outputs[ts] = decoder_output
             if has_target:
-                dec_input = Y[ts].contiguous()
+                decoder_input = Y[ts].contiguous()
             else:
-                dec_input = top_idx.squeeze(0)
+                decoder_input = top_idx.squeeze(0)
         return all_decoder_outputs.transpose(0, 1)
 
     def init_decoder_hidden(self, encoder_hidden):
