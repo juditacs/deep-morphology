@@ -138,7 +138,6 @@ class LuongAttentionDecoder(nn.Module):
         concat_input = torch.cat((rnn_output, context), 1)
         concat_output = F.tanh(self.concat(concat_input))
         output = self.out(concat_output)
-        output = self.out(rnn_output)
         return output, hidden, attn_weights
 
 
