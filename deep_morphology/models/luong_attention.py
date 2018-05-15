@@ -6,17 +6,12 @@
 #
 # Distributed under terms of the MIT license.
 
-import os
-import logging
-import numpy as np
-
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 from torch import optim
 import torch.nn.functional as F
 
-from deep_morphology.models.loss import masked_cross_entropy
 from deep_morphology.data import Vocab
 from deep_morphology.models.base import BaseModel
 
@@ -85,7 +80,7 @@ class Attention(nn.Module):
         return self.softmax(energies)
 
     def score(self, hidden, encoder_output):
-        #FIXME not used
+        # FIXME not used
         if self.method == 'dot':
             return hidden.dot(encoder_output)
         if self.method == 'general':
@@ -105,10 +100,12 @@ class LuongAttentionDecoder(nn.Module):
         self.output_size = output_size
 
         self.embedding_dropout = nn.Dropout(config.dropout)
-        self.embedding = nn.Embedding(output_size, self.config.embedding_size_tgt)
+        self.embedding = nn.Embedding(
+            output_size, self.config.embedding_size_tgt)
         nn.init.xavier_uniform_(self.embedding.weight)
         self.__init_cell()
-        self.concat = nn.Linear(2*self.config.hidden_size_tgt, self.config.hidden_size_tgt)
+        self.concat = nn.Linear(2*self.config.hidden_size_tgt,
+                                self.config.hidden_size_tgt)
         self.out = nn.Linear(self.config.hidden_size_tgt, self.output_size)
         self.attn = Attention('general', self.config.hidden_size_tgt)
 
@@ -152,7 +149,8 @@ class LuongAttentionSeq2seq(BaseModel):
         self.decoder = LuongAttentionDecoder(config, output_size)
         self.config = config
         self.output_size = output_size
-        self.criterion = nn.CrossEntropyLoss(ignore_index=Vocab.CONSTANTS['PAD'])
+        self.criterion = nn.CrossEntropyLoss(
+            ignore_index=Vocab.CONSTANTS['PAD'])
 
     def init_optimizers(self):
         opt_type = getattr(optim, self.config.optimizer)
@@ -209,7 +207,7 @@ class LuongAttentionSeq2seq(BaseModel):
     def init_decoder_hidden(self, encoder_hidden):
         num_layers = self.config.num_layers_tgt
         if self.config.cell_type == 'LSTM':
-            decoder_hidden = tuple(e[:num_layers, : :]
+            decoder_hidden = tuple(e[:num_layers, :, :]
                                    for e in encoder_hidden)
         else:
             decoder_hidden = encoder_hidden[:num_layers]
@@ -329,4 +327,3 @@ class BeamSearchDecoder(nn.Module):
             delattr(t, 'hidden')
             delattr(t, 'output')
         return top
-
