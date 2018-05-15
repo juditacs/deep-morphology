@@ -30,6 +30,7 @@ class Config:
         'cell_type': 'LSTM',
         'use_step': False,
         'save_attention_weights': False,
+        'overwrite_model': True,
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded

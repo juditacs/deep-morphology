@@ -24,6 +24,8 @@ class BaseModel(nn.Module):
 
         self.init_optimizers()
 
+        saved = False
+
         for epoch in range(self.config.epochs):
             self.train(True)
             train_loss = self.run_epoch(train_data, do_train=True)
@@ -34,7 +36,7 @@ class BaseModel(nn.Module):
                 result.dev_loss.append(dev_loss)
             else:
                 dev_loss = None
-            self.save_if_best(train_loss, dev_loss, epoch)
+            saved = saved or self.save_if_best(train_loss, dev_loss, epoch)
             logging.info("Epoch {}, Train loss: {}, Dev loss: {}".format(
                 epoch+1, train_loss, dev_loss))
             if toy_data:
@@ -43,6 +45,8 @@ class BaseModel(nn.Module):
                 if dev_loss > train_loss * self.config.early_stopping_ratio:
                     logging.info("Early stopping.")
                     break
+        if saved is False:
+            self._save(epoch)
 
     def run_epoch(self, data, do_train):
         epoch_loss = 0
@@ -72,15 +76,23 @@ class BaseModel(nn.Module):
 
     def save_if_best(self, train_loss, dev_loss, epoch):
         if epoch < self.config.save_min_epoch:
-            return
+            return False
         loss = dev_loss if dev_loss is not None else train_loss
         if not hasattr(self, 'min_loss') or self.min_loss > loss:
             self.min_loss = loss
+            self._save(epoch)
+            return True
+        return False
+
+    def _save(self, epoch):
+        if self.config.overwrite_model is True:
+            save_path = os.path.join(self.config.experiment_dir, "model")
+        else:
             save_path = os.path.join(
                 self.config.experiment_dir,
                 "model.epoch_{}".format("{0:04d}".format(epoch)))
-            logging.info("Saving model to {}".format(save_path))
-            torch.save(self.state_dict(), save_path)
+        logging.info("Saving model to {}".format(save_path))
+        torch.save(self.state_dict(), save_path)
 
     def run_inference(self, data, mode, **kwargs):
         if mode != 'greedy':

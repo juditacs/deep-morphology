@@ -49,6 +49,9 @@ class Inference(Experiment):
         self.model.load_state_dict(torch.load(model_file))
 
     def find_last_model(self):
+        model_pre = os.path.join(self.config.experiment_dir, 'model')
+        if os.path.exists(model_pre):
+            return model_pre
         saves = filter(lambda f: f.startswith(
             'model.epoch_'), os.listdir(self.config.experiment_dir))
         last_epoch = max(saves, key=lambda f: int(f.split("_")[-1]))
