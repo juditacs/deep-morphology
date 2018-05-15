@@ -139,7 +139,7 @@ class LuongAttentionDecoder(nn.Module):
         concat_output = F.tanh(self.concat(concat_input))
         output = self.out(concat_output)
         output = self.out(rnn_output)
-        return output, hidden
+        return output, hidden, attn_weights
 
 
 class LuongAttentionSeq2seq(BaseModel):
@@ -184,24 +184,31 @@ class LuongAttentionSeq2seq(BaseModel):
         encoder_outputs, encoder_hidden = self.encoder(X, src_lens)
 
         decoder_hidden = self.init_decoder_hidden(encoder_hidden)
-        decoder_input = Variable(torch.LongTensor(
-            [Vocab.CONSTANTS['SOS']] * batch_size))
-        decoder_input = to_cuda(decoder_input)
+        decoder_input = to_cuda(Variable(torch.LongTensor(
+            [Vocab.CONSTANTS['SOS']] * batch_size)))
 
-        all_decoder_outputs = Variable(torch.zeros((
-            seqlen_tgt, batch_size, self.output_size)))
-        all_decoder_outputs = to_cuda(all_decoder_outputs)
+        all_decoder_outputs = to_cuda(Variable(torch.zeros((
+            seqlen_tgt, batch_size, self.output_size))))
+
+        if self.config.save_attention_weights:
+            all_attn_weights = to_cuda(Variable(torch.zeros((
+                seqlen_tgt, batch_size, seqlen_src-1))))
 
         for t in range(seqlen_tgt):
-            decoder_output, decoder_hidden = self.decoder(
+            decoder_output, decoder_hidden, attn_weights = self.decoder(
                 decoder_input, decoder_hidden, encoder_outputs
             )
             all_decoder_outputs[t] = decoder_output
+            if self.config.save_attention_weights:
+                all_attn_weights[t] = attn_weights
             if has_target:
                 decoder_input = Y[t]
             else:
                 val, idx = decoder_output.max(-1)
                 decoder_input = idx
+        if self.config.save_attention_weights:
+            return all_decoder_outputs.transpose(0, 1), \
+                all_attn_weights.transpose(0, 1)
         return all_decoder_outputs.transpose(0, 1)
 
     def init_decoder_hidden(self, encoder_hidden):
@@ -212,6 +219,29 @@ class LuongAttentionSeq2seq(BaseModel):
         else:
             decoder_hidden = encoder_hidden[:num_layers]
         return decoder_hidden
+
+    def run_inference(self, data, mode, **kwargs):
+        if mode != 'greedy':
+            raise ValueError("Unsupported decoding mode: {}".format(mode))
+        self.train(False)
+        all_output = []
+        attn_weights = []
+        for bi, batch in enumerate(data.batched_iter(self.config.batch_size)):
+            if self.config.save_attention_weights:
+                output, aw = self.forward(batch)
+                attn_weights.append(aw)
+            else:
+                output = self.forward(batch)
+            start = bi * self.config.batch_size
+            end = (bi+1) * self.config.batch_size
+            output = data.reorganize_batch(output.data.cpu().numpy(),
+                                           start, end)
+            if output.ndim == 3:
+                output = output.argmax(axis=2)
+            all_output.extend(list(output))
+        if self.config.save_attention_weights:
+            torch.save(torch.cat(attn_weights), self.config.save_attention_weights)
+        return all_output
 
 
 class Beam(object):

@@ -29,6 +29,7 @@ class Config:
         'early_stopping_ratio': 1.5,
         'cell_type': 'LSTM',
         'use_step': False,
+        'save_attention_weights': False,
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded

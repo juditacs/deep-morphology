@@ -17,7 +17,6 @@ from deep_morphology.config import InferenceConfig
 import deep_morphology.data as data_module
 from deep_morphology.experiment import Experiment
 from deep_morphology import models
-from deep_morphology.experiment import collate_batch
 
 
 use_cuda = torch.cuda.is_available()
@@ -25,9 +24,12 @@ use_cuda = torch.cuda.is_available()
 
 class Inference(Experiment):
     def __init__(self, experiment_dir, stream_or_file, spaces=True,
+                 save_attention_weights=None,
                  model_file=None):
         self.config = InferenceConfig.from_yaml(
             os.path.join(experiment_dir, 'config.yaml'))
+        if save_attention_weights is not None:
+            self.config.save_attention_weights = save_attention_weights
         dc = getattr(data_module, self.config.dataset_class)
         self.test_data = getattr(data_module, dc.unlabeled_data_class)(
             self.config, stream_or_file, spaces)
@@ -80,6 +82,9 @@ def parse_args():
                    help="Print the probability of each output sequence")
     p.add_argument("--keep-spaces", action="store_true",
                    help="Do not remove spaces from output")
+    p.add_argument("--save-attention-weights", type=str, default=None,
+                   help="Save attention weights to file. "
+                   "Only effective when using Luong Attention.")
     return p.parse_args()
 
 
@@ -88,10 +93,12 @@ def main():
     jch = " " if args.keep_spaces else ""
     if args.test_file:
         inf = Inference(args.experiment_dir, args.test_file,
-                        model_file=args.model_file)
+                        model_file=args.model_file,
+                        save_attention_weights=args.save_attention_weights)
     else:
         inf = Inference(args.experiment_dir, stdin, spaces=False,
-                        model_file=args.model_file)
+                        model_file=args.model_file,
+                        save_attention_weights=args.save_attention_weights)
     words = inf.run()
     for i, raw_word in enumerate(inf.test_data.raw_src):
         print("{}\t{}".format(
