@@ -36,7 +36,8 @@ class BaseModel(nn.Module):
                 result.dev_loss.append(dev_loss)
             else:
                 dev_loss = None
-            saved = saved or self.save_if_best(train_loss, dev_loss, epoch)
+            s = self.save_if_best(train_loss, dev_loss, epoch)
+            saved = saved or s
             logging.info("Epoch {}, Train loss: {}, Dev loss: {}".format(
                 epoch+1, train_loss, dev_loss))
             if toy_data:
