@@ -35,17 +35,9 @@ class Config:
     # path variables support environment variable
     # ${MYVAR} will be manually expanded
     path_variables = (
-        'train_file', 'dev_file', 'experiment_dir'
+        'train_file', 'dev_file', 'experiment_dir', 'vocab_path_src',
+        'vocab_path_tgt',
     )
-
-    __slots__ = (
-        'model',
-        'embedding_size_src', 'embedding_size_tgt', 'batch_size',
-        'num_layers_src', 'num_layers_tgt', 'dropout',
-        'hidden_size_src', 'hidden_size_tgt',
-        'train_schedule',
-        'epochs', 'save_min_epoch',
-    ) + path_variables + tuple(defaults.keys())
 
     @classmethod
     def from_yaml(cls, filename):
@@ -107,7 +99,13 @@ class Config:
     def save(self, save_fn=None):
         if save_fn is None:
             save_fn = os.path.join(self.experiment_dir, 'config.yaml')
-        d = {k.lstrip("_"): getattr(self, k, None) for k in self.__slots__}
+        d = {}
+        for k in dir(self):
+            if k.startswith('__') and k.endswith('__'):
+                continue
+            if hasattr(getattr(self, k, None), '__call__'):
+                continue
+            d[k.lstrip('_')] = getattr(self, k, None)
         with open(save_fn, 'w') as f:
             yaml.dump(d, f)
 
