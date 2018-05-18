@@ -293,3 +293,142 @@ class UnlabeledTaggingDataset(UnlabeledDataset):
             prediction = [self.vocab_tgt.inv_lookup(s) for s in prediction]
             decoded.append(prediction)
         return decoded
+
+
+class ReinflectionDataset(LabeledDataset):
+
+    unlabeled_data_class = 'UnlabeledReinflectionDataset'
+
+    def create_vocab(self, **kwargs):
+        return Vocab(constants=['PAD', 'EOS'], **kwargs)
+
+    def load_or_create_vocabs(self):
+        super().load_or_create_vocabs()
+        tag_path = os.path.join(self.config.experiment_dir, "vocab_tag")
+        if os.path.exists(tag_path):
+            self.vocab_tag = self.create_vocab(file=tag_path, frozen=True)
+        else:
+            self.vocab_tag = self.create_vocab(frozen=False)
+
+    def save_vocabs(self):
+        super().save_vocabs()
+        exp_dir = self.config.experiment_dir
+        vocab_tag_path = os.path.join(exp_dir, 'vocab_tag')
+        self.vocab_tag.save(vocab_tag_path)
+
+    def load_stream(self, stream):
+        self.raw_src = []
+        self.raw_tags = []
+        self.raw_tgt = []
+
+        for line in stream:
+            src, tgt, tags = line.rstrip("\n").split("\t")[:3]
+            src = list(src)
+            tgt = list(tgt)
+            tags = tags.split(";")
+            if self.is_valid_sample(src, tgt):
+                self.raw_src.append(src)
+                self.raw_tags.append(tags)
+                self.raw_tgt.append(tgt)
+
+        self.maxlen_src = max(len(r) for r in self.raw_src)
+        self.maxlen_tags = max(len(t) for t in self.raw_tags)
+        self.maxlen_tgt = max(len(r) for r in self.raw_tgt)
+
+    def create_padded_matrices(self):
+        x = []
+        y = []
+        x_len = []
+        y_len = []
+        tags = []
+
+        PAD = self.vocab_src['PAD']
+        if self.config.use_eos:
+            EOS = self.vocab_tgt['EOS']
+        for i, src in enumerate(self.raw_src):
+            tag = self.raw_tags[i]
+            tgt = self.raw_tgt[i]
+
+            if self.config.use_eos is True:
+                x.append([self.vocab_src[s] for s in src] + [EOS] +
+                         [PAD for _ in range(self.maxlen_src-len(src))])
+                y.append([self.vocab_tgt[s] for s in tgt] + [EOS] +
+                         [PAD for _ in range(self.maxlen_tgt-len(tgt))])
+                x_len.append(len(src) + 1)
+                y_len.append(len(tgt) + 1)
+                tags.append([self.vocab_tag[t] for t in tag] + [EOS] +
+                            [PAD for _ in range(self.maxlen_tags-len(tag))])
+            else:
+                x.append([self.vocab_src[s] for s in src] +
+                         [PAD for _ in range(self.maxlen_src-len(src))])
+                y.append([self.vocab_tgt[s] for s in tgt] +
+                         [PAD for _ in range(self.maxlen_tgt-len(tgt))])
+                tags.append([self.vocab_tag[t] for t in tag] +
+                            [PAD for _ in range(self.maxlen_tags-len(tag))])
+                x_len.append(len(src))
+                y_len.append(len(tgt))
+
+        if self.config.use_eos is True:
+            self.maxlen_src += 1
+            self.maxlen_tgt += 1
+            self.maxlen_tags += 1
+
+        self.X = np.array(x, dtype=np.int32)
+        self.Y = np.array(y, dtype=np.int32)
+        self.X_len = np.array(x_len, dtype=np.int16)
+        self.Y_len = np.array(y_len, dtype=np.int16)
+        self.tags = np.array(tags, dtype=np.int32)
+        self.matrices = [self.X, self.X_len, self.tags, self.Y, self.Y_len]
+
+
+class UnlabeledReinflectionDataset(UnlabeledDataset):
+    def load_stream(self, stream):
+        self.raw_src = []
+        self.raw_tags = []
+        for line in stream:
+            fd = line.rstrip("\n").split("\t")
+            self.raw_src.append(list(fd[0]))
+            self.raw_tags.append(fd[2].split(';'))
+
+    def load_or_create_vocabs(self):
+        super().load_or_create_vocabs()
+        tag_path = os.path.join(self.config.experiment_dir, "vocab_tag")
+        if os.path.exists(tag_path):
+            self.vocab_tag = self.create_vocab(file=tag_path, frozen=True)
+        else:
+            self.vocab_tag = self.create_vocab(frozen=False)
+
+    def create_padded_matrices(self):
+        x = []
+        x_len = []
+        tags = []
+
+        self.maxlen_src = max(len(s) for s in self.raw_src)
+        self.maxlen_tags = max(len(s) for s in self.raw_tags)
+        PAD = self.vocab_src['PAD']
+        if self.config.use_eos:
+            EOS = self.vocab_tgt['EOS']
+        for i, src in enumerate(self.raw_src):
+            tag = self.raw_tags[i]
+
+            if self.config.use_eos is True:
+                x.append([self.vocab_src[s] for s in src] + [EOS] +
+                         [PAD for _ in range(self.maxlen_src-len(src))])
+                x_len.append(len(src) + 1)
+                tags.append([self.vocab_tag[t] for t in tag] + [EOS] +
+                            [PAD for _ in range(self.maxlen_tags-len(tag))])
+            else:
+                x.append([self.vocab_src[s] for s in src] +
+                         [PAD for _ in range(self.maxlen_src-len(src))])
+                tags.append([self.vocab_tag[t] for t in tag] +
+                            [PAD for _ in range(self.maxlen_tags-len(tag))])
+                x_len.append(len(src))
+
+        if self.config.use_eos is True:
+            self.maxlen_src += 1
+            self.maxlen_tags += 1
+
+        self.X = np.array(x, dtype=np.int32)
+        self.X_len = np.array(x_len, dtype=np.int16)
+        self.tags = np.array(tags, dtype=np.int32)
+        self.matrices = [self.X, self.X_len, self.tags]
