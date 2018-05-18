@@ -103,9 +103,17 @@ class Config:
         for k in dir(self):
             if k.startswith('__') and k.endswith('__'):
                 continue
+            if k == 'path_variables':
+                continue
+            if not hasattr(self, k):
+                continue
             if hasattr(getattr(self, k, None), '__call__'):
                 continue
-            d[k.lstrip('_')] = getattr(self, k, None)
+            if k in Config.path_variables and hasattr(self, k):
+                v = os.path.abspath(getattr(self, k))
+            else:
+                v = getattr(self, k, None)
+            d[k.lstrip('_')] = v
         with open(save_fn, 'w') as f:
             yaml.dump(d, f)
 
