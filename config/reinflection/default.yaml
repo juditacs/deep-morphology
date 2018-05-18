@@ -1,0 +1,28 @@
+model: ReinflectionSeq2seq
+dataset_class: ReinflectionDataset
+
+lemma_embedding_size: 32
+lemma_hidden_size: 512
+lemma_num_layers: 3
+
+tag_embedding_size: 16
+tag_hidden_size: 64
+tag_num_layers: 2
+
+inflected_embedding_size: 32
+inflected_hidden_size: 256
+inflected_num_layers: 2
+
+dropout: 0.5
+
+use_eos: true
+
+epochs: 200
+batch_size: 128
+
+early_stopping_ratio: 1.5
+
+optimizer: Adam
+
+experiment_dir: exps/reinflection
+save_min_epoch: 0
