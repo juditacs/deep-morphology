@@ -114,7 +114,11 @@ class Experiment:
         model_class = getattr(models, self.config.model)
         input_size = len(self.train_data.vocab_src)
         output_size = len(self.train_data.vocab_tgt)
-        self.model = model_class(self.config, input_size, output_size)
+        # FIXME dirty hack
+        kwargs = {}
+        if hasattr(self.train_data, 'vocab_tag'):
+            kwargs['tag_size'] = len(self.train_data.vocab_tag)
+        self.model = model_class(self.config, input_size, output_size, **kwargs)
         if use_cuda:
             self.model = self.model.cuda()
 
