@@ -35,10 +35,13 @@ class Vocab:
         if self.frozen is True:
             return self.vocab.get(key, Vocab.CONSTANTS['UNK'])
         if key not in self.vocab:
-            idx = 0
-            while idx in self.vocab.values():
-                idx += 1
-            self.vocab[key] = idx
+            if len(self.vocab) < len(Vocab.CONSTANTS):
+                idx = 0
+                while idx in self.vocab.values():
+                    idx += 1
+                self.vocab[key] = idx
+            else:
+                self.vocab[key] = len(self.vocab)
         return self.vocab[key]
         # return self.vocab.setdefault(key, len(self.vocab))
 
