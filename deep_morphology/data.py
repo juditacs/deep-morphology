@@ -323,8 +323,8 @@ class ReinflectionDataset(LabeledDataset):
 
         for line in stream:
             src, tgt, tags = line.rstrip("\n").split("\t")[:3]
-            src = list(src)
-            tgt = list(tgt)
+            src = src.split(" ") if " " in src else list(src)
+            tgt = tgt.split(" ") if " " in tgt else list(tgt)
             tags = tags.split(";")
             if self.is_valid_sample(src, tgt):
                 self.raw_src.append(src)
@@ -387,7 +387,9 @@ class UnlabeledReinflectionDataset(UnlabeledDataset):
         self.raw_tags = []
         for line in stream:
             fd = line.rstrip("\n").split("\t")
-            self.raw_src.append(list(fd[0]))
+            src = fd[0]
+            src = src.split(" ") if " " in src else list(src)
+            self.raw_src.append(src)
             self.raw_tags.append(fd[2].split(';'))
 
     def load_or_create_vocabs(self):
