@@ -21,13 +21,33 @@ def parse_args():
                    " must have the same parameters.")
     p.add_argument("--train-file", type=str, default=None)
     p.add_argument("--dev-file", type=str, default=None)
+    p.add_argument("--params", type=str, default=None)
     return p.parse_args()
+
+
+def parse_param_str(params):
+    param_d = {}
+    for p in params.split(','):
+        key, val = p.split('=')
+        try:
+            param_d[key] = int(val)
+        except ValueError:
+            try:
+                param_d[key] = float(val)
+            except ValueError:
+                param_d[key] = val
+    return param_d
 
 
 def main():
     args = parse_args()
+    if args.params:
+        override_params = parse_param_str(args.params)
+    else:
+        override_params = None
     with Experiment(args.config, train_data=args.train_file,
-                    dev_data=args.dev_file) as e:
+                    dev_data=args.dev_file,
+                    override_params=override_params) as e:
         logging.info("Experiment dir: {}".format(e.config.experiment_dir))
         e.run()
 

@@ -40,9 +40,11 @@ class Config:
     )
 
     @classmethod
-    def from_yaml(cls, filename):
+    def from_yaml(cls, filename, override_params=None):
         with open(filename) as f:
             params = yaml.load(f)
+        if override_params:
+            params.update(override_params)
         return cls(**params)
 
     @classmethod

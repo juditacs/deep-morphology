@@ -59,9 +59,9 @@ class Experiment:
         4. trains the model
         5. saves the results
     """
-    def __init__(self, config, train_data=None, dev_data=None):
+    def __init__(self, config, train_data=None, dev_data=None, override_params=None):
         if isinstance(config, str):
-            self.config = Config.from_yaml(config)
+            self.config = Config.from_yaml(config, override_params)
         elif isinstance(config, Config):
             self.config = config
         else:
