@@ -6,8 +6,6 @@
 #
 # Distributed under terms of the MIT license.
 
-import os
-import logging
 import numpy as np
 
 import torch
@@ -85,11 +83,14 @@ class DecoderRNN(nn.Module):
 
 
 class HardMonotonicAttentionSeq2seq(BaseModel):
-    def __init__(self, config, input_size, output_size):
-        super().__init__(config, input_size, output_size)
+    def __init__(self, config, dataset):
+        super().__init__(config)
+        input_size = len(dataset.vocab_src)
+        output_size = len(dataset.vocab_tgt)
         self.encoder = EncoderRNN(config, input_size)
         self.decoder = DecoderRNN(config, output_size)
-        self.criterion = nn.CrossEntropyLoss(ignore_index=Vocab.CONSTANTS['PAD'])
+        self.criterion = nn.CrossEntropyLoss(
+            ignore_index=Vocab.CONSTANTS['PAD'])
 
     def init_optimizers(self):
         opt_type = getattr(optim, self.config.optimizer)
@@ -138,13 +139,14 @@ class HardMonotonicAttentionSeq2seq(BaseModel):
 
         attn_pos = to_cuda(Variable(torch.LongTensor([0] * batch_size)))
         range_helper = to_cuda(Variable(torch.LongTensor(np.arange(batch_size)),
-                                requires_grad=False))
+                                        requires_grad=False))
 
         src_maxindex = encoder_outputs.size(0) - 1
 
         for ts in range(seqlen_tgt):
             decoder_output, decoder_hidden = self.decoder(
-                decoder_input, encoder_outputs[attn_pos, range_helper], decoder_hidden)
+                decoder_input, encoder_outputs[attn_pos, range_helper],
+                decoder_hidden)
             topv, top_idx = decoder_output.max(-1)
             eq = torch.eq(top_idx, Vocab.CONSTANTS['<STEP>']).long()
             attn_pos = attn_pos + eq.squeeze(0)
@@ -159,7 +161,7 @@ class HardMonotonicAttentionSeq2seq(BaseModel):
     def init_decoder_hidden(self, encoder_hidden):
         num_layers = self.config.num_layers_tgt
         if self.config.cell_type == 'LSTM':
-            decoder_hidden = tuple(e[:num_layers, : :]
+            decoder_hidden = tuple(e[:num_layers, :, :]
                                    for e in encoder_hidden)
         else:
             decoder_hidden = encoder_hidden[:num_layers]

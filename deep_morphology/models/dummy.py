@@ -7,16 +7,12 @@
 # Distributed under terms of the MIT license.
 import numpy as np
 
-import torch
-import torch.nn as nn
-from torch.autograd import Variable
-
 from deep_morphology.models.base import BaseModel
 
 
 class DummyModel(BaseModel):
-    def __init__(self, config, input_size, output_size):
-        super().__init__(config, input_size, output_size)
+    def __init__(self, config, dataset):
+        super().__init__(config)
 
     def run_epoch(self, data, do_train):
         # return random loss

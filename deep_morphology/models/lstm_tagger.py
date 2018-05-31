@@ -25,17 +25,22 @@ def to_cuda(var):
 
 
 class LSTMTagger(BaseModel):
-    def __init__(self, config, input_size, output_size):
-        super().__init__(config, input_size, output_size)
+    def __init__(self, config, dataset):
+        super().__init__(config)
+        input_size = len(dataset.vocab_src)
+        output_size = len(dataset.vocab_tgt)
         self.hidden_size = self.config.hidden_size_src
         self.embedding_dropout = nn.Dropout(self.config.dropout)
-        self.embedding = nn.Embedding(input_size, self.config.embedding_size_src)
+        self.embedding = nn.Embedding(
+            input_size, self.config.embedding_size_src)
         nn.init.xavier_uniform_(self.embedding.weight)
         self.cell = nn.LSTM(self.config.embedding_size_src, self.hidden_size,
                             batch_first=False, dropout=self.config.dropout,
-                            num_layers=self.config.num_layers_src, bidirectional=True)
+                            num_layers=self.config.num_layers_src,
+                            bidirectional=True)
         self.out_proj = nn.Linear(self.hidden_size, output_size)
-        self.criterion = nn.CrossEntropyLoss(ignore_index=Vocab.CONSTANTS['PAD'])
+        self.criterion = nn.CrossEntropyLoss(
+            ignore_index=Vocab.CONSTANTS['PAD'])
 
     def forward(self, batch):
         input = to_cuda(Variable(torch.from_numpy(batch[0]).long()))

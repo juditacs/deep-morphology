@@ -142,8 +142,10 @@ class LuongAttentionDecoder(nn.Module):
 
 
 class LuongAttentionSeq2seq(BaseModel):
-    def __init__(self, config, input_size, output_size):
-        super().__init__(config, input_size, output_size)
+    def __init__(self, config, dataset):
+        super().__init__(config)
+        input_size = len(dataset.vocab_src)
+        output_size = len(dataset.vocab_tgt)
         self.encoder = EncoderRNN(config, input_size)
         self.decoder = LuongAttentionDecoder(config, output_size)
         self.config = config
@@ -239,7 +241,8 @@ class LuongAttentionSeq2seq(BaseModel):
                 output = output.argmax(axis=2)
             all_output.extend(list(output))
         if self.config.save_attention_weights:
-            torch.save(torch.cat(attn_weights), self.config.save_attention_weights)
+            torch.save(torch.cat(attn_weights),
+                       self.config.save_attention_weights)
         return all_output
 
 

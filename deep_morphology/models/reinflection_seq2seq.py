@@ -119,9 +119,11 @@ class ReinflectionDecoder(nn.Module):
 
 
 class ReinflectionSeq2seq(BaseModel):
-    def __init__(self, config, input_size, output_size, **kwargs):
-        super().__init__(config, input_size, output_size)
-        self.tag_size = kwargs['tag_size']
+    def __init__(self, config, dataset):
+        super().__init__(config)
+        input_size = len(dataset.vocab_src)
+        output_size = len(dataset.vocab_tgt)
+        self.tag_size = len(dataset.vocab_tag)
         self.lemma_encoder = LemmaEncoder(config, input_size)
         self.tag_encoder = TagEncoder(config, self.tag_size)
         self.decoder = ReinflectionDecoder(config, output_size)

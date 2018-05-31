@@ -14,11 +14,9 @@ import torch.nn as nn
 
 
 class BaseModel(nn.Module):
-    def __init__(self, config, input_size, output_size):
+    def __init__(self, config):
         super().__init__()
         self.config = config
-        self.input_size = input_size
-        self.output_size = output_size
 
     def run_train(self, train_data, result, dev_data=None, toy_data=None):
 
