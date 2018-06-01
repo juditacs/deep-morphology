@@ -135,14 +135,6 @@ class ReinflectionSeq2seq(BaseModel):
         self.c_proj = nn.Linear(self.config.lemma_hidden_size+self.config.tag_hidden_size,
                                 self.config.inflected_hidden_size)
 
-    def init_optimizers(self):
-        opt_type = getattr(optim, self.config.optimizer)
-        kwargs = self.config.optimizer_kwargs
-        lemma_enc_opt = opt_type(self.lemma_encoder.parameters(), **kwargs)
-        tag_enc_opt = opt_type(self.tag_encoder.parameters(), **kwargs)
-        dec_opt = opt_type(self.decoder.parameters(), **kwargs)
-        self.optimizers = [lemma_enc_opt, tag_enc_opt, dec_opt]
-
     def compute_loss(self, target, output):
         target = to_cuda(Variable(torch.from_numpy(target[3]).long()))
         batch_size, seqlen, dim = output.size()
