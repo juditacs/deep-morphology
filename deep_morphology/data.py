@@ -524,17 +524,14 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
 
     def create_padded_matrices(self):
         mtx = [[] for _ in range(8)]
-        vocabs = [self.vocab_src, self.vocab_src, self.vocab_src,
-                  self.vocab_src, self.vocab_tag, self.vocab_tag,
+        vocabs = [self.vocab_src, self.vocab_src, self.vocab_tag,
+                  self.vocab_src, self.vocab_src, self.vocab_tag,
                   self.vocab_src, self.vocab_src]
         PAD = self.vocab_src['PAD']
         for sample in self.raw:
             for i, field in enumerate(sample):
                 if field is None:
                     mtx[i].append(None)
-                    continue
-                # FIXME this should not be necessary
-                if len(field) == 0:
                     continue
                 if isinstance(field[0], list):
                     idx = [[vocabs[i][c] for c in word] for word in field]
@@ -545,7 +542,7 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
                 mtx[i].append(padded)
         self.matrices = mtx
         self.matrices[-2] = np.array(self.matrices[-2])
-        if self.matrices[-1][0] is not None:
+        if self.matrices[-1] and self.matrices[-1][0] is not None:
             self.matrices[-1] = np.array(self.matrices[-1])
         # FIXME used for logging
         self.X = self.matrices[-2]
@@ -566,6 +563,8 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
                 sent = []
             else:
                 word, lemma, tags = line.rstrip("\n").split('\t')
+                if not lemma:
+                    lemma = "*"
                 sent.append([list(word), list(lemma), tags.split(";")])
         if sent:
             yield [list(l) for l in zip(*sent)]
