@@ -186,4 +186,3 @@ class ReinflectionSeq2seq(BaseModel):
                        tag_encoder_hidden[1][:num_layers]), 2)
         c = self.c_proj(c)
         return (h, c)
-        #return tuple(e[:num_layers, :, :] for e in lemma_encoder_hidden)
