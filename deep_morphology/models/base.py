@@ -11,6 +11,7 @@ import logging
 
 import torch
 import torch.nn as nn
+from torch import optim
 
 
 class BaseModel(nn.Module):
@@ -110,7 +111,9 @@ class BaseModel(nn.Module):
         return all_output
 
     def init_optimizers(self):
-        raise NotImplementedError("Subclass should implement init_optimizers")
+        opt_type = getattr(optim, self.config.optimizer)
+        kwargs = self.config.optimizer_kwargs
+        self.optimizers = [opt_type(self.parameters(), **kwargs)]
 
     def compute_loss(self):
         raise NotImplementedError("Subclass should implement compute_loss")

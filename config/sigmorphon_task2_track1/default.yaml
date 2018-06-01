@@ -1,0 +1,28 @@
+model: ContextInflectionSeq2seq
+dataset_class: SIGMORPOHTask2Track1Dataset 
+
+experiment_dir: exps/sigmorphon/task2_track1
+epochs: 200
+batch_size: 128
+early_stopping_ratio: 1.5
+save_min_epoch: 0
+
+context_hidden_size: 128 
+context_num_layers: 1
+
+char_embedding_size: 20 
+tag_embedding_size: 10 
+tag_hidden_size: 128 
+tag_num_layers: 1
+
+word_hidden_size: 128
+word_num_layers: 1
+
+lemma_hidden_size: 128
+lemma_num_layers: 1
+
+decoder_hidden_size: 128
+decoder_num_layers: 1
+
+dropout: 0.0
+

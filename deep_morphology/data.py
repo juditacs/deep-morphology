@@ -8,8 +8,15 @@
 
 import os
 import gzip
+from collections import namedtuple
 
 import numpy as np
+
+
+LabeledSentence = namedtuple(
+    'LabeledSentence',
+    ['left_words', 'left_lemmas', 'left_tags', 'right_words',
+     'right_lemmas', 'right_tags', 'covered_lemma', 'target_word'])
 
 
 class Vocab:
@@ -434,3 +441,129 @@ class UnlabeledReinflectionDataset(UnlabeledDataset):
         self.X_len = np.array(x_len, dtype=np.int16)
         self.tags = np.array(tags, dtype=np.int32)
         self.matrices = [self.X, self.X_len, self.tags]
+
+
+class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
+    unlabeled_data_class = 'SIGMORPOHTask2Track1UnlabeledDataset'
+
+    def create_vocab(self, **kwargs):
+        return Vocab(constants=['PAD', 'SOS', 'EOS'], **kwargs)
+
+    def skip_sample(self, word, lemma):
+        return word == lemma
+
+    def load_stream(self, stream):
+        self.raw = []
+
+        SOS = ['SOS']
+        EOS = ['EOS']
+
+        maxlens = {'word': 0, 'lemma': 0, 'tag': 0}
+        for words, lemmas, tags in self.read_sentences(stream):
+            maxlens['word'] = max(maxlens['word'], max(len(w) for w in words))
+            maxlens['lemma'] = max(maxlens['lemma'], max(len(w) for w in lemmas))
+            maxlens['tag'] = max(maxlens['tag'], max(len(w) for w in tags))
+            for i in range(len(words)):
+                if self.skip_sample(words[i], lemmas[i]):
+                    continue
+                if words[i][0] == '_':
+                    target = None
+                else:
+                    target = words[i] + EOS
+                self.raw.append(LabeledSentence(
+                    left_words=[SOS] + words[:i],
+                    right_words=words[i+1:] + [EOS],
+                    left_lemmas=[SOS] + lemmas[:i],
+                    right_lemmas=lemmas[i+1:] + [EOS],
+                    left_tags=[SOS] + tags[:i],
+                    right_tags=tags[i+1:] + [EOS],
+                    covered_lemma=lemmas[i],
+                    target_word=target,
+                ))
+        self.maxlens = LabeledSentence(
+            left_words=maxlens['word']+1,
+            left_lemmas=maxlens['lemma']+1,
+            left_tags=maxlens['tag']+1,
+            right_words=maxlens['word']+1,
+            right_lemmas=maxlens['lemma']+1,
+            right_tags=maxlens['tag']+1,
+            covered_lemma=maxlens['word'],
+            target_word=maxlens['word']+1,
+        )
+
+    def create_padded_matrices(self):
+        mtx = [[] for _ in range(8)]
+        vocabs = [self.vocab_src, self.vocab_src, self.vocab_src,
+                  self.vocab_src, self.vocab_tag, self.vocab_tag,
+                  self.vocab_src, self.vocab_src]
+        PAD = self.vocab_src['PAD']
+        for sample in self.raw:
+            for i, field in enumerate(sample):
+                if field is None:
+                    mtx[i].append(None)
+                    continue
+                if len(field) == 0:
+                    continue
+                if isinstance(field[0], list):
+                    idx = [[vocabs[i][c] for c in word] for word in field]
+                    padded = [l + [PAD] * (self.maxlens[i]-len(l)) for l in idx]
+                else:
+                    idx = [vocabs[i][c] for c in field]
+                    padded = idx + [PAD] * (self.maxlens[i]-len(field))
+                mtx[i].append(padded)
+        self.matrices = mtx
+        self.matrices[-2] = np.array(self.matrices[-2])
+        if self.matrices[-1][0] is not None:
+            self.matrices[-1] = np.array(self.matrices[-1])
+        # FIXME used for logging
+        self.X = self.matrices[-2]
+        self.Y = self.matrices[-1]
+        self.vocab_tgt = self.vocab_src
+
+    def batched_iter(self, batch_size):
+        for batch in super().batched_iter(batch_size, order_by_length=False):
+            yield LabeledSentence(*batch)
+
+    @staticmethod
+    def read_sentences(stream):
+        sent = []
+        for line in stream:
+            if not line.strip():
+                if sent:
+                    yield [list(l) for l in zip(*sent)]
+                sent = []
+            else:
+                word, lemma, tags = line.rstrip("\n").split('\t')
+                sent.append([list(word), list(lemma), tags.split(";")])
+        if sent:
+            yield [list(l) for l in zip(*sent)]
+
+
+class SIGMORPOHTask2Track1UnlabeledDataset(SIGMORPOHTask2Track1Dataset):
+    def __init__(self, config, input_, spaces=True):
+        super().__init__(config, input_)
+
+    def reorganize_batch(self, batch, start, end):
+        return batch
+
+    def skip_sample(self, word, lemma):
+        return word[0] != '_'
+
+    def decode_and_print(self, idx, sample, stream):
+        for left_i in range(1, len(self.raw[idx].left_words)):
+            stream.write("{}\t{}\t{}\n".format(
+                ''.join(self.raw[idx].left_words[left_i]),
+                ''.join(self.raw[idx].left_lemmas[left_i]),
+                ';'.join(self.raw[idx].left_tags[left_i]),
+            ))
+        out_lemma = [self.vocab_tgt.inv_lookup(s) for s in sample]
+        if 'EOS' in out_lemma:
+            out_lemma = out_lemma[:out_lemma.index('EOS')]
+        stream.write("{}\t{}\t_\n".format(''.join(out_lemma), ''.join(self.raw[idx].covered_lemma)))
+        for right_i in range(len(self.raw[idx].right_words)-1):
+            stream.write("{}\t{}\t{}\n".format(
+                ''.join(self.raw[idx].right_words[right_i]),
+                ''.join(self.raw[idx].right_lemmas[right_i]),
+                ';'.join(self.raw[idx].right_tags[right_i]),
+            ))
+        stream.write("\n")

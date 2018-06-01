@@ -9,7 +9,7 @@
 from argparse import ArgumentParser
 import os
 import logging
-from sys import stdin
+from sys import stdin, stdout
 
 import torch
 
@@ -64,6 +64,11 @@ class Inference(Experiment):
         elif mode == 'beam-search':
             raise ValueError("Beam search not implemented yet")
 
+    def run_and_print(self):
+        model_output = self.model.run_inference(self.test_data, mode='greedy')
+        for i, m in enumerate(model_output):
+            self.test_data.decode_and_print(i, m, stdout)
+
 
 def parse_args():
     p = ArgumentParser()
@@ -100,12 +105,14 @@ def main():
         inf = Inference(args.experiment_dir, stdin, spaces=False,
                         model_file=args.model_file,
                         save_attention_weights=args.save_attention_weights)
-    words = inf.run()
-    for i, raw_word in enumerate(inf.test_data.raw_src):
-        print("{}\t{}".format(
-            jch.join(raw_word), jch.join(words[i])
-        ))
-
+    if hasattr(inf.test_data, 'raw_src'):
+        words = inf.run()
+        for i, raw_word in enumerate(inf.test_data.raw_src):
+            print("{}\t{}".format(
+                jch.join(raw_word), jch.join(words[i])
+            ))
+    else:
+        inf.run_and_print()
 
 if __name__ == '__main__':
     log_fmt = '%(asctime)s - %(levelname)s - %(message)s'
