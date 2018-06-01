@@ -3,7 +3,7 @@ dataset_class: SIGMORPOHTask2Track1Dataset
 
 experiment_dir: exps/sigmorphon/task2_track1
 epochs: 200
-batch_size: 128
+batch_size: 16
 early_stopping_ratio: 1.5
 save_min_epoch: 0
 
