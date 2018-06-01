@@ -270,6 +270,35 @@ class UnlabeledDataset(LabeledDataset):
         return self.X[idx], self.X_len[idx]
 
 
+class SIGMORPOHTask1Dataset(LabeledDataset):
+    unlabeled_data_class = "SIGMORPOHTask1UnlabeledDataset"
+    def load_stream(self, stream):
+        self.raw_src = []
+        self.raw_tgt = []
+
+        for line in stream:
+            lemma, tgt, tags = line.rstrip("\n").split("\t")
+            src = ["<S>"] + list(lemma) + ["</S>", "<T>"] + tags.split(";") + ["</T>"]
+            self.raw_src.append(src)
+            self.raw_tgt.append(tgt)
+
+        self.maxlen_src = max(len(r) for r in self.raw_src)
+        self.maxlen_tgt = max(len(r) for r in self.raw_tgt)
+
+
+class SIGMORPOHTask1UnlabeledDataset(UnlabeledDataset):
+
+    def load_stream(self, stream):
+        self.raw_src = []
+
+        for line in stream:
+            lemma, _, tags = line.rstrip("\n").split("\t")
+            src = ["<S>"] + list(lemma) + ["</S>", "<T>"] + tags.split(";") + ["</T>"]
+            self.raw_src.append(src)
+
+        self.maxlen_src = max(len(r) for r in self.raw_src)
+
+
 class ToyDataset(UnlabeledDataset):
     def __init__(self, config, samples):
         self.config = config
