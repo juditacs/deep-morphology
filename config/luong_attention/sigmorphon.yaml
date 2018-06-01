@@ -1,0 +1,20 @@
+model: LuongAttentionSeq2seq
+dataset_class: SIGMORPOHTask1Dataset
+embedding_size_src: 32
+embedding_size_tgt: 32
+hidden_size: 256
+num_layers_src: 1
+num_layers_tgt: 1
+dropout: 0.8
+
+use_eos: true
+
+epochs: 300
+batch_size: 128
+
+early_stopping_ratio: 1.5
+
+optimizer: Adam
+
+experiment_dir: exps/sigmorphon_2018/luong_hyperparam_search
+save_min_epoch: 0
