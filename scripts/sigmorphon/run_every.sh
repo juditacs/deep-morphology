@@ -15,7 +15,6 @@ for train_fn in "${@:3}"; do
     if [[ $fn = *"dev"* ]]; then
         continue
     fi
-    lang=${fn%:*}
     dev_fn=${fn/train*/dev}
     dev_fn="$(dirname $train_fn)/$dev_fn"
     echo $train_fn $dev_fn
