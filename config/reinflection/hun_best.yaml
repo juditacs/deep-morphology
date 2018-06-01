@@ -1,19 +1,19 @@
 model: ReinflectionSeq2seq
 dataset_class: ReinflectionDataset
 
-lemma_embedding_size: 32
-lemma_hidden_size: 1024
-lemma_num_layers: 2
+lemma_embedding_size: 20
+lemma_hidden_size: 128
+lemma_num_layers: 3
 
-tag_embedding_size: 16
-tag_hidden_size: 128
+tag_embedding_size: 10
+tag_hidden_size: 64
 tag_num_layers: 2
 
-inflected_embedding_size: 32
-inflected_hidden_size: 512
+inflected_embedding_size: 30
+inflected_hidden_size: 128
 inflected_num_layers: 2
 
-dropout: 0.5
+dropout: 0.2
 
 use_eos: true
 
