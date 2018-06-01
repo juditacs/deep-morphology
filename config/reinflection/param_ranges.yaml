@@ -1,0 +1,13 @@
+lemma_embedding_size: [10, 20, 30]
+lemma_hidden_size: [128, 256, 512]
+lemma_num_layers: [1, 2, 3, 4]
+
+tag_embedding_size: [5, 10, 20]
+tag_hidden_size: [64, 128]
+tag_num_layers: [1, 2, 3, 4]
+
+inflected_embedding_size: [10, 20, 30]
+inflected_hidden_size: [128, 256, 512]
+inflected_num_layers: [1, 2]
+
+dropout: [0.1, 0.3, 0.4]
