@@ -66,8 +66,7 @@ class Inference(Experiment):
 
     def run_and_print(self):
         model_output = self.model.run_inference(self.test_data, mode='greedy')
-        for i, m in enumerate(model_output):
-            self.test_data.decode_and_print(i, m, stdout)
+        self.test_data.decode_and_print(model_output, stdout)
 
 
 def parse_args():

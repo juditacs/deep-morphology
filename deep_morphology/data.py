@@ -453,13 +453,14 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
         return word == lemma
 
     def load_stream(self, stream):
+        self.sentence_mapping = []
         self.raw = []
 
         SOS = ['SOS']
         EOS = ['EOS']
 
         maxlens = {'word': 0, 'lemma': 0, 'tag': 0}
-        for words, lemmas, tags in self.read_sentences(stream):
+        for sent_i, (words, lemmas, tags) in enumerate(self.read_sentences(stream)):
             maxlens['word'] = max(maxlens['word'], max(len(w) for w in words))
             maxlens['lemma'] = max(maxlens['lemma'], max(len(w) for w in lemmas))
             maxlens['tag'] = max(maxlens['tag'], max(len(w) for w in tags))
@@ -480,6 +481,7 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
                     covered_lemma=lemmas[i],
                     target_word=target,
                 ))
+                self.sentence_mapping.append(sent_i)
         self.maxlens = LabeledSentence(
             left_words=maxlens['word']+1,
             left_lemmas=maxlens['lemma']+1,
@@ -502,6 +504,7 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
                 if field is None:
                     mtx[i].append(None)
                     continue
+                # FIXME this should not be necessary
                 if len(field) == 0:
                     continue
                 if isinstance(field[0], list):
@@ -549,21 +552,34 @@ class SIGMORPOHTask2Track1UnlabeledDataset(SIGMORPOHTask2Track1Dataset):
     def skip_sample(self, word, lemma):
         return word[0] != '_'
 
-    def decode_and_print(self, idx, sample, stream):
-        for left_i in range(1, len(self.raw[idx].left_words)):
-            stream.write("{}\t{}\t{}\n".format(
-                ''.join(self.raw[idx].left_words[left_i]),
-                ''.join(self.raw[idx].left_lemmas[left_i]),
-                ';'.join(self.raw[idx].left_tags[left_i]),
-            ))
-        out_lemma = [self.vocab_tgt.inv_lookup(s) for s in sample]
-        if 'EOS' in out_lemma:
-            out_lemma = out_lemma[:out_lemma.index('EOS')]
-        stream.write("{}\t{}\t_\n".format(''.join(out_lemma), ''.join(self.raw[idx].covered_lemma)))
-        for right_i in range(len(self.raw[idx].right_words)-1):
-            stream.write("{}\t{}\t{}\n".format(
-                ''.join(self.raw[idx].right_words[right_i]),
-                ''.join(self.raw[idx].right_lemmas[right_i]),
-                ';'.join(self.raw[idx].right_tags[right_i]),
-            ))
-        stream.write("\n")
+    def decode_and_print(self, model_output, stream):
+        sentences = []
+
+        for idx, sample in enumerate(model_output):
+            if idx == 0 or self.sentence_mapping[idx] != self.sentence_mapping[idx-1]:
+                new_sent = []
+                for left_i in range(1, len(self.raw[idx].left_words)):
+                    new_sent.append([
+                        ''.join(self.raw[idx].left_words[left_i]),
+                        ''.join(self.raw[idx].left_lemmas[left_i]),
+                        ';'.join(self.raw[idx].left_tags[left_i]),
+                    ])
+                new_sent.append(['_', ''.join(self.raw[idx].covered_lemma), '_'])
+                for right_i in range(len(self.raw[idx].right_words)-1):
+                    new_sent.append([
+                        ''.join(self.raw[idx].right_words[right_i]),
+                        ''.join(self.raw[idx].right_lemmas[right_i]),
+                        ';'.join(self.raw[idx].right_tags[right_i]),
+                    ])
+                sentences.append(new_sent)
+            out_word = [self.vocab_tgt.inv_lookup(s) for s in sample]
+            if 'EOS' in out_word:
+                out_word = out_word[:out_word.index('EOS')]
+            word_id = len(self.raw[idx].left_words)-1
+            sentences[-1][word_id][0] = ''.join(out_word)
+
+        for i, sent in enumerate(sentences):
+            for word in sent:
+                stream.write("{}\t{}\t{}\n".format(*word))
+            if i < len(sentences) - 1:
+                stream.write("\n")
