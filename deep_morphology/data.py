@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # vim:fsrc=utf-8
 #
@@ -478,8 +478,14 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
     def create_vocab(self, **kwargs):
         return Vocab(constants=['PAD', 'SOS', 'EOS'], **kwargs)
 
-    def skip_sample(self, word, lemma):
-        return word == lemma
+    def skip_sample(self, word, lemma, tags):
+        if tags[0] != 'V':
+            return True
+        if word != lemma:
+            return False
+        if np.random.random() < self.config.include_same_forms_ratio:
+            return False
+        return True
 
     def load_stream(self, stream):
         self.sentence_mapping = []
@@ -494,7 +500,7 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
             maxlens['lemma'] = max(maxlens['lemma'], max(len(w) for w in lemmas))
             maxlens['tag'] = max(maxlens['tag'], max(len(w) for w in tags))
             for i in range(len(words)):
-                if self.skip_sample(words[i], lemmas[i]):
+                if self.skip_sample(words[i], lemmas[i], tags[i]):
                     continue
                 if words[i][0] == '_':
                     target = None
@@ -577,7 +583,7 @@ class SIGMORPOHTask2Track1UnlabeledDataset(SIGMORPOHTask2Track1Dataset):
     def reorganize_batch(self, batch, start, end):
         return batch
 
-    def skip_sample(self, word, lemma):
+    def skip_sample(self, word, lemma, tags):
         return word[0] != '_'
 
     def decode_and_print(self, model_output, stream):
