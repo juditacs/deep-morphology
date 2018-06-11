@@ -102,3 +102,5 @@ ENV/
 
 # VIM swp files
 *.swp
+exps/*
+data/*
