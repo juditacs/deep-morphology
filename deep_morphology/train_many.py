@@ -25,7 +25,22 @@ def parse_args():
     p.add_argument("--dev-file", type=str, default=None)
     p.add_argument("-N", "--N", type=int, required=True,
                    help="Number of experiments to run")
+    p.add_argument("--params", type=str, default=None)
     return p.parse_args()
+
+
+def parse_param_str(params):
+    param_d = {}
+    for p in params.split(','):
+        key, val = p.split('=')
+        try:
+            param_d[key] = int(val)
+        except ValueError:
+            try:
+                param_d[key] = float(val)
+            except ValueError:
+                param_d[key] = val
+    return param_d
 
 
 def generate_params(ranges):
@@ -38,11 +53,15 @@ def generate_params(ranges):
 
 def main():
     args = parse_args()
+    if args.params:
+        override_params = parse_param_str(args.params)
+    else:
+        override_params = None
     with open(args.param_ranges) as f:
         ranges = yaml.load(f)
     for n in range(args.N):
         logging.info("Running experiment {}/{}".format(n+1, args.N))
-        config = Config.from_yaml(args.config)
+        config = Config.from_yaml(args.config, override_params=override_params)
         params = generate_params(ranges)
         logging.info("Generated params: {}".format(params))
         for param, value in params.items():
