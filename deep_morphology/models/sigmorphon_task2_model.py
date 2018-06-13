@@ -10,12 +10,10 @@
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
-from torch import optim
 import torch.nn.functional as F
 
 from deep_morphology.data import Vocab
 from deep_morphology.models.base import BaseModel
-from deep_morphology.data import LabeledSentence
 
 use_cuda = torch.cuda.is_available()
 
@@ -95,15 +93,15 @@ class ContextInflectionSeq2seq(BaseModel):
         char_vocab_size = len(dataset.vocab_src)
         tag_vocab_size = len(dataset.vocab_tag)
         self.output_size = char_vocab_size
-        char_embedding = nn.Embedding(char_vocab_size, self.config.char_embedding_size)
+        self.char_embedding = nn.Embedding(char_vocab_size, self.config.char_embedding_size)
         tag_embedding = nn.Embedding(tag_vocab_size, self.config.tag_embedding_size)
         dropout = self.config.dropout
 
         # encoders
-        self.word_encoder = Encoder(char_embedding, dropout,
+        self.word_encoder = Encoder(self.char_embedding, dropout,
                                     self.config.word_hidden_size,
                                     self.config.word_num_layers)
-        self.lemma_encoder = Encoder(char_embedding, dropout,
+        self.lemma_encoder = Encoder(self.char_embedding, dropout,
                                      self.config.lemma_hidden_size,
                                      self.config.lemma_num_layers)
         self.tag_encoder = Encoder(tag_embedding, dropout,
@@ -123,7 +121,7 @@ class ContextInflectionSeq2seq(BaseModel):
             bidirectional=True,
             batch_first=False,
             dropout=dropout)
-        self.decoder = Decoder(config, char_embedding)
+        self.decoder = Decoder(config, self.char_embedding)
         self.criterion = nn.CrossEntropyLoss(ignore_index=Vocab.CONSTANTS['PAD'])
 
     def compute_loss(self, target, output):
@@ -215,3 +213,148 @@ class ContextInflectionSeq2seq(BaseModel):
                 val, idx = decoder_output.max(-1)
                 decoder_input = idx
         return all_decoder_outputs.transpose(0, 1)
+
+
+class ThreeHeadedDecoder(nn.Module):
+    def __init__(self, config, embedding):
+        super().__init__()
+        self.config = config
+        self.output_size, embedding_size = embedding.weight.size()
+        self.embedding_dropout = nn.Dropout(self.config.dropout)
+        self.embedding = embedding
+        self.cell = nn.LSTM(
+            embedding_size, self.config.decoder_hidden_size,
+            num_layers=self.config.decoder_num_layers,
+            bidirectional=False,
+            batch_first=False,
+            dropout=self.config.dropout)
+        self.left_attn_proj = nn.Linear(self.config.context_hidden_size, self.config.decoder_hidden_size)
+        self.right_attn_proj = nn.Linear(self.config.context_hidden_size, self.config.decoder_hidden_size)
+        self.lemma_attn_proj = nn.Linear(self.config.lemma_hidden_size, self.config.decoder_hidden_size)
+        concat_size = self.config.decoder_hidden_size + 2 * self.config.context_hidden_size + \
+            self.config.lemma_hidden_size
+        self.softmax = nn.Softmax(dim=-1)
+        self.concat = nn.Linear(concat_size, self.config.decoder_hidden_size)
+        self.output_proj = nn.Linear(self.config.decoder_hidden_size, self.output_size)
+
+    def forward(self, input, last_hidden, left_context, right_context, lemma_outputs):
+        embedded = self.embedding(input)
+        embedded = self.embedding_dropout(embedded)
+        embedded = embedded.view(1, *embedded.size())
+        rnn_output, hidden = self.cell(embedded, last_hidden)
+        rnn_output = rnn_output.squeeze(1)
+
+
+        # left context attention
+        e = self.left_attn_proj(left_context).squeeze(1)  # S X H
+        e = e.mm(rnn_output.transpose(0, 1)).transpose(0, 1)
+        e = self.softmax(e)
+        lcontext = e.mm(left_context)
+
+        # right context attention
+        e = self.right_attn_proj(right_context).squeeze(1)  # S X H
+        e = e.mm(rnn_output.transpose(0, 1)).transpose(0, 1)
+        e = self.softmax(e)
+        rcontext = e.mm(right_context)
+
+        # lemma attention
+        e = self.lemma_attn_proj(lemma_outputs).squeeze(1)  # S X H
+        e = e.mm(rnn_output.transpose(0, 1)).transpose(0, 1)
+        e = self.softmax(e)
+        lemma_context = e.mm(lemma_outputs)
+
+        concat_input = torch.cat((rnn_output, lcontext, rcontext, lemma_context), -1)
+        concat_output = F.tanh(self.concat(concat_input))
+        output = self.output_proj(concat_output)
+        return output, hidden
+
+
+class TwoHeadedContextAttention(ContextInflectionSeq2seq):
+    def __init__(self, config, dataset):
+        super().__init__(config, dataset)
+        self.decoder = ThreeHeadedDecoder(config, self.char_embedding)
+
+    def forward(self, batch):
+        left_lens = [len(l) for l in batch.left_words]
+        right_lens = [len(r) for r in batch.right_words]
+
+        left_words = torch.cat([Variable(torch.LongTensor(m)) for m in batch.left_words], dim=0).t()
+        left_lemmas = torch.cat([Variable(torch.LongTensor(m)) for m in batch.left_lemmas], dim=0).t()
+        left_tags = torch.cat([Variable(torch.LongTensor(m)) for m in batch.left_tags], dim=0).t()
+
+        right_words = torch.cat([Variable(torch.LongTensor(m)) for m in batch.right_words], dim=0).t()
+        right_lemmas = torch.cat([Variable(torch.LongTensor(m)) for m in batch.right_lemmas], dim=0).t()
+        right_tags = torch.cat([Variable(torch.LongTensor(m)) for m in batch.right_tags], dim=0).t()
+
+        if use_cuda:
+            left_words = left_words.cuda()
+            left_lemmas = left_lemmas.cuda()
+            left_tags = left_tags.cuda()
+            right_words = right_words.cuda()
+            right_lemmas = right_lemmas.cuda()
+            right_tags = right_tags.cuda()
+
+        # left context
+        left_word_out, left_word_hidden = self.word_encoder(left_words)
+        left_lemma_out, left_lemma_hidden = self.lemma_encoder(left_lemmas)
+        left_tag_out, left_tag_hidden = self.tag_encoder(left_tags)
+
+        left_context = torch.cat((left_word_out[-1], left_lemma_out[-1], left_tag_out[-1]), 1)
+
+        left_context = torch.split(left_context, left_lens)
+
+        left_context_out = []
+        ch = self.config.context_hidden_size
+        for lc in left_context:
+            out = self.left_context_encoder(lc.unsqueeze(1))[0]
+            out = out[:, :, :ch] + out[:, :, ch:]
+            left_context_out.append(out)
+
+        # right context
+        right_word_out, right_word_hidden = self.word_encoder(right_words)
+        right_lemma_out, right_lemma_hidden = self.lemma_encoder(right_lemmas)
+        right_tag_out, right_tag_hidden = self.tag_encoder(right_tags)
+
+        right_context = torch.cat((right_word_out[-1], right_lemma_out[-1], right_tag_out[-1]), 1)
+
+        right_context = torch.split(right_context, right_lens)
+
+        right_context_out = []
+        ch = self.config.context_hidden_size
+        for lc in right_context:
+            out = self.right_context_encoder(lc.unsqueeze(1))[0]
+            out = out[:, :, :ch] + out[:, :, ch:]
+            right_context_out.append(out)
+
+        lemma_input = to_cuda(Variable(torch.from_numpy(batch.covered_lemma).long()).t())
+        lemma_outputs, lemma_hidden = self.word_encoder(lemma_input)
+
+        SOS = to_cuda(Variable(torch.LongTensor([Vocab.CONSTANTS['SOS']])))
+        all_decoder_hidden = tuple(e[:self.config.decoder_num_layers] for e in lemma_hidden)
+        batch_size = batch.covered_lemma.shape[0]
+        has_target = batch.target_word[0] is not None
+        seqlen_tgt = batch.target_word.shape[1] \
+            if has_target else batch.covered_lemma.shape[0] * 4
+
+        if has_target:
+            target_word = to_cuda(Variable(torch.from_numpy(batch.target_word).long()))
+
+        all_decoder_outputs = to_cuda(Variable(torch.zeros((
+            batch_size, seqlen_tgt, self.output_size))))
+
+        for sample_idx in range(batch_size):
+            decoder_input = SOS
+            decoder_hidden = tuple(e[:, [sample_idx], :] for e in all_decoder_hidden)
+            left_context = left_context_out[sample_idx][:, 0, :]
+            right_context = right_context_out[sample_idx][:, 0, :]
+            for t in range(seqlen_tgt):
+                decoder_output, decoder_hidden = self.decoder(
+                    decoder_input, decoder_hidden, left_context, right_context, lemma_outputs[:, sample_idx, :])
+                all_decoder_outputs[sample_idx, t] = decoder_output
+                if has_target:
+                    decoder_input = target_word[[sample_idx], t]
+                else:
+                    val, idx = decoder_output.max(-1)
+                    decoder_input = idx
+
+        return all_decoder_outputs
