@@ -7,11 +7,13 @@ batch_size: 16
 early_stopping_ratio: 1.5
 save_min_epoch: 0
 
-context_hidden_size: 128 
+include_same_forms_ratio: 0
+
+context_hidden_size: 256 
 context_num_layers: 1
 
-char_embedding_size: 20 
-tag_embedding_size: 10 
+char_embedding_size: 40 
+tag_embedding_size: 20 
 tag_hidden_size: 128 
 tag_num_layers: 1
 

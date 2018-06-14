@@ -1,0 +1,18 @@
+model: HardMonotonicAttentionSeq2seq
+embedding_size_src: 3
+embedding_size_tgt: 3
+hidden_size_src: 5
+hidden_size_tgt: 5
+num_layers_src: 1
+num_layers_tgt: 1
+dropout: 0.0
+
+use_eos: true
+
+epochs: 2
+batch_size: 2
+
+early_stopping_ratio: 1.5
+
+experiment_dir: exps/toy/hard_monotonic_attention
+save_min_epoch: 5
