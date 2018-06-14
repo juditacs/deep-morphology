@@ -479,8 +479,8 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
         return Vocab(constants=['PAD', 'SOS', 'EOS'], **kwargs)
 
     def skip_sample(self, word, lemma, tags):
-        if tags[0] != 'V':
-            return True
+        #if tags[1] != 'V':
+            #return True
         if word != lemma:
             return False
         if np.random.random() < self.config.include_same_forms_ratio:
