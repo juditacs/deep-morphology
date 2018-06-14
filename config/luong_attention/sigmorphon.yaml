@@ -5,11 +5,11 @@ embedding_size_tgt: 32
 hidden_size: 256
 num_layers_src: 1
 num_layers_tgt: 1
-dropout: 0.8
+dropout: 0.2
 
 use_eos: true
 
-epochs: 300
+epochs: 200
 batch_size: 128
 
 early_stopping_ratio: 1.5

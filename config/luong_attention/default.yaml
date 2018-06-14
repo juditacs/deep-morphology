@@ -1,8 +1,7 @@
 model: LuongAttentionSeq2seq
 embedding_size_src: 32
 embedding_size_tgt: 32
-hidden_size_src: 512
-hidden_size_tgt: 512
+hidden_size: 512
 num_layers_src: 2
 num_layers_tgt: 2
 dropout: 0.5
