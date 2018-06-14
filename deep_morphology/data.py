@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# vim:fsrc=utf-8
 #
 # Copyright © 2018 Judit Acs <judit@sch.bme.hu>
 #
@@ -115,8 +114,12 @@ class LabeledDataset:
 
         for line in stream:
             src, tgt = line.rstrip("\n").split("\t")[:2]
-            src = src.split(" ")
-            tgt = tgt.split(" ")
+            if self.config.spaces is True:
+                src = src.split(" ")
+                tgt = tgt.split(" ")
+            else:
+                src = list(src)
+                tgt = list(tgt)
             if self.is_valid_sample(src, tgt):
                 self.raw_src.append(src)
                 self.raw_tgt.append(tgt)

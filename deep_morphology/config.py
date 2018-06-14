@@ -32,6 +32,7 @@ class Config:
         'save_attention_weights': False,
         'overwrite_model': True,
         'include_same_forms_ratio': 0.0,
+        'spaces': True,
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded
