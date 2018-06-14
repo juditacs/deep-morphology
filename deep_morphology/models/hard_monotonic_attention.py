@@ -86,9 +86,9 @@ class HardMonotonicAttentionSeq2seq(BaseModel):
     def __init__(self, config, dataset):
         super().__init__(config)
         input_size = len(dataset.vocab_src)
-        output_size = len(dataset.vocab_tgt)
+        self.output_size = len(dataset.vocab_tgt)
         self.encoder = EncoderRNN(config, input_size)
-        self.decoder = DecoderRNN(config, output_size)
+        self.decoder = DecoderRNN(config, self.output_size)
         self.criterion = nn.CrossEntropyLoss(
             ignore_index=Vocab.CONSTANTS['PAD'])
 
