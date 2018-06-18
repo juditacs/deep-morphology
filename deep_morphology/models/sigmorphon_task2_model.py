@@ -358,3 +358,88 @@ class TwoHeadedContextAttention(ContextInflectionSeq2seq):
                     decoder_input = idx
 
         return all_decoder_outputs
+
+
+class MorphoSyntaxModel(BaseModel):
+    def __init__(self, config, dataset):
+        super().__init__(config)
+        self.dataset = dataset
+        self.embeddings = []
+        sum_emb_dim = 0
+        for dim, vocab in dataset.vocabs.items():
+            emb_dim = self.config.embedding_sizes.get(
+                dim, self.config.embedding_sizes['default'])
+            sum_emb_dim += emb_dim
+            self.embeddings.append(nn.Embedding(len(vocab), emb_dim))
+        self.embeddings = nn.ModuleList(self.embeddings)
+        self.embedding_dropout = nn.Dropout(self.config.dropout)
+        self.left_lstm = nn.LSTM(
+            sum_emb_dim, self.config.context_hidden_dim,
+            num_layers=self.config.context_num_layers,
+            bidirectional=True,
+            batch_first=False,
+            dropout=self.config.dropout)
+        self.right_lstm = nn.LSTM(
+            sum_emb_dim, self.config.context_hidden_dim,
+            num_layers=self.config.context_num_layers,
+            bidirectional=True,
+            batch_first=False,
+            dropout=self.config.dropout)
+
+        def create_output_proj(output_dim):
+            dims = self.config.output_proj
+            hidden_dim = 4 * self.config.context_hidden_dim
+            mods = [nn.Linear(hidden_dim, dims[0]), nn.Softmax(dim=-1)]
+            for i in range(1, len(dims)):
+                mods.append(nn.Linear(dims[i-1], dims[i]))
+                mods.append(nn.Softmax(dim=-1))
+            mods.append(nn.Linear(dims[-1], output_dim))
+            #mods.append(nn.Softmax(dim=-1))
+            return nn.Sequential(*mods)
+
+        self.output_proj = nn.ModuleList([
+            nn.Linear(self.config.context_hidden_dim*4, len(vocab))
+            for vocab in dataset.vocabs.values()
+        ])
+        self.criterion = nn.CrossEntropyLoss()
+        self.criterions = nn.ModuleList([
+            nn.CrossEntropyLoss(ignore_index=vocab['']) for vocab in dataset.vocabs.values()
+        ])
+
+    def forward(self, batch):
+        left_context = to_cuda(torch.LongTensor(batch.left_context))
+        right_context = to_cuda(torch.LongTensor(batch.right_context))
+        batch_size = left_context.size(0)
+
+        num_layers = self.config.context_num_layers
+
+        left_embeddeds = []
+        for di, embedding in enumerate(self.embeddings):
+            left_emb = embedding(left_context[:, :, di])
+            left_emb = self.embedding_dropout(left_emb)
+            left_embeddeds.append(left_emb)
+        left_embeddeds = torch.cat(left_embeddeds, -1)
+        left_rnn_output, left_hidden = self.left_lstm(left_embeddeds.transpose(0, 1))
+        left_hidden = tuple(l[:num_layers] + l[num_layers:] for l in left_hidden)
+
+        right_embeddeds = []
+        for di, embedding in enumerate(self.embeddings):
+            right_emb = embedding(right_context[:, :, di])
+            right_emb = self.embedding_dropout(right_emb)
+            right_embeddeds.append(right_emb)
+        right_embeddeds = torch.cat(right_embeddeds, -1)
+        right_rnn_output, right_hidden = self.right_lstm(right_embeddeds.transpose(0, 1))
+        right_hidden = tuple(r[:num_layers] + r[num_layers:] for r in right_hidden)
+
+        context = torch.cat((left_rnn_output[-1], right_rnn_output[0]), 1)
+        output = []
+        for i in range(len(self.embeddings)):
+            output.append(self.output_proj[i](context))
+        return output
+
+    def compute_loss(self, target, output):
+        target = to_cuda(torch.LongTensor(target.target))
+        loss = 0
+        for i in range(len(output)):
+            loss += self.criterion(output[i], target[:, i])
+        return loss
