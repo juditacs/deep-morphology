@@ -620,3 +620,115 @@ class SIGMORPOHTask2Track1UnlabeledDataset(SIGMORPOHTask2Track1Dataset):
                 stream.write("{}\t{}\t{}\n".format(*word))
             if i < len(sentences) - 1:
                 stream.write("\n")
+
+
+class MorphoSyntaxDataset(LabeledDataset):
+    def create_vocab(self, **kwargs):
+        return Vocab(constants=None **kwargs)
+
+    def load_or_create_vocabs(self):
+        dim_path = self.config.unimorph_dimensions_path
+        self.vocabs = OrderedDict()
+        self.vocabs['constants'] = Vocab()
+        for key in ['', 'PAD', 'SOS', 'EOS']:
+            self.vocabs['constants'][key]
+        self.vocabs['constants'].frozen = True
+        with open(dim_path) as f:
+            for line in f:
+                fd = line.strip().split("\t")
+                dim_name = fd[0]
+                values = fd[1:]
+                self.vocabs[dim_name] = Vocab()
+                self.vocabs[dim_name]['']
+                self.vocabs[dim_name]['PAD']
+                self.vocabs[dim_name]['NONE']
+                for val in values:
+                    self.vocabs[dim_name][val]
+                self.vocabs[dim_name].frozen = True
+
+    @property
+    def sos_vector(self):
+        if not hasattr(self, '__sos_vector'):
+            self.__sos_vector = [vocab[''] for vocab in self.vocabs.values()]
+            self.__sos_vector[0] = self.vocabs['constants']['SOS']
+        return self.__sos_vector
+
+    @property
+    def eos_vector(self):
+        if not hasattr(self, '__eos_vector'):
+            self.__eos_vector = [vocab[''] for vocab in self.vocabs.values()]
+            self.__eos_vector[0] = self.vocabs['constants']['EOS']
+        return self.__eos_vector
+
+    def load_stream(self, stream):
+        self.sentence_starts = []
+        self.raw_sentences = []
+        tag_vectors = []
+        for sentence in self.read_sentences(stream):
+            self.raw_sentences.append(sentence)
+            self.sentence_starts.append(len(tag_vectors))
+            tag_vectors.append(self.sos_vector)
+            for tags in sentence:
+                idx = [0]
+                idx.extend(vocab[tags[i-1]] for i, vocab in enumerate(self.vocabs.values()) if i > 0)
+                tag_vectors.append(idx)
+            tag_vectors.append(self.eos_vector)
+        self.matrices = [tag_vectors]
+
+    def __len__(self):
+        return len(self.matrices[0])
+
+    def save_vocabs(self):
+        pass
+
+    def create_padded_matrices(self):
+        pass
+
+    def batched_iter(self, batch_size):
+
+        def create_empty_batch():
+            return MorphoSyntaxBatch(left_context=[], right_context=[], target=[])
+
+        def pad_batch(batch):
+            max_left = max(len(l) for l in batch.left_context)
+            max_right = max(len(r) for r in batch.right_context)
+            pad = [vocab['PAD'] for vocab in self.vocabs.values()]
+            for left in batch.left_context:
+                left.extend([pad for _ in range(max_left-len(left))])
+            for right in batch.right_context:
+                right.extend([pad for _ in range(max_right-len(right))])
+
+        batch = create_empty_batch()
+        for i, start in enumerate(self.sentence_starts):
+            if i == len(self.sentence_starts)-1:
+                end = len(self.matrices[0])
+            else:
+                end = self.sentence_starts[i+1]
+            sentence = self.matrices[0][start:end]
+
+            for word_i in range(1, len(sentence)-1):
+                batch.left_context.append(sentence[:word_i])
+                batch.right_context.append(sentence[word_i+1:])
+                batch.target.append(sentence[word_i])
+
+                if len(batch.target) >= batch_size:
+                    pad_batch(batch)
+                    yield batch
+                    batch = create_empty_batch()
+        if len(batch.target) > 0:
+            pad_batch(batch)
+            yield batch
+
+    @staticmethod
+    def read_sentences(stream):
+        sent = []
+        for line in stream:
+            if not line.strip():
+                if sent:
+                    yield sent
+                sent = []
+            else:
+                tags = line.strip().split("\t")[-1].split(";")
+                sent.append(tags)
+        if sent:
+            yield sent
