@@ -71,14 +71,13 @@ class Experiment:
         self.__load_data(train_data, dev_data)
         self.create_toy_dataset()
         logging.info("Data loaded")
-        logging.info("Train X shape{}, Y shape {}, X vocab size: {}, Y vocab size: {}".format(
-                         self.train_data.X.shape, self.train_data.Y.shape,
-                         len(self.train_data.vocab_src),
-                         len(self.train_data.vocab_tgt)))
-        logging.info("Dev X shape{}, Y shape {}, X vocab size: {}, Y vocab size: {}".format(
-                         self.dev_data.X.shape, self.dev_data.Y.shape,
-                         len(self.dev_data.vocab_src),
-                         len(self.dev_data.vocab_tgt)))
+        try:
+            for mtx in self.train_data.matrices:
+                logging.info("Train matrix shape: {}".format(mtx.shape))
+            for mtx in self.dev_data.matrices:
+                logging.info("Dev matrix shape: {}".format(mtx.shape))
+        except AttributeError:
+            pass
         self.init_model()
 
     def create_toy_dataset(self):
