@@ -7,7 +7,7 @@
 
 import os
 import gzip
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 
 import numpy as np
 
@@ -16,6 +16,10 @@ LabeledSentence = namedtuple(
     'LabeledSentence',
     ['left_words', 'left_lemmas', 'left_tags', 'right_words',
      'right_lemmas', 'right_tags', 'covered_lemma', 'target_word'])
+MorphoSyntaxBatch = namedtuple(
+    'MorphoSyntaxBatch',
+    ['left_context', 'right_context', 'left_lens', 'right_lens', 'target']
+)
 
 
 class Vocab:
@@ -623,6 +627,8 @@ class SIGMORPOHTask2Track1UnlabeledDataset(SIGMORPOHTask2Track1Dataset):
 
 
 class MorphoSyntaxDataset(LabeledDataset):
+    unlabeled_data_class = 'MorphoSyntaxUnlabeledDataset'
+
     def create_vocab(self, **kwargs):
         return Vocab(constants=None **kwargs)
 
@@ -684,21 +690,24 @@ class MorphoSyntaxDataset(LabeledDataset):
     def create_padded_matrices(self):
         pass
 
+    @staticmethod
+    def create_empty_batch():
+        return MorphoSyntaxBatch(left_context=[], right_context=[], target=[],
+                                 left_lens=[], right_lens=[])
+
+    def pad_batch(self, batch):
+        batch.left_lens.extend(len(l) for l in batch.left_context)
+        max_left = max(batch.left_lens)
+        batch.right_lens.extend(len(l) for l in batch.right_context)
+        max_right = max(batch.right_lens)
+        pad = [vocab['PAD'] for vocab in self.vocabs.values()]
+        for left in batch.left_context:
+            left.extend([pad for _ in range(max_left-len(left))])
+        for right in batch.right_context:
+            right.extend([pad for _ in range(max_right-len(right))])
+
     def batched_iter(self, batch_size):
-
-        def create_empty_batch():
-            return MorphoSyntaxBatch(left_context=[], right_context=[], target=[])
-
-        def pad_batch(batch):
-            max_left = max(len(l) for l in batch.left_context)
-            max_right = max(len(r) for r in batch.right_context)
-            pad = [vocab['PAD'] for vocab in self.vocabs.values()]
-            for left in batch.left_context:
-                left.extend([pad for _ in range(max_left-len(left))])
-            for right in batch.right_context:
-                right.extend([pad for _ in range(max_right-len(right))])
-
-        batch = create_empty_batch()
+        batch = self.create_empty_batch()
         for i, start in enumerate(self.sentence_starts):
             if i == len(self.sentence_starts)-1:
                 end = len(self.matrices[0])
@@ -712,11 +721,11 @@ class MorphoSyntaxDataset(LabeledDataset):
                 batch.target.append(sentence[word_i])
 
                 if len(batch.target) >= batch_size:
-                    pad_batch(batch)
+                    self.pad_batch(batch)
                     yield batch
-                    batch = create_empty_batch()
+                    batch = self.create_empty_batch()
         if len(batch.target) > 0:
-            pad_batch(batch)
+            self.pad_batch(batch)
             yield batch
 
     @staticmethod
@@ -732,3 +741,73 @@ class MorphoSyntaxDataset(LabeledDataset):
                 sent.append(tags)
         if sent:
             yield sent
+
+
+class MorphoSyntaxUnlabeledDataset(MorphoSyntaxDataset):
+
+    def __init__(self, config, input_, spaces=False):
+        super().__init__(config, input_)
+
+    def reorganize_batch(self, batch, start, end):
+        return batch
+
+    def load_stream(self, stream):
+        self.sentence_starts = []
+        self.raw_sentences = []
+        self.blanks = set()
+        tag_vectors = []
+        for si, sentence in enumerate(self.read_sentences(stream)):
+            self.raw_sentences.append(sentence)
+            self.sentence_starts.append(len(tag_vectors))
+            tag_vectors.append(self.sos_vector)
+            for ti, tags in enumerate(sentence):
+                if tags[0] == '_':
+                    self.blanks.add((si, ti+1))  # count SOS
+                    tag_vectors.append([vocab[''] for vocab in self.vocabs.values()])
+                else:
+                    idx = [0]
+                    idx.extend(vocab[tags[i-1]] for i, vocab in enumerate(self.vocabs.values()) if i > 0)
+                    tag_vectors.append(idx)
+            tag_vectors.append(self.eos_vector)
+        self.matrices = [tag_vectors]
+
+    def batched_iter(self, batch_size):
+        batch = self.create_empty_batch()
+        for si, start in enumerate(self.sentence_starts):
+            if si == len(self.sentence_starts)-1:
+                end = len(self.matrices[0])
+            else:
+                end = self.sentence_starts[si+1]
+            sentence = self.matrices[0][start:end]
+
+            for word_i in range(1, len(sentence)-1):
+                if (si, word_i) not in self.blanks:
+                    continue
+                batch.left_context.append(sentence[:word_i])
+                batch.right_context.append(sentence[word_i+1:])
+                batch.target.append(None)
+
+                if len(batch.target) >= batch_size:
+                    self.pad_batch(batch)
+                    yield batch
+                    batch = self.create_empty_batch()
+        if len(batch.target) > 0:
+            self.pad_batch(batch)
+            yield batch
+
+    def decode_and_print(self, output, stream):
+        out_i = 0
+        for si, sentence in enumerate(self.raw_sentences):
+            decoded = []
+            for ti, tags in enumerate(sentence):
+                if tags[0] == '_':
+                    dec = [vocab.inv_lookup(output[out_i][i])
+                           for i, vocab in enumerate(self.vocabs.values())]
+                    decoded.append(';'.join(dec[1:]))
+                    out_i += 1
+                else:
+                    decoded.append(';'.join(tags))
+            stream.write("\n".join(decoded))
+            stream.write("\n")
+            if si < len(self.raw_sentences) - 1:
+                stream.write("\n")
