@@ -12,6 +12,8 @@ import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 
+import numpy as np
+
 from deep_morphology.data import Vocab
 from deep_morphology.models.base import BaseModel
 
@@ -371,6 +373,7 @@ class MorphoSyntaxModel(BaseModel):
                 dim, self.config.embedding_sizes['default'])
             sum_emb_dim += emb_dim
             self.embeddings.append(nn.Embedding(len(vocab), emb_dim))
+            nn.init.xavier_normal_(self.embeddings[-1].weight)
         self.embeddings = nn.ModuleList(self.embeddings)
         self.embedding_dropout = nn.Dropout(self.config.dropout)
         self.left_lstm = nn.LSTM(
@@ -386,24 +389,12 @@ class MorphoSyntaxModel(BaseModel):
             batch_first=False,
             dropout=self.config.dropout)
 
-        def create_output_proj(output_dim):
-            dims = self.config.output_proj
-            hidden_dim = 4 * self.config.context_hidden_dim
-            mods = [nn.Linear(hidden_dim, dims[0]), nn.Softmax(dim=-1)]
-            for i in range(1, len(dims)):
-                mods.append(nn.Linear(dims[i-1], dims[i]))
-                mods.append(nn.Softmax(dim=-1))
-            mods.append(nn.Linear(dims[-1], output_dim))
-            #mods.append(nn.Softmax(dim=-1))
-            return nn.Sequential(*mods)
-
         self.output_proj = nn.ModuleList([
-            nn.Linear(self.config.context_hidden_dim*4, len(vocab))
+            nn.Linear(self.config.context_hidden_dim*2, len(vocab))
             for vocab in dataset.vocabs.values()
         ])
-        self.criterion = nn.CrossEntropyLoss()
         self.criterions = nn.ModuleList([
-            nn.CrossEntropyLoss(ignore_index=vocab['']) for vocab in dataset.vocabs.values()
+            nn.CrossEntropyLoss(ignore_index=vocab['PAD']) for vocab in dataset.vocabs.values()
         ])
 
     def forward(self, batch):
@@ -418,20 +409,34 @@ class MorphoSyntaxModel(BaseModel):
             left_emb = embedding(left_context[:, :, di])
             left_emb = self.embedding_dropout(left_emb)
             left_embeddeds.append(left_emb)
-        left_embeddeds = torch.cat(left_embeddeds, -1)
-        left_rnn_output, left_hidden = self.left_lstm(left_embeddeds.transpose(0, 1))
-        left_hidden = tuple(l[:num_layers] + l[num_layers:] for l in left_hidden)
+        left_embeddeds = torch.cat(left_embeddeds, -1).transpose(0, 1)
+        left_lens = np.array(batch.left_lens)
+        ordering = np.argsort(-left_lens)
+        packed = nn.utils.rnn.pack_padded_sequence(left_embeddeds[:, ordering], left_lens[ordering])
+        left_rnn_output, (left_hidden, _) = self.left_lstm(packed)
+        output, _ = nn.utils.rnn.pad_packed_sequence(left_rnn_output)
+        rev_order = np.argsort(ordering)
+        left_rnn_output = output[:, rev_order]
+        left_hidden = left_hidden[:num_layers] + left_hidden[num_layers:]
+        left_hidden = left_hidden[-1][rev_order]
 
         right_embeddeds = []
         for di, embedding in enumerate(self.embeddings):
             right_emb = embedding(right_context[:, :, di])
             right_emb = self.embedding_dropout(right_emb)
             right_embeddeds.append(right_emb)
-        right_embeddeds = torch.cat(right_embeddeds, -1)
-        right_rnn_output, right_hidden = self.right_lstm(right_embeddeds.transpose(0, 1))
-        right_hidden = tuple(r[:num_layers] + r[num_layers:] for r in right_hidden)
+        right_embeddeds = torch.cat(right_embeddeds, -1).transpose(0, 1)
+        right_lens = np.array(batch.right_lens)
+        ordering = np.argsort(-right_lens)
+        packed = nn.utils.rnn.pack_padded_sequence(right_embeddeds[:, ordering], right_lens[ordering])
+        right_rnn_output, (right_hidden, _) = self.right_lstm(packed)
+        output, _ = nn.utils.rnn.pad_packed_sequence(right_rnn_output)
+        rev_order = np.argsort(ordering)
+        right_rnn_output = output[:, rev_order]
+        right_hidden = right_hidden[:num_layers] + right_hidden[num_layers:]
+        right_hidden = right_hidden[-1][rev_order]
 
-        context = torch.cat((left_rnn_output[-1], right_rnn_output[0]), 1)
+        context = torch.cat((left_hidden, right_hidden), 1)
         output = []
         for i in range(len(self.embeddings)):
             output.append(self.output_proj[i](context))
@@ -441,5 +446,19 @@ class MorphoSyntaxModel(BaseModel):
         target = to_cuda(torch.LongTensor(target.target))
         loss = 0
         for i in range(len(output)):
-            loss += self.criterion(output[i], target[:, i])
+            loss += self.criterions[i](output[i], target[:, i])
         return loss
+
+    def run_inference(self, data, mode, **kwargs):
+        self.train(False)
+        all_output = []
+        for bi, batch in enumerate(data.batched_iter(self.config.batch_size)):
+            batch_output = []
+            output = self.forward(batch)
+            decoded = []
+            for dim_i, vocab in enumerate(self.dataset.vocabs.values()):
+                batch_output.append(torch.argmax(output[dim_i], dim=-1).data.cpu().numpy())
+            batch_output = np.vstack(batch_output)
+            all_output.append(batch_output.T)
+        all_output = np.vstack(all_output)
+        return all_output
