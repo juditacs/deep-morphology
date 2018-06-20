@@ -12,6 +12,10 @@ from collections import namedtuple, OrderedDict
 import numpy as np
 
 
+InflectionBatch = namedtuple(
+    'InflectionBatch',
+    ['lemmas', 'lemma_lens', 'tags', 'tag_lens', 'targets', 'target_lens']
+)
 LabeledSentence = namedtuple(
     'LabeledSentence',
     ['left_words', 'left_lemmas', 'left_tags', 'right_words',
@@ -171,30 +175,12 @@ class LabeledDataset:
         self.Y_len = np.array(y_len, dtype=np.int16)
         self.matrices = [self.X, self.X_len, self.Y, self.Y_len]
 
-    def batched_iter(self, batch_size, order_by_length=True):
-        """Batch iteration over the dataset.
-        - batch_size: number of sample in a batch. The last batch
-        may be shorter
-        - order_by_length: if true, samples in a batch are sorted
-        in decreasing order. This is required by pack_padded_batch.
-        """
-        if not hasattr(self, 'order_map'):
-            # cache sorting maps
-            self.order_map = {}
+    def batched_iter(self, batch_size):
         for start in range(0, len(self), batch_size):
             end = start + batch_size
-            batch = [m[start:end] for m in self.matrices]
-            if order_by_length:
-                if (start, end) not in self.order_map:
-                    self.order_map[(start, end)] = np.argsort(-batch[1])
-                ord_map = self.order_map[(start, end)]
-                batch = [b[ord_map] for b in batch]
+            batch = [m[start:end] if m is not None else None
+                     for m in self.matrices]
             yield batch
-
-    def reorganize_batch(self, batch, start, end):
-        mapping = self.order_map[(start, end)]
-        mapping = np.argsort(mapping)
-        return batch[mapping]
 
     def __len__(self):
         return self.X.shape[0]
@@ -359,6 +345,10 @@ class ReinflectionDataset(LabeledDataset):
         vocab_tag_path = os.path.join(exp_dir, 'vocab_tag')
         self.vocab_tag.save(vocab_tag_path)
 
+    def batched_iter(self, batch_size):
+        for batch in super().batched_iter(batch_size):
+            yield InflectionBatch(*batch)
+
     def load_stream(self, stream):
         self.raw_src = []
         self.raw_tags = []
@@ -384,6 +374,7 @@ class ReinflectionDataset(LabeledDataset):
         x_len = []
         y_len = []
         tags = []
+        tag_len = []
 
         PAD = self.vocab_src['PAD']
         if self.config.use_eos:
@@ -401,6 +392,7 @@ class ReinflectionDataset(LabeledDataset):
                 y_len.append(len(tgt) + 1)
                 tags.append([self.vocab_tag[t] for t in tag] + [EOS] +
                             [PAD for _ in range(self.maxlen_tags-len(tag))])
+                tag_len.append(len(tag) + 1)
             else:
                 x.append([self.vocab_src[s] for s in src] +
                          [PAD for _ in range(self.maxlen_src-len(src))])
@@ -410,18 +402,21 @@ class ReinflectionDataset(LabeledDataset):
                             [PAD for _ in range(self.maxlen_tags-len(tag))])
                 x_len.append(len(src))
                 y_len.append(len(tgt))
+                tag_len.append(len(tag) + 1)
 
         if self.config.use_eos is True:
             self.maxlen_src += 1
             self.maxlen_tgt += 1
             self.maxlen_tags += 1
 
-        self.X = np.array(x, dtype=np.int32)
-        self.Y = np.array(y, dtype=np.int32)
-        self.X_len = np.array(x_len, dtype=np.int16)
-        self.Y_len = np.array(y_len, dtype=np.int16)
-        self.tags = np.array(tags, dtype=np.int32)
-        self.matrices = [self.X, self.X_len, self.tags, self.Y, self.Y_len]
+        self.matrices = InflectionBatch(
+            lemmas=np.array(x, dtype=np.int32),
+            lemma_lens=np.array(x_len, dtype=np.int16),
+            tags=np.array(tags, dtype=np.int32),
+            tag_lens = np.array(tag_len, dtype=np.int16),
+            targets=np.array(x, dtype=np.int32),
+            target_lens=np.array(y_len, dtype=np.int16),
+        )
 
 
 class UnlabeledReinflectionDataset(UnlabeledDataset):
@@ -447,6 +442,7 @@ class UnlabeledReinflectionDataset(UnlabeledDataset):
         x = []
         x_len = []
         tags = []
+        tag_len = []
 
         self.maxlen_src = max(len(s) for s in self.raw_src)
         self.maxlen_tags = max(len(s) for s in self.raw_tags)
@@ -462,12 +458,14 @@ class UnlabeledReinflectionDataset(UnlabeledDataset):
                 x_len.append(len(src) + 1)
                 tags.append([self.vocab_tag[t] for t in tag] + [EOS] +
                             [PAD for _ in range(self.maxlen_tags-len(tag))])
+                tag_len.append(len(tag) + 1)
             else:
                 x.append([self.vocab_src[s] for s in src] +
                          [PAD for _ in range(self.maxlen_src-len(src))])
                 tags.append([self.vocab_tag[t] for t in tag] +
                             [PAD for _ in range(self.maxlen_tags-len(tag))])
                 x_len.append(len(src))
+                tag_len.append(len(tag))
 
         if self.config.use_eos is True:
             self.maxlen_src += 1
@@ -477,6 +475,18 @@ class UnlabeledReinflectionDataset(UnlabeledDataset):
         self.X_len = np.array(x_len, dtype=np.int16)
         self.tags = np.array(tags, dtype=np.int32)
         self.matrices = [self.X, self.X_len, self.tags]
+        self.matrices = InflectionBatch(
+            lemmas=np.array(x, dtype=np.int32),
+            lemma_lens=np.array(x_len, dtype=np.int16),
+            tags=np.array(tags, dtype=np.int32),
+            tag_lens = np.array(tag_len, dtype=np.int16),
+            targets=None,
+            target_lens=None
+        )
+
+    def batched_iter(self, batch_size):
+        for batch in super().batched_iter(batch_size):
+            yield InflectionBatch(*batch)
 
 
 class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
@@ -563,7 +573,7 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
         self.vocab_tgt = self.vocab_src
 
     def batched_iter(self, batch_size):
-        for batch in super().batched_iter(batch_size, order_by_length=False):
+        for batch in super().batched_iter(batch_size):
             yield LabeledSentence(*batch)
 
     @staticmethod
@@ -586,9 +596,6 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
 class SIGMORPOHTask2Track1UnlabeledDataset(SIGMORPOHTask2Track1Dataset):
     def __init__(self, config, input_, spaces=True):
         super().__init__(config, input_)
-
-    def reorganize_batch(self, batch, start, end):
-        return batch
 
     def skip_sample(self, word, lemma, tags):
         return word[0] != '_'
@@ -747,9 +754,6 @@ class MorphoSyntaxUnlabeledDataset(MorphoSyntaxDataset):
 
     def __init__(self, config, input_, spaces=False):
         super().__init__(config, input_)
-
-    def reorganize_batch(self, batch, start, end):
-        return batch
 
     def load_stream(self, stream):
         self.sentence_starts = []
