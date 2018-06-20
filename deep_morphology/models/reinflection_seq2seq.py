@@ -9,11 +9,11 @@
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
-from torch import optim
 import torch.nn.functional as F
 
 from deep_morphology.data import Vocab
 from deep_morphology.models.base import BaseModel
+from deep_morphology.models.packed_lstm import AutoPackedLSTM
 
 use_cuda = torch.cuda.is_available()
 
@@ -31,7 +31,8 @@ class LemmaEncoder(nn.Module):
         self.embedding_dropout = nn.Dropout(config.dropout)
         self.embedding = nn.Embedding(input_size, config.lemma_embedding_size)
         nn.init.xavier_uniform_(self.embedding.weight)
-        self.cell = nn.LSTM(
+        self.cell = AutoPackedLSTM(
+        #self.cell = nn.LSTM(
             self.config.lemma_embedding_size, self.config.lemma_hidden_size,
             num_layers=self.config.lemma_num_layers,
             bidirectional=True,
@@ -41,12 +42,13 @@ class LemmaEncoder(nn.Module):
     def forward(self, input, input_seqlen):
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
-        packed = torch.nn.utils.rnn.pack_padded_sequence(embedded, input_seqlen)
-        outputs, hidden = self.cell(packed)
-        outputs, _ = torch.nn.utils.rnn.pad_packed_sequence(outputs)
+        outputs, (h, c) = self.cell(embedded, input_seqlen)
+        #packed = torch.nn.utils.rnn.pack_padded_sequence(embedded, input_seqlen)
+        #outputs, hidden = self.cell(packed)
+        #outputs, _ = torch.nn.utils.rnn.pad_packed_sequence(outputs)
         outputs = outputs[:, :, :self.config.lemma_hidden_size] + \
             outputs[:, :, self.config.lemma_hidden_size:]
-        return outputs, hidden
+        return outputs, (h, c)
 
 
 class TagEncoder(nn.Module):
@@ -56,17 +58,17 @@ class TagEncoder(nn.Module):
         self.embedding_dropout = nn.Dropout(config.dropout)
         self.embedding = nn.Embedding(input_size, config.tag_embedding_size)
         nn.init.xavier_uniform_(self.embedding.weight)
-        self.cell = nn.LSTM(
+        self.cell = AutoPackedLSTM(
             self.config.tag_embedding_size, self.config.tag_hidden_size,
             num_layers=self.config.tag_num_layers,
             bidirectional=True,
             batch_first=False,
             dropout=self.config.dropout)
 
-    def forward(self, input):
+    def forward(self, input, input_len):
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
-        outputs, hidden = self.cell(embedded)
+        outputs, hidden = self.cell(embedded, input_len)
         outputs = outputs[:, :, :self.config.tag_hidden_size] + \
             outputs[:, :, self.config.tag_hidden_size:]
         return outputs, hidden
@@ -144,19 +146,22 @@ class ReinflectionSeq2seq(BaseModel):
         return loss
 
     def forward(self, batch):
-        has_target = len(batch) > 3
-        X_lemma = to_cuda(Variable(torch.from_numpy(batch[0]).long())).transpose(0, 1)
-        X_tag = to_cuda(Variable(torch.from_numpy(batch[2]).long())).transpose(0, 1)
+        has_target = batch.targets is not None and \
+            batch.targets[0] is not None
+        X_lemma = to_cuda(Variable(
+            torch.from_numpy(batch.lemmas).long())).transpose(0, 1)
+        X_tag = to_cuda(Variable(
+            torch.from_numpy(batch.tags).long())).transpose(0, 1)
         if has_target:
-            Y = to_cuda(Variable(torch.from_numpy(batch[3]).long()))
+            Y = to_cuda(Variable(torch.from_numpy(batch.targets).long()))
             Y = Y.transpose(0, 1)
 
         batch_size = X_lemma.size(1)
         seqlen_src = X_lemma.size(0)
-        src_lens = list(batch[1])
+        src_lens = batch.lemma_lens
         seqlen_tgt = Y.size(0) if has_target else seqlen_src * 4
         lemma_outputs, lemma_hidden = self.lemma_encoder(X_lemma, src_lens)
-        tag_outputs, tag_hidden = self.tag_encoder(X_tag)
+        tag_outputs, tag_hidden = self.tag_encoder(X_tag, batch.tag_lens)
 
         decoder_hidden = self.init_decoder_hidden(lemma_hidden, tag_hidden)
         decoder_input = to_cuda(Variable(torch.LongTensor(
