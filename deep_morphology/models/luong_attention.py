@@ -9,11 +9,11 @@
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
-from torch import optim
 import torch.nn.functional as F
 
 from deep_morphology.data import Vocab
 from deep_morphology.models.base import BaseModel
+from deep_morphology.models.packed_lstm import AutoPackedLSTM
 
 use_cuda = torch.cuda.is_available()
 
@@ -32,30 +32,17 @@ class EncoderRNN(nn.Module):
         self.embedding_dropout = nn.Dropout(config.dropout)
         self.embedding = nn.Embedding(input_size, config.embedding_size_src)
         nn.init.xavier_uniform_(self.embedding.weight)
-        self.__init_cell()
-
-    def __init_cell(self):
-        if self.config.cell_type == 'LSTM':
-            self.cell = nn.LSTM(
-                self.config.embedding_size_src, self.config.hidden_size,
-                num_layers=self.config.num_layers_src,
-                bidirectional=True,
-                dropout=self.config.dropout,
-            )
-        elif self.config.cell_type == 'GRU':
-            self.cell = nn.GRU(
-                self.config.embedding_size_src, self.config.hidden_size,
-                num_layers=self.config.num_layers_src,
-                bidirectional=True,
-                dropout=self.config.dropout,
-            )
+        self.cell = AutoPackedLSTM(
+            self.config.embedding_size_src, self.config.hidden_size,
+            num_layers=self.config.num_layers_src,
+            bidirectional=True,
+            dropout=self.config.dropout,
+        )
 
     def forward(self, input, input_seqlen):
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
-        packed = torch.nn.utils.rnn.pack_padded_sequence(embedded, input_seqlen)
-        outputs, hidden = self.cell(packed)
-        outputs, ol = torch.nn.utils.rnn.pad_packed_sequence(outputs)
+        outputs, hidden = self.cell(embedded, input_seqlen)
         outputs = outputs[:, :, :self.config.hidden_size] + \
             outputs[:, :, self.config.hidden_size:]
         return outputs, hidden
