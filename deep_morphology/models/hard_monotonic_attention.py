@@ -16,6 +16,7 @@ from torch import optim
 from deep_morphology.models.loss import masked_cross_entropy
 from deep_morphology.data import Vocab
 from deep_morphology.models.base import BaseModel
+from deep_morphology.models.packed_lstm import AutoPackedLSTM
 
 use_cuda = torch.cuda.is_available()
 
@@ -35,19 +36,17 @@ class EncoderRNN(nn.Module):
         self.hidden_size = config.hidden_size_src
         self.num_layers = config.num_layers_src
         self.embedding = nn.Embedding(input_size, self.embedding_size)
-        self.cell = nn.LSTM(self.embedding_size, self.hidden_size,
-                            num_layers=self.num_layers,
-                            batch_first=False,
-                            dropout=config.dropout,
-                            bidirectional=True)
+        self.cell = AutoPackedLSTM(self.embedding_size, self.hidden_size,
+                                   num_layers=self.num_layers,
+                                   batch_first=False,
+                                   dropout=config.dropout,
+                                   bidirectional=True)
         nn.init.xavier_uniform_(self.embedding.weight)
 
     def forward(self, input, input_seqlen):
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
-        packed = torch.nn.utils.rnn.pack_padded_sequence(embedded, input_seqlen)
-        outputs, hidden = self.cell(packed)
-        outputs, ol = torch.nn.utils.rnn.pad_packed_sequence(outputs)
+        outputs, hidden = self.cell(embedded, input_seqlen)
         outputs = outputs[:, :, :self.config.hidden_size_src] + \
             outputs[:, :, self.config.hidden_size_src:]
         return outputs, hidden
