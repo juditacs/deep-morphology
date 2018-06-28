@@ -1,0 +1,19 @@
+model: MorphoSyntaxModel
+dataset_class: MorphoSyntaxDataset 
+
+unimorph_dimensions_path: data/experimental/task2_track1/normalized/fr_dimensions
+#unimorph_dimensions_path: /tmp/judit/converted_task2/fr_dimensions
+experiment_dir: exps/sigmorphon/morphosyntax
+epochs: 500
+batch_size: 64
+early_stopping_ratio: 1.5
+save_min_epoch: 0
+
+embedding_sizes:
+    default: 5 
+    pos: 10
+
+context_hidden_dim: 512
+context_num_layers: 2
+
+dropout: 0.0

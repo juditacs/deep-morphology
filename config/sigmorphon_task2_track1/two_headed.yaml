@@ -3,27 +3,27 @@ dataset_class: SIGMORPOHTask2Track1Dataset
 
 experiment_dir: exps/sigmorphon/task2_track1_two_headed
 epochs: 200
-batch_size: 64
+batch_size: 16
 early_stopping_ratio: 1.5
 save_min_epoch: 0
 
 include_same_forms_ratio: 0
 
-context_hidden_size: 256 
+context_hidden_size: 512
 context_num_layers: 1
 
 char_embedding_size: 40 
-tag_embedding_size: 20 
-tag_hidden_size: 128 
+tag_embedding_size: 30 
+tag_hidden_size: 256 
 tag_num_layers: 1
 
-word_hidden_size: 128
+word_hidden_size: 512
 word_num_layers: 1
 
-lemma_hidden_size: 128
+lemma_hidden_size: 512
 lemma_num_layers: 1
 
-decoder_hidden_size: 128
+decoder_hidden_size: 512
 decoder_num_layers: 1
 
 dropout: 0.0

@@ -54,11 +54,14 @@ for dim, values in unimorph.items():
     for v in values:
         inv_unimorph[v] = dim
 
-all_dims = ['pos', 'verb_subpos']
-all_dims.extend(list(sorted(a for a in unimorph.keys() if a not in all_dims)))
+all_dims = sorted(unimorph.keys())
+# all_dims.extend(list(sorted(a for a in unimorph.keys() if a not in all_dims)))
 
 
 def convert_file(infile, outfile, lang_mapping):
+    lang_dims = ['pos']
+    lang_dims.extend(dim for dim in all_dims if dim in lang_mapping[0]
+                     and dim != 'pos')
     with open(infile) as f, open(outfile, 'w') as outf:
         for line in f:
             if not line.strip():
@@ -75,7 +78,7 @@ def convert_file(infile, outfile, lang_mapping):
                 if not tag.strip():
                     continue
                 word_dims[inv_unimorph[tag]] = tag
-            for dim in all_dims:
+            for dim in lang_dims:
                 if dim in word_dims:
                     continue
                 if dim in lang_mapping[0]:
@@ -84,7 +87,7 @@ def convert_file(infile, outfile, lang_mapping):
                         continue
                 word_dims[dim] = ''
             outf.write("{}\t{}\t{}\n".format(word, lemma, ";".join(
-                word_dims[dim] for dim in all_dims)))
+                word_dims[dim] for dim in lang_dims)))
 
 
 def extract_lang_dimensions(filename):
@@ -96,7 +99,7 @@ def extract_lang_dimensions(filename):
                 continue
             tags = line.strip().split("\t")[-1].split(";")
             pos = tags[0]
-            for tag in tags[1:]:
+            for tag in tags:
                 if not tag.strip():
                     continue
                 tag_dim = inv_unimorph[tag]
@@ -106,9 +109,10 @@ def extract_lang_dimensions(filename):
 
 
 def save_language_mapping(mapping, fn):
+    sorted_keys = ['pos'] + sorted(k for k in mapping.keys() if k != 'pos')
     with open(fn, 'w') as f:
-        for dim, values in sorted(mapping.items()):
-            f.write("{}\t{}\n".format(dim, "\t".join(sorted(values))))
+        for dim in sorted_keys:
+            f.write("{}\t{}\n".format(dim, "\t".join(sorted(mapping[dim]))))
 
 
 def main():
