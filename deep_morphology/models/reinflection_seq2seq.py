@@ -32,7 +32,6 @@ class LemmaEncoder(nn.Module):
         self.embedding = nn.Embedding(input_size, config.lemma_embedding_size)
         nn.init.xavier_uniform_(self.embedding.weight)
         self.cell = AutoPackedLSTM(
-        #self.cell = nn.LSTM(
             self.config.lemma_embedding_size, self.config.lemma_hidden_size,
             num_layers=self.config.lemma_num_layers,
             bidirectional=True,
@@ -43,9 +42,6 @@ class LemmaEncoder(nn.Module):
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
         outputs, (h, c) = self.cell(embedded, input_seqlen)
-        #packed = torch.nn.utils.rnn.pack_padded_sequence(embedded, input_seqlen)
-        #outputs, hidden = self.cell(packed)
-        #outputs, _ = torch.nn.utils.rnn.pad_packed_sequence(outputs)
         outputs = outputs[:, :, :self.config.lemma_hidden_size] + \
             outputs[:, :, self.config.lemma_hidden_size:]
         return outputs, (h, c)

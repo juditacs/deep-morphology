@@ -18,8 +18,13 @@ InflectionBatch = namedtuple(
 )
 LabeledSentence = namedtuple(
     'LabeledSentence',
-    ['left_words', 'left_lemmas', 'left_tags', 'right_words',
-     'right_lemmas', 'right_tags', 'covered_lemma', 'target_word'])
+    ['left_words', 'left_word_lens',
+     'left_lemmas', 'left_lemma_lens',
+     'left_tags', 'left_tag_lens',
+     'right_words', 'right_word_lens',
+     'right_lemmas', 'right_lemma_lens',
+     'right_tags', 'right_tag_lens',
+     'covered_lemma', 'covered_lemma_len', 'target_word'])
 MorphoSyntaxBatch = namedtuple(
     'MorphoSyntaxBatch',
     ['left_context', 'right_context', 'left_lens', 'right_lens', 'target']
@@ -57,7 +62,6 @@ class Vocab:
             else:
                 self.vocab[key] = len(self.vocab)
         return self.vocab[key]
-        # return self.vocab.setdefault(key, len(self.vocab))
 
     def __len__(self):
         return len(self.vocab)
@@ -516,6 +520,9 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
             maxlens['word'] = max(maxlens['word'], max(len(w) for w in words))
             maxlens['lemma'] = max(maxlens['lemma'], max(len(w) for w in lemmas))
             maxlens['tag'] = max(maxlens['tag'], max(len(w) for w in tags))
+            word_lens = [len(w) for w in words]
+            lemma_lens = [len(l) for l in lemmas]
+            tag_lens = [len(t) for t in tags]
             for i in range(len(words)):
                 if self.skip_sample(words[i], lemmas[i], tags[i]):
                     continue
@@ -525,38 +532,54 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
                     target = words[i] + EOS
                 self.raw.append(LabeledSentence(
                     left_words=[SOS] + words[:i],
+                    left_word_lens=[1] + word_lens[:i],
                     right_words=words[i+1:] + [EOS],
+                    right_word_lens=word_lens[i+1:]+[1],
                     left_lemmas=[SOS] + lemmas[:i],
+                    left_lemma_lens=lemma_lens[:i]+[1],
                     right_lemmas=lemmas[i+1:] + [EOS],
+                    right_lemma_lens=lemma_lens[i+1:]+[1],
                     left_tags=[SOS] + tags[:i],
+                    left_tag_lens=tag_lens[:i]+[1],
                     right_tags=tags[i+1:] + [EOS],
+                    right_tag_lens=tag_lens[i+1:]+[1],
                     covered_lemma=lemmas[i],
+                    covered_lemma_len=len(lemmas[i]),
                     target_word=target,
                 ))
                 self.sentence_mapping.append(sent_i)
         self.maxlens = LabeledSentence(
             left_words=maxlens['word']+1,
+            left_word_lens=None,
             left_lemmas=maxlens['lemma']+1,
+            left_lemma_lens=None,
             left_tags=maxlens['tag']+1,
+            left_tag_lens=None,
             right_words=maxlens['word']+1,
+            right_word_lens=None,
             right_lemmas=maxlens['lemma']+1,
+            right_lemma_lens=None,
             right_tags=maxlens['tag']+1,
+            right_tag_lens=None,
             covered_lemma=maxlens['word'],
+            covered_lemma_len=None,
             target_word=maxlens['word']+1,
         )
 
     def create_padded_matrices(self):
-        mtx = [[] for _ in range(8)]
-        vocabs = [self.vocab_src, self.vocab_src, self.vocab_tag,
-                  self.vocab_src, self.vocab_src, self.vocab_tag,
-                  self.vocab_src, self.vocab_src]
+        mtx = [[] for _ in range(15)]
+        vocabs = [self.vocab_src, None, self.vocab_src, None, self.vocab_tag, None,
+                  self.vocab_src, None, self.vocab_src, None, self.vocab_tag, None,
+                  self.vocab_src, None, self.vocab_src]
         PAD = self.vocab_src['PAD']
         for sample in self.raw:
             for i, field in enumerate(sample):
                 if field is None:
                     mtx[i].append(None)
                     continue
-                if isinstance(field[0], list):
+                if isinstance(field, int) or isinstance(field[0], int):
+                    padded = field
+                elif isinstance(field[0], list):
                     idx = [[vocabs[i][c] for c in word] for word in field]
                     padded = [l + [PAD] * (self.maxlens[i]-len(l)) for l in idx]
                 else:
@@ -567,13 +590,13 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
         self.matrices[-2] = np.array(self.matrices[-2])
         if self.matrices[-1] and self.matrices[-1][0] is not None:
             self.matrices[-1] = np.array(self.matrices[-1])
-        # FIXME used for logging
+        # FIXME used for logging and len
         self.X = self.matrices[-2]
         self.Y = self.matrices[-1]
         self.vocab_tgt = self.vocab_src
 
     def batched_iter(self, batch_size):
-        for batch in super().batched_iter(batch_size):
+        for batch in LabeledDataset.batched_iter(self, batch_size):
             yield LabeledSentence(*batch)
 
     @staticmethod

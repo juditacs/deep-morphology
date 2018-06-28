@@ -16,6 +16,7 @@ import numpy as np
 
 from deep_morphology.data import Vocab
 from deep_morphology.models.base import BaseModel
+from deep_morphology.models.packed_lstm import AutoPackedLSTM
 
 use_cuda = torch.cuda.is_available()
 
@@ -34,17 +35,17 @@ class Encoder(nn.Module):
         input_size, embedding_size = embedding.weight.size()
         self.num_layers = num_layers
         self.hidden_size = hidden_size
-        self.cell = nn.LSTM(
+        self.cell = AutoPackedLSTM(
             embedding_size, hidden_size,
             num_layers=num_layers,
             bidirectional=True,
             batch_first=False,
             dropout=dropout)
 
-    def forward(self, input):
+    def forward(self, input, input_len):
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
-        outputs, hidden = self.cell(embedded)
+        outputs, hidden = self.cell(embedded, input_len)
         outputs = outputs[:, :, :self.hidden_size] + \
             outputs[:, :, self.hidden_size:]
         return outputs, hidden
@@ -142,9 +143,17 @@ class ContextInflectionSeq2seq(BaseModel):
         left_lemmas = torch.cat([Variable(torch.LongTensor(m)) for m in batch.left_lemmas], dim=0).t()
         left_tags = torch.cat([Variable(torch.LongTensor(m)) for m in batch.left_tags], dim=0).t()
 
+        left_word_lens = np.hstack(batch.left_word_lens)
+        left_lemma_lens = np.hstack(batch.left_lemma_lens)
+        left_tag_lens = np.hstack(batch.left_tag_lens)
+
         right_words = torch.cat([Variable(torch.LongTensor(m)) for m in batch.right_words], dim=0).t()
         right_lemmas = torch.cat([Variable(torch.LongTensor(m)) for m in batch.right_lemmas], dim=0).t()
         right_tags = torch.cat([Variable(torch.LongTensor(m)) for m in batch.right_tags], dim=0).t()
+
+        right_word_lens = np.hstack(batch.right_word_lens)
+        right_lemma_lens = np.hstack(batch.right_lemma_lens)
+        right_tag_lens = np.hstack(batch.right_tag_lens)
 
         if use_cuda:
             left_words = left_words.cuda()
@@ -155,9 +164,9 @@ class ContextInflectionSeq2seq(BaseModel):
             right_tags = right_tags.cuda()
 
         # left context
-        left_word_out, left_word_hidden = self.word_encoder(left_words)
-        left_lemma_out, left_lemma_hidden = self.lemma_encoder(left_lemmas)
-        left_tag_out, left_tag_hidden = self.tag_encoder(left_tags)
+        left_word_out, left_word_hidden = self.word_encoder(left_words, left_word_lens)
+        left_lemma_out, left_lemma_hidden = self.lemma_encoder(left_lemmas, left_lemma_lens)
+        left_tag_out, left_tag_hidden = self.tag_encoder(left_tags, left_tag_lens)
         left_context = torch.cat((left_word_out[-1], left_lemma_out[-1], left_tag_out[-1]), 1)
 
         left_context = torch.split(left_context, left_lens)
@@ -172,9 +181,9 @@ class ContextInflectionSeq2seq(BaseModel):
         left_context = torch.cat(left_context_out)
 
         # right context
-        right_word_out, right_word_hidden = self.word_encoder(right_words)
-        right_lemma_out, right_lemma_hidden = self.lemma_encoder(right_lemmas)
-        right_tag_out, right_tag_hidden = self.tag_encoder(right_tags)
+        right_word_out, right_word_hidden = self.word_encoder(right_words, right_word_lens)
+        right_lemma_out, right_lemma_hidden = self.lemma_encoder(right_lemmas, right_lemma_lens)
+        right_tag_out, right_tag_hidden = self.tag_encoder(right_tags, right_tag_lens)
         right_context = torch.cat((right_word_out[-1], right_lemma_out[-1], right_tag_out[-1]), 1)
 
         right_context = torch.split(right_context, right_lens)
@@ -186,17 +195,17 @@ class ContextInflectionSeq2seq(BaseModel):
             right_context_out.append(out)
         right_context = torch.cat(right_context_out)
 
-        lemma_input = to_cuda(Variable(torch.from_numpy(batch.covered_lemma).long()).t())
-        lemma_outputs, lemma_hidden = self.word_encoder(lemma_input)
+        lemma_input = to_cuda(Variable(torch.LongTensor(batch.covered_lemma)).t())
+        lemma_outputs, lemma_hidden = self.word_encoder(lemma_input, batch.covered_lemma_len)
 
         decoder_hidden = tuple(e[:self.config.decoder_num_layers] for e in lemma_hidden)
-        batch_size = batch.covered_lemma.shape[0]
+        batch_size = len(batch.left_words)
         decoder_input = to_cuda(Variable(torch.LongTensor(
             [Vocab.CONSTANTS['SOS']] * batch_size)))
 
         has_target = batch.target_word[0] is not None
         seqlen_tgt = batch.target_word.shape[1] \
-            if has_target else batch.covered_lemma.shape[0] * 4
+            if has_target else left_words.size(0) * 4
 
         all_decoder_outputs = to_cuda(Variable(torch.zeros((
             seqlen_tgt, batch_size, self.output_size))))
@@ -284,9 +293,17 @@ class TwoHeadedContextAttention(ContextInflectionSeq2seq):
         left_lemmas = torch.cat([Variable(torch.LongTensor(m)) for m in batch.left_lemmas], dim=0).t()
         left_tags = torch.cat([Variable(torch.LongTensor(m)) for m in batch.left_tags], dim=0).t()
 
+        left_word_lens = np.hstack(batch.left_word_lens)
+        left_lemma_lens = np.hstack(batch.left_lemma_lens)
+        left_tag_lens = np.hstack(batch.left_tag_lens)
+
         right_words = torch.cat([Variable(torch.LongTensor(m)) for m in batch.right_words], dim=0).t()
         right_lemmas = torch.cat([Variable(torch.LongTensor(m)) for m in batch.right_lemmas], dim=0).t()
         right_tags = torch.cat([Variable(torch.LongTensor(m)) for m in batch.right_tags], dim=0).t()
+
+        right_word_lens = np.hstack(batch.right_word_lens)
+        right_lemma_lens = np.hstack(batch.right_lemma_lens)
+        right_tag_lens = np.hstack(batch.right_tag_lens)
 
         if use_cuda:
             left_words = left_words.cuda()
@@ -297,9 +314,9 @@ class TwoHeadedContextAttention(ContextInflectionSeq2seq):
             right_tags = right_tags.cuda()
 
         # left context
-        left_word_out, left_word_hidden = self.word_encoder(left_words)
-        left_lemma_out, left_lemma_hidden = self.lemma_encoder(left_lemmas)
-        left_tag_out, left_tag_hidden = self.tag_encoder(left_tags)
+        left_word_out, left_word_hidden = self.word_encoder(left_words, left_word_lens)
+        left_lemma_out, left_lemma_hidden = self.lemma_encoder(left_lemmas, left_lemma_lens)
+        left_tag_out, left_tag_hidden = self.tag_encoder(left_tags, left_tag_lens)
 
         left_context = torch.cat((left_word_out[-1], left_lemma_out[-1], left_tag_out[-1]), 1)
 
@@ -313,9 +330,9 @@ class TwoHeadedContextAttention(ContextInflectionSeq2seq):
             left_context_out.append(out)
 
         # right context
-        right_word_out, right_word_hidden = self.word_encoder(right_words)
-        right_lemma_out, right_lemma_hidden = self.lemma_encoder(right_lemmas)
-        right_tag_out, right_tag_hidden = self.tag_encoder(right_tags)
+        right_word_out, right_word_hidden = self.word_encoder(right_words, right_word_lens)
+        right_lemma_out, right_lemma_hidden = self.lemma_encoder(right_lemmas, right_lemma_lens)
+        right_tag_out, right_tag_hidden = self.tag_encoder(right_tags, right_tag_lens)
 
         right_context = torch.cat((right_word_out[-1], right_lemma_out[-1], right_tag_out[-1]), 1)
 
@@ -328,15 +345,15 @@ class TwoHeadedContextAttention(ContextInflectionSeq2seq):
             out = out[:, :, :ch] + out[:, :, ch:]
             right_context_out.append(out)
 
-        lemma_input = to_cuda(Variable(torch.from_numpy(batch.covered_lemma).long()).t())
-        lemma_outputs, lemma_hidden = self.word_encoder(lemma_input)
+        lemma_input = to_cuda(Variable(torch.LongTensor(batch.covered_lemma)).t())
+        lemma_outputs, lemma_hidden = self.word_encoder(lemma_input, batch.covered_lemma_len)
 
         SOS = to_cuda(Variable(torch.LongTensor([Vocab.CONSTANTS['SOS']])))
         all_decoder_hidden = tuple(e[:self.config.decoder_num_layers] for e in lemma_hidden)
-        batch_size = batch.covered_lemma.shape[0]
+        batch_size = len(batch.left_words)
         has_target = batch.target_word[0] is not None
         seqlen_tgt = batch.target_word.shape[1] \
-            if has_target else batch.covered_lemma.shape[0] * 4
+            if has_target else left_words.size(0) * 4
 
         if has_target:
             target_word = to_cuda(Variable(torch.from_numpy(batch.target_word).long()))
