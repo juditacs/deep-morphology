@@ -9,6 +9,7 @@ import yaml
 import os
 import logging
 from datetime import datetime
+import platform
 
 import numpy as np
 
@@ -59,6 +60,7 @@ class Experiment:
             self.config = config
         else:
             raise ValueError("config must be an instance of Config or a filename")
+        self.config.node = platform.node()
         self.set_random_seeds()
         self.config.commit_hash = git_hash
         self.data_class = getattr(data_module, self.config.dataset_class)
