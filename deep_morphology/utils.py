@@ -29,7 +29,7 @@ def check_and_get_commit_hash():
 
     unstaged = []
     staged = []
-    for line in stdout.strip().split("\n"):
+    for line in stdout.split("\n"):
         if not line.strip():
             continue
         x = line[0]
