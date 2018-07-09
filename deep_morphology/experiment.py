@@ -22,15 +22,6 @@ from deep_morphology import models
 use_cuda = torch.cuda.is_available()
 
 
-def collate_batch(batch):
-    has_target = len(batch[0]) > 2
-    field = 2 if has_target else 1
-    s = list(sorted(batch, key=lambda x: -x[field]))
-    s = list(zip(*s))
-    s = [np.vstack(b) for b in s]
-    return s
-
-
 class Result:
     __slots__ = ('train_loss', 'dev_loss', 'running_time', 'start_time')
 
