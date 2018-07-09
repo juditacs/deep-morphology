@@ -7,19 +7,24 @@
 
 import subprocess
 import os
-import logging
 
 
 class UncleanWorkingDirectoryException(Exception):
     pass
 
 
-def check_and_get_commit_hash():
-    src_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    p = subprocess.Popen('cd {}; git status --porcelain'.format(src_path), shell=True,
-                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+def run_command(cmd):
+    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE)
     stdout, stderr = p.communicate()
     stdout = stdout.decode('utf8')
+    stderr = stderr.decode('utf8')
+    return stdout, stderr
+
+
+def check_and_get_commit_hash():
+    src_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    stdout, stderr = run_command("cd {}; git status --porcelain".format(src_path))
 
     unstaged = []
     staged = []
@@ -30,7 +35,7 @@ def check_and_get_commit_hash():
         y = line[1]
         if x == '?' and y == '?':
             continue
-        filename = line[3:].split(" ")[0]
+        filename = line[2:].strip().split(" ")[0]
         if x == ' ' and (y == 'M' or y =='D'):
             unstaged.append(filename)
         elif x in 'MADRC':
@@ -42,3 +47,6 @@ def check_and_get_commit_hash():
             "Unstaged files: {}\nStaged but not commited files: {}".format(
                 "\n".join(unstaged), "\n".join(staged)))
 
+    commit_hash, _ = run_command("cd {}; git log --pretty=format:'%H' -n 1'".format(
+        src_path))
+    print(commit_hash)
