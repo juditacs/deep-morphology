@@ -13,7 +13,6 @@ import torch.nn.functional as F
 
 from deep_morphology.data import Vocab
 from deep_morphology.models.base import BaseModel
-from deep_morphology.models.packed_lstm import AutoPackedLSTM
 
 use_cuda = torch.cuda.is_available()
 
@@ -32,17 +31,17 @@ class EncoderRNN(nn.Module):
         self.embedding_dropout = nn.Dropout(config.dropout)
         self.embedding = nn.Embedding(input_size, config.embedding_size_src)
         nn.init.xavier_uniform_(self.embedding.weight)
-        self.cell = AutoPackedLSTM(
+        self.cell = nn.LSTM(
             self.config.embedding_size_src, self.config.hidden_size,
             num_layers=self.config.num_layers_src,
             bidirectional=True,
             dropout=self.config.dropout,
         )
 
-    def forward(self, input, input_seqlen):
+    def forward(self, input):
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
-        outputs, hidden = self.cell(embedded, input_seqlen)
+        outputs, hidden = self.cell(embedded)
         outputs = outputs[:, :, :self.config.hidden_size] + \
             outputs[:, :, self.config.hidden_size:]
         return outputs, hidden
@@ -159,10 +158,8 @@ class LuongAttentionSeq2seq(BaseModel):
 
         batch_size = X.size(1)
         seqlen_src = X.size(0)
-        src_lens = batch[1]
-        src_lens = [int(s) for s in src_lens]
         seqlen_tgt = Y.size(0) if has_target else seqlen_src * 4
-        encoder_outputs, encoder_hidden = self.encoder(X, src_lens)
+        encoder_outputs, encoder_hidden = self.encoder(X)
 
         decoder_hidden = self.init_decoder_hidden(encoder_hidden)
         decoder_input = to_cuda(Variable(torch.LongTensor(
