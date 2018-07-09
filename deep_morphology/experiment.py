@@ -59,6 +59,8 @@ class Experiment:
             self.config = config
         else:
             raise ValueError("config must be an instance of Config or a filename")
+        self.set_random_seeds()
+        self.config.commit_hash = git_hash
         self.data_class = getattr(data_module, self.config.dataset_class)
         self.unlabeled_data_class = getattr(data_module, self.data_class.unlabeled_data_class)
         self.__load_data(train_data, dev_data)
@@ -72,6 +74,14 @@ class Experiment:
         except AttributeError:
             pass
         self.init_model()
+
+    def set_random_seeds(self):
+        if not hasattr(self.config, 'torch_random_seed'):
+            self.config.torch_random_seed = np.random.randint(0, 2**31)
+        torch.manual_seed(self.config.torch_random_seed)
+        if not hasattr(self.config, 'numpy_random_seed'):
+            self.config.numpy_random_seed = np.random.randint(0, 2**31)
+        np.random.seed(self.config.numpy_random_seed)
 
     def create_toy_dataset(self):
         if self.config.toy_eval is None:
