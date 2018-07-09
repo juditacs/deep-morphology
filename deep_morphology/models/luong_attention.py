@@ -212,8 +212,7 @@ class LuongAttentionSeq2seq(BaseModel):
                 output = self.forward(batch)
             start = bi * self.config.batch_size
             end = (bi+1) * self.config.batch_size
-            output = data.reorganize_batch(output.data.cpu().numpy(),
-                                           start, end)
+            output = output.data.cpu().numpy()
             if output.ndim == 3:
                 output = output.argmax(axis=2)
             all_output.extend(list(output))
