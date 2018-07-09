@@ -526,10 +526,10 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
             for i in range(len(words)):
                 if self.skip_sample(words[i], lemmas[i], tags[i]):
                     continue
-                if words[i][0] == '_':
+                if (len(words[i]) == 1 and words[i][0] == '_'):
                     target = None
                 else:
-                    target = words[i] + EOS
+                    target = list(words[i]) + EOS
                 self.raw.append(LabeledSentence(
                     left_words=[SOS] + words[:i],
                     left_word_lens=[1] + word_lens[:i],
@@ -584,16 +584,16 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
                     padded = [l + [PAD] * (self.maxlens[i]-len(l)) for l in idx]
                 else:
                     idx = [vocabs[i][c] for c in field]
-                    padded = idx + [PAD] * (self.maxlens[i]-len(field))
+                    padded = idx + [PAD] * (self.maxlens[i]-len(idx))
                 mtx[i].append(padded)
         self.matrices = mtx
-        self.matrices[-2] = np.array(self.matrices[-2])
-        if self.matrices[-1] and self.matrices[-1][0] is not None:
-            self.matrices[-1] = np.array(self.matrices[-1])
         # FIXME used for logging and len
         self.X = self.matrices[-2]
         self.Y = self.matrices[-1]
         self.vocab_tgt = self.vocab_src
+
+    def __len__(self):
+        return len(self.matrices[0])
 
     def batched_iter(self, batch_size):
         for batch in LabeledDataset.batched_iter(self, batch_size):
