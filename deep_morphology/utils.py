@@ -24,7 +24,8 @@ def run_command(cmd):
 
 def check_and_get_commit_hash():
     src_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    stdout, stderr = run_command("cd {}; git status --porcelain".format(src_path))
+    stdout, stderr = run_command(
+        "cd {}; git status --porcelain".format(src_path))
 
     unstaged = []
     staged = []
@@ -36,7 +37,7 @@ def check_and_get_commit_hash():
         if x == '?' and y == '?':
             continue
         filename = line[2:].strip().split(" ")[0]
-        if x == ' ' and (y == 'M' or y =='D'):
+        if x == ' ' and (y == 'M' or y == 'D'):
             unstaged.append(filename)
         elif x in 'MADRC':
             staged.append(filename)
@@ -47,6 +48,7 @@ def check_and_get_commit_hash():
             "Unstaged files: {}\nStaged but not commited files: {}".format(
                 "\n".join(unstaged), "\n".join(staged)))
 
-    commit_hash, _ = run_command("cd {}; git log --pretty=format:'%H' -n 1".format(
-        src_path))
+    commit_hash, _ = run_command(
+        "cd {}; git log --pretty=format:'%H' -n 1".format(
+            src_path))
     return commit_hash
