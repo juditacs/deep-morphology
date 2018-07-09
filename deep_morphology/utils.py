@@ -47,6 +47,6 @@ def check_and_get_commit_hash():
             "Unstaged files: {}\nStaged but not commited files: {}".format(
                 "\n".join(unstaged), "\n".join(staged)))
 
-    commit_hash, _ = run_command("cd {}; git log --pretty=format:'%H' -n 1'".format(
+    commit_hash, _ = run_command("cd {}; git log --pretty=format:'%H' -n 1".format(
         src_path))
-    print(commit_hash)
+    return commit_hash
