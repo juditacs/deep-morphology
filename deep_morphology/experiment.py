@@ -17,6 +17,7 @@ import torch
 from deep_morphology.config import Config
 from deep_morphology import data as data_module
 from deep_morphology import models
+from deep_morphology.utils import check_and_get_commit_hash
 
 
 use_cuda = torch.cuda.is_available()
@@ -51,6 +52,7 @@ class Experiment:
         5. saves the results
     """
     def __init__(self, config, train_data=None, dev_data=None, override_params=None):
+        git_hash = check_and_get_commit_hash()
         if isinstance(config, str):
             self.config = Config.from_yaml(config, override_params)
         elif isinstance(config, Config):
