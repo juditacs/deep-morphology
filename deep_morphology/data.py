@@ -526,7 +526,7 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
             for i in range(len(words)):
                 if self.skip_sample(words[i], lemmas[i], tags[i]):
                     continue
-                if (len(words[i]) == 1 and words[i][0] == '_'):
+                if (len(words[i]) == 1 and words[i][0] == '_') and lemmas[i] != ['_']:
                     target = None
                 else:
                     target = list(words[i]) + EOS
