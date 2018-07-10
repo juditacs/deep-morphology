@@ -571,33 +571,49 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
         vocabs = [self.vocab_src, None, self.vocab_src, None, self.vocab_tag, None,
                   self.vocab_src, None, self.vocab_src, None, self.vocab_tag, None,
                   self.vocab_src, None, self.vocab_src]
-        PAD = self.vocab_src['PAD']
         for sample in self.raw:
             for i, field in enumerate(sample):
                 if field is None:
                     mtx[i].append(None)
                     continue
                 if isinstance(field, int) or isinstance(field[0], int):
-                    padded = field
+                    idx = field
                 elif isinstance(field[0], list):
                     idx = [[vocabs[i][c] for c in word] for word in field]
-                    padded = [l + [PAD] * (self.maxlens[i]-len(l)) for l in idx]
                 else:
                     idx = [vocabs[i][c] for c in field]
-                    padded = idx + [PAD] * (self.maxlens[i]-len(idx))
-                mtx[i].append(padded)
+                mtx[i].append(idx)
         self.matrices = mtx
-        # FIXME used for logging and len
-        self.X = self.matrices[-2]
-        self.Y = self.matrices[-1]
         self.vocab_tgt = self.vocab_src
+        self.all_vocabs = vocabs
 
     def __len__(self):
         return len(self.matrices[0])
 
     def batched_iter(self, batch_size):
+        PAD = self.vocab_src['PAD']
         for batch in LabeledDataset.batched_iter(self, batch_size):
-            yield LabeledSentence(*batch)
+            padded_batch = []
+            for i, data in enumerate(batch):
+                if data[0] is None:
+                    assert all(d is None for d in data)
+                    padded_batch.append(data)
+                elif isinstance(data[0], int):
+                    padded_batch.append(data)
+                elif isinstance(data[0][0], int):
+                    maxlen = max(len(d) for d in data)
+                    padded = [l + [PAD] * (maxlen-len(l)) for l in data]
+                    padded_batch.append(padded)
+                elif isinstance(data[0][0], list) and isinstance(data[0][0][0], int):
+                    maxlen = max(max(len(d) for d in sample) for sample in data)
+                    padded = []
+                    for sample in data:
+                        padded.append([l + [PAD] * (maxlen-len(l)) for l in sample])
+                    padded_batch.append(padded)
+                else:
+                    raise ValueError("Unrecognized batch matrix: {}".format(data))
+
+            yield LabeledSentence(*padded_batch)
 
     @staticmethod
     def read_sentences(stream):
