@@ -603,7 +603,10 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
 
     def batched_iter(self, batch_size):
         PAD = self.vocab_src['PAD']
-        for batch in LabeledDataset.batched_iter(self, batch_size):
+        for start in range(0, len(self), batch_size):
+            end = start + batch_size
+            batch = [m[start:end] if m is not None else None
+                     for m in self.matrices]
             padded_batch = []
             for i, data in enumerate(batch):
                 if data[0] is None:
