@@ -140,7 +140,7 @@ class LuongAttentionSeq2seq(BaseModel):
             ignore_index=Vocab.CONSTANTS['PAD'])
 
     def compute_loss(self, target, output):
-        target = to_cuda(Variable(torch.from_numpy(target[2]).long()))
+        target = to_cuda(Variable(torch.LongTensor(target[2])))
         batch_size, seqlen, dim = output.size()
         output = output.contiguous().view(seqlen * batch_size, dim)
         target = target.view(seqlen * batch_size)
@@ -150,10 +150,10 @@ class LuongAttentionSeq2seq(BaseModel):
     def forward(self, batch):
         has_target = len(batch) > 2
 
-        X = to_cuda(Variable(torch.from_numpy(batch[0]).long()))
+        X = to_cuda(Variable(torch.LongTensor(batch[0])))
         X = X.transpose(0, 1)
         if has_target:
-            Y = to_cuda(Variable(torch.from_numpy(batch[2]).long()))
+            Y = to_cuda(Variable(torch.LongTensor(batch[2])))
             Y = Y.transpose(0, 1)
 
         batch_size = X.size(1)
