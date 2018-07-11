@@ -148,24 +148,19 @@ class LabeledDataset:
         x_len = []
         y_len = []
 
-        PAD = self.vocab_src['PAD']
         if self.config.use_eos:
             EOS = self.vocab_tgt['EOS']
         for i, src in enumerate(self.raw_src):
             tgt = self.raw_tgt[i]
 
             if self.config.use_eos is True:
-                x.append([self.vocab_src[s] for s in src] + [EOS] +
-                         [PAD for _ in range(self.maxlen_src-len(src))])
-                y.append([self.vocab_tgt[s] for s in tgt] + [EOS] +
-                         [PAD for _ in range(self.maxlen_tgt-len(tgt))])
+                x.append([self.vocab_src[s] for s in src] + [EOS])
+                y.append([self.vocab_tgt[s] for s in tgt] + [EOS])
                 x_len.append(len(src) + 1)
                 y_len.append(len(tgt) + 1)
             else:
-                x.append([self.vocab_src[s] for s in src] +
-                         [PAD for _ in range(self.maxlen_src-len(src))])
-                y.append([self.vocab_tgt[s] for s in tgt] +
-                         [PAD for _ in range(self.maxlen_tgt-len(tgt))])
+                x.append([self.vocab_src[s] for s in src])
+                y.append([self.vocab_tgt[s] for s in tgt])
                 x_len.append(len(src))
                 y_len.append(len(tgt))
 
@@ -173,6 +168,10 @@ class LabeledDataset:
             self.maxlen_src += 1
             self.maxlen_tgt += 1
 
+        self.matrices = [x, x_len, y, y_len]
+        self.X = x
+        self.Y = y
+        return
         self.X = np.array(x, dtype=np.int32)
         self.Y = np.array(y, dtype=np.int32)
         self.X_len = np.array(x_len, dtype=np.int16)
@@ -180,14 +179,19 @@ class LabeledDataset:
         self.matrices = [self.X, self.X_len, self.Y, self.Y_len]
 
     def batched_iter(self, batch_size):
+        PAD = self.vocab_src['PAD']
         for start in range(0, len(self), batch_size):
             end = start + batch_size
             batch = [m[start:end] if m is not None else None
                      for m in self.matrices]
+            maxlen_X = max(len(s) for s in batch[0])
+            batch[0] = [l + [PAD] * (maxlen_X-len(l)) for l in batch[0]]
+            maxlen_Y = max(len(s) for s in batch[2])
+            batch[2] = [l + [PAD] * (maxlen_Y-len(l)) for l in batch[2]]
             yield batch
 
     def __len__(self):
-        return self.X.shape[0]
+        return len(self.X)
 
     def __getitem__(self, idx):
         return self.X[idx], self.Y[idx], self.X_len[idx], self.Y_len[idx]
@@ -248,20 +252,27 @@ class UnlabeledDataset(LabeledDataset):
             self.X_len += 1
         x = []
         self.maxlen_src = self.X_len.max()
-        PAD = self.vocab_src['PAD']
         EOS = self.vocab_tgt['EOS']
         for src in self.raw_src:
             if self.config.use_eos:
-                x.append([self.vocab_src[s] for s in src] + [EOS] +
-                         [PAD for _ in range(self.maxlen_src-len(src))])
+                x.append([self.vocab_src[s] for s in src] + [EOS])
             else:
-                x.append([self.vocab_src[s] for s in src] +
-                         [PAD for _ in range(self.maxlen_src-len(src))])
+                x.append([self.vocab_src[s] for s in src])
         if self.config.use_eos:
             self.maxlen_src += 1
 
-        self.X = np.array(x, dtype=np.int32)
+        self.X = x
         self.matrices = [self.X, self.X_len]
+
+    def batched_iter(self, batch_size):
+        PAD = self.vocab_src['PAD']
+        for start in range(0, len(self), batch_size):
+            end = start + batch_size
+            batch = [m[start:end] if m is not None else None
+                     for m in self.matrices]
+            maxlen_X = max(len(s) for s in batch[0])
+            batch[0] = [l + [PAD] * (maxlen_X-len(l)) for l in batch[0]]
+            yield batch
 
     def __getitem__(self, idx):
         return self.X[idx], self.X_len[idx]
