@@ -33,6 +33,7 @@ class Config:
         'overwrite_model': True,
         'include_same_forms_ratio': 0.0,
         'spaces': True,
+        'min_epochs': 0,
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded
