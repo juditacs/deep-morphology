@@ -191,10 +191,7 @@ class LabeledDataset:
             yield batch
 
     def __len__(self):
-        return len(self.X)
-
-    def __getitem__(self, idx):
-        return self.X[idx], self.Y[idx], self.X_len[idx], self.Y_len[idx]
+        return len(self.matrices[0])
 
     def to_dict(self):
         return {
