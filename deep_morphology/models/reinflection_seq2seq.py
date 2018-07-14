@@ -13,7 +13,6 @@ import torch.nn.functional as F
 
 from deep_morphology.data import Vocab
 from deep_morphology.models.base import BaseModel
-from deep_morphology.models.packed_lstm import AutoPackedLSTM
 
 use_cuda = torch.cuda.is_available()
 
@@ -31,17 +30,17 @@ class LemmaEncoder(nn.Module):
         self.embedding_dropout = nn.Dropout(config.dropout)
         self.embedding = nn.Embedding(input_size, config.lemma_embedding_size)
         nn.init.xavier_uniform_(self.embedding.weight)
-        self.cell = AutoPackedLSTM(
+        self.cell = nn.LSTM(
             self.config.lemma_embedding_size, self.config.lemma_hidden_size,
             num_layers=self.config.lemma_num_layers,
             bidirectional=True,
             batch_first=False,
             dropout=self.config.dropout)
 
-    def forward(self, input, input_seqlen):
+    def forward(self, input):
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
-        outputs, (h, c) = self.cell(embedded, input_seqlen)
+        outputs, (h, c) = self.cell(embedded)
         outputs = outputs[:, :, :self.config.lemma_hidden_size] + \
             outputs[:, :, self.config.lemma_hidden_size:]
         return outputs, (h, c)
@@ -54,17 +53,17 @@ class TagEncoder(nn.Module):
         self.embedding_dropout = nn.Dropout(config.dropout)
         self.embedding = nn.Embedding(input_size, config.tag_embedding_size)
         nn.init.xavier_uniform_(self.embedding.weight)
-        self.cell = AutoPackedLSTM(
+        self.cell = nn.LSTM(
             self.config.tag_embedding_size, self.config.tag_hidden_size,
             num_layers=self.config.tag_num_layers,
             bidirectional=True,
             batch_first=False,
             dropout=self.config.dropout)
 
-    def forward(self, input, input_len):
+    def forward(self, input):
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
-        outputs, hidden = self.cell(embedded, input_len)
+        outputs, hidden = self.cell(embedded)
         outputs = outputs[:, :, :self.config.tag_hidden_size] + \
             outputs[:, :, self.config.tag_hidden_size:]
         return outputs, hidden
@@ -134,7 +133,7 @@ class ReinflectionSeq2seq(BaseModel):
                                 self.config.inflected_hidden_size)
 
     def compute_loss(self, target, output):
-        target = to_cuda(Variable(torch.from_numpy(target[3]).long()))
+        target = to_cuda(Variable(torch.LongTensor(target[-1])))
         batch_size, seqlen, dim = output.size()
         output = output.contiguous().view(seqlen * batch_size, dim)
         target = target.view(seqlen * batch_size)
@@ -145,19 +144,18 @@ class ReinflectionSeq2seq(BaseModel):
         has_target = batch.targets is not None and \
             batch.targets[0] is not None
         X_lemma = to_cuda(Variable(
-            torch.from_numpy(batch.lemmas).long())).transpose(0, 1)
+            torch.LongTensor(batch.lemmas))).transpose(0, 1)
         X_tag = to_cuda(Variable(
-            torch.from_numpy(batch.tags).long())).transpose(0, 1)
+            torch.LongTensor(batch.tags))).transpose(0, 1)
         if has_target:
-            Y = to_cuda(Variable(torch.from_numpy(batch.targets).long()))
+            Y = to_cuda(Variable(torch.LongTensor(batch.targets)))
             Y = Y.transpose(0, 1)
 
         batch_size = X_lemma.size(1)
         seqlen_src = X_lemma.size(0)
-        src_lens = batch.lemma_lens
         seqlen_tgt = Y.size(0) if has_target else seqlen_src * 4
-        lemma_outputs, lemma_hidden = self.lemma_encoder(X_lemma, src_lens)
-        tag_outputs, tag_hidden = self.tag_encoder(X_tag, batch.tag_lens)
+        lemma_outputs, lemma_hidden = self.lemma_encoder(X_lemma)
+        tag_outputs, tag_hidden = self.tag_encoder(X_tag)
 
         decoder_hidden = self.init_decoder_hidden(lemma_hidden, tag_hidden)
         decoder_input = to_cuda(Variable(torch.LongTensor(

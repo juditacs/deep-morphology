@@ -14,7 +14,7 @@ import numpy as np
 
 InflectionBatch = namedtuple(
     'InflectionBatch',
-    ['lemmas', 'lemma_lens', 'tags', 'tag_lens', 'targets', 'target_lens']
+    ['lemmas', 'tags', 'targets']
 )
 LabeledSentence = namedtuple(
     'LabeledSentence',
@@ -359,7 +359,15 @@ class ReinflectionDataset(LabeledDataset):
 
     def batched_iter(self, batch_size):
         for batch in super().batched_iter(batch_size):
-            yield InflectionBatch(*batch)
+            padded_batch = []
+            for i, mtx in enumerate(batch):
+                maxlen = max(len(m) for m in mtx)
+                vocab = self.all_vocabs[i]
+                PAD = vocab['PAD']
+                padded_batch.append([
+                    l + [PAD] * (maxlen-len(l)) for l in mtx
+                ])
+            yield InflectionBatch(*padded_batch)
 
     def load_stream(self, stream):
         self.raw_src = []
@@ -376,19 +384,11 @@ class ReinflectionDataset(LabeledDataset):
                 self.raw_tags.append(tags)
                 self.raw_tgt.append(tgt)
 
-        self.maxlen_src = max(len(r) for r in self.raw_src)
-        self.maxlen_tags = max(len(t) for t in self.raw_tags)
-        self.maxlen_tgt = max(len(r) for r in self.raw_tgt)
-
     def create_padded_matrices(self):
         x = []
         y = []
-        x_len = []
-        y_len = []
         tags = []
-        tag_len = []
 
-        PAD = self.vocab_src['PAD']
         if self.config.use_eos:
             EOS = self.vocab_tgt['EOS']
         for i, src in enumerate(self.raw_src):
@@ -396,39 +396,20 @@ class ReinflectionDataset(LabeledDataset):
             tgt = self.raw_tgt[i]
 
             if self.config.use_eos is True:
-                x.append([self.vocab_src[s] for s in src] + [EOS] +
-                         [PAD for _ in range(self.maxlen_src-len(src))])
-                y.append([self.vocab_tgt[s] for s in tgt] + [EOS] +
-                         [PAD for _ in range(self.maxlen_tgt-len(tgt))])
-                x_len.append(len(src) + 1)
-                y_len.append(len(tgt) + 1)
-                tags.append([self.vocab_tag[t] for t in tag] + [EOS] +
-                            [PAD for _ in range(self.maxlen_tags-len(tag))])
-                tag_len.append(len(tag) + 1)
+                x.append([self.vocab_src[s] for s in src] + [EOS])
+                y.append([self.vocab_tgt[s] for s in tgt] + [EOS])
+                tags.append([self.vocab_tag[t] for t in tag] + [EOS])
             else:
-                x.append([self.vocab_src[s] for s in src] +
-                         [PAD for _ in range(self.maxlen_src-len(src))])
-                y.append([self.vocab_tgt[s] for s in tgt] +
-                         [PAD for _ in range(self.maxlen_tgt-len(tgt))])
-                tags.append([self.vocab_tag[t] for t in tag] +
-                            [PAD for _ in range(self.maxlen_tags-len(tag))])
-                x_len.append(len(src))
-                y_len.append(len(tgt))
-                tag_len.append(len(tag) + 1)
-
-        if self.config.use_eos is True:
-            self.maxlen_src += 1
-            self.maxlen_tgt += 1
-            self.maxlen_tags += 1
+                x.append([self.vocab_src[s] for s in src])
+                y.append([self.vocab_tgt[s] for s in tgt])
+                tags.append([self.vocab_tag[t] for t in tag])
 
         self.matrices = InflectionBatch(
-            lemmas=np.array(x, dtype=np.int32),
-            lemma_lens=np.array(x_len, dtype=np.int16),
-            tags=np.array(tags, dtype=np.int32),
-            tag_lens = np.array(tag_len, dtype=np.int16),
-            targets=np.array(x, dtype=np.int32),
-            target_lens=np.array(y_len, dtype=np.int16),
+            lemmas=x,
+            tags=tags,
+            targets=y,
         )
+        self.all_vocabs = [self.vocab_src, self.vocab_tag, self.vocab_tgt]
 
 
 class UnlabeledReinflectionDataset(UnlabeledDataset):
@@ -452,54 +433,41 @@ class UnlabeledReinflectionDataset(UnlabeledDataset):
 
     def create_padded_matrices(self):
         x = []
-        x_len = []
         tags = []
-        tag_len = []
 
-        self.maxlen_src = max(len(s) for s in self.raw_src)
-        self.maxlen_tags = max(len(s) for s in self.raw_tags)
-        PAD = self.vocab_src['PAD']
         if self.config.use_eos:
             EOS = self.vocab_tgt['EOS']
         for i, src in enumerate(self.raw_src):
             tag = self.raw_tags[i]
 
             if self.config.use_eos is True:
-                x.append([self.vocab_src[s] for s in src] + [EOS] +
-                         [PAD for _ in range(self.maxlen_src-len(src))])
-                x_len.append(len(src) + 1)
-                tags.append([self.vocab_tag[t] for t in tag] + [EOS] +
-                            [PAD for _ in range(self.maxlen_tags-len(tag))])
-                tag_len.append(len(tag) + 1)
+                x.append([self.vocab_src[s] for s in src] + [EOS])
+                tags.append([self.vocab_tag[t] for t in tag] + [EOS])
             else:
-                x.append([self.vocab_src[s] for s in src] +
-                         [PAD for _ in range(self.maxlen_src-len(src))])
-                tags.append([self.vocab_tag[t] for t in tag] +
-                            [PAD for _ in range(self.maxlen_tags-len(tag))])
-                x_len.append(len(src))
-                tag_len.append(len(tag))
+                x.append([self.vocab_src[s] for s in src])
+                tags.append([self.vocab_tag[t] for t in tag])
 
-        if self.config.use_eos is True:
-            self.maxlen_src += 1
-            self.maxlen_tags += 1
-
-        self.X = np.array(x, dtype=np.int32)
-        self.X_len = np.array(x_len, dtype=np.int16)
-        self.tags = np.array(tags, dtype=np.int32)
-        self.matrices = [self.X, self.X_len, self.tags]
         self.matrices = InflectionBatch(
-            lemmas=np.array(x, dtype=np.int32),
-            lemma_lens=np.array(x_len, dtype=np.int16),
-            tags=np.array(tags, dtype=np.int32),
-            tag_lens = np.array(tag_len, dtype=np.int16),
+            lemmas=x,
+            tags=tags,
             targets=None,
-            target_lens=None
         )
+        self.all_vocabs = [self.vocab_src, self.vocab_tag, self.vocab_tgt]
 
     def batched_iter(self, batch_size):
         for batch in super().batched_iter(batch_size):
-            yield InflectionBatch(*batch)
-
+            padded_batch = []
+            for i, mtx in enumerate(batch):
+                if mtx is None:
+                    padded_batch.append(None)
+                    continue
+                maxlen = max(len(m) for m in mtx)
+                vocab = self.all_vocabs[i]
+                PAD = vocab['PAD']
+                padded_batch.append([
+                    l + [PAD] * (maxlen-len(l)) for l in mtx
+                ])
+            yield InflectionBatch(*padded_batch)
 
 class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
     unlabeled_data_class = 'SIGMORPOHTask2Track1UnlabeledDataset'
