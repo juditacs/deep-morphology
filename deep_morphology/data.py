@@ -376,8 +376,8 @@ class ReinflectionDataset(LabeledDataset):
 
         for line in stream:
             src, tgt, tags = line.rstrip("\n").split("\t")[:3]
-            src = src.split(" ") if " " in src else list(src)
-            tgt = tgt.split(" ") if " " in tgt else list(tgt)
+            src = list(src)
+            tgt = list(tgt)
             tags = tags.split(";")
             if self.is_valid_sample(src, tgt):
                 self.raw_src.append(src)
