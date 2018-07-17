@@ -34,6 +34,8 @@ class Config:
         'include_same_forms_ratio': 0.0,
         'spaces': True,
         'min_epochs': 0,
+        'early_stopping_strategy': 'ratio',
+        'early_stopping_window': 5,
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded

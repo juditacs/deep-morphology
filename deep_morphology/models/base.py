@@ -41,13 +41,26 @@ class BaseModel(nn.Module):
                 epoch+1, train_loss, dev_loss))
             if toy_data:
                 self.run_toy_eval(toy_data)
-            if epoch >= self.config.min_epochs - 1:
-                if dev_loss is not None:
-                    if dev_loss > train_loss * self.config.early_stopping_ratio:
-                        logging.info("Early stopping.")
-                        break
+            if dev_loss is not None:
+                if self.should_early_stop(epoch, result):
+                    logging.info("Early stopping.")
+                    break
         if saved is False:
             self._save(epoch)
+
+    def should_early_stop(self, epoch, result):
+        if epoch < self.config.min_epochs - 1:
+            return False
+        if self.config.early_stopping_strategy == 'ratio':
+            if result.dev_loss[-1] > result.train_loss[-1] * self.config.early_stopping_ratio:
+                return True
+        elif self.config.early_stopping_strategy == 'dev_loss_increase':
+            window = self.config.early_stopping_window
+            if len(result.dev_loss) > 2 * window:
+                if sum(result.dev_loss[-2*window:-window]) < \
+                        sum(result.dev_loss[-window:]):
+                    return True
+        return False
 
     def run_epoch(self, data, do_train):
         epoch_loss = 0
