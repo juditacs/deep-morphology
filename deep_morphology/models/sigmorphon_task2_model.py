@@ -96,7 +96,7 @@ class ContextInflectionSeq2seq(BaseModel):
         char_vocab_size = len(dataset.vocab_src)
         tag_vocab_size = len(dataset.vocab_tag)
         #FIXME dirty hack
-        self.config.decoder_hidden_size = self.config.lemma_hidden_size
+        self.config.decoder_hidden_size = self.config.word_hidden_size
         self.output_size = char_vocab_size
         self.char_embedding = nn.Embedding(char_vocab_size, self.config.char_embedding_size)
         tag_embedding = nn.Embedding(tag_vocab_size, self.config.tag_embedding_size)
