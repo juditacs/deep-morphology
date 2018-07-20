@@ -108,8 +108,7 @@ class ContextInflectionSeq2seq(BaseModel):
         self.tag_encoder = Encoder(tag_embedding, dropout,
                                    self.config.tag_hidden_size,
                                    self.config.tag_num_layers)
-        context_input_size = self.config.word_hidden_size + self.config.lemma_hidden_size + \
-            self.config.tag_hidden_size
+        context_input_size = 2 * self.config.word_hidden_size + self.config.tag_hidden_size
         self.left_context_encoder = nn.LSTM(
             context_input_size, self.config.context_hidden_size,
             num_layers=self.config.context_num_layers,
