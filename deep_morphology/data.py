@@ -72,6 +72,9 @@ class Vocab:
     def __iter__(self):
         return iter(self.vocab)
 
+    def keys(self):
+        return self.vocab.keys()
+
     def inv_lookup(self, key):
         if self.__inv_vocab is None:
             self.__inv_vocab = {i: s for s, i in self.vocab.items()}
