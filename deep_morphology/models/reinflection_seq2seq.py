@@ -127,12 +127,14 @@ class ReinflectionSeq2seq(BaseModel):
         self.tag_size = len(dataset.vocab_tag)
         self.lemma_encoder = LemmaEncoder(config, input_size)
         self.tag_encoder = TagEncoder(config, self.tag_size)
+        self.config = config
         if self.config.share_embedding:
+            #FIXME
+            self.config.inflected_embedding_size = self.config.lemma_embedding_size
             self.decoder = ReinflectionDecoder(
                 config, output_size, self.lemma_encoder.embedding)
         else:
             self.decoder = ReinflectionDecoder(config, output_size)
-        self.config = config
         self.output_size = output_size
         self.criterion = nn.CrossEntropyLoss(ignore_index=Vocab.CONSTANTS['PAD'])
         self.h_proj = nn.Linear(self.config.lemma_hidden_size+self.config.tag_hidden_size,
