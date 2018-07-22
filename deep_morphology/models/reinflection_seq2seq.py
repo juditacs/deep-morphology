@@ -70,12 +70,16 @@ class TagEncoder(nn.Module):
 
 
 class ReinflectionDecoder(nn.Module):
-    def __init__(self, config, output_size):
+    def __init__(self, config, output_size, embedding=None):
         super().__init__()
         self.config = config
         self.output_size = output_size
         self.embedding_dropout = nn.Dropout(config.dropout)
-        self.embedding = nn.Embedding(output_size, config.inflected_embedding_size)
+        if self.config.share_embedding:
+            assert embedding is not None
+            self.embedding = embedding
+        else:
+            self.embedding = nn.Embedding(output_size, config.inflected_embedding_size)
         nn.init.xavier_uniform_(self.embedding.weight)
         self.cell = nn.LSTM(
             self.config.inflected_embedding_size, self.config.inflected_hidden_size,
@@ -123,7 +127,11 @@ class ReinflectionSeq2seq(BaseModel):
         self.tag_size = len(dataset.vocab_tag)
         self.lemma_encoder = LemmaEncoder(config, input_size)
         self.tag_encoder = TagEncoder(config, self.tag_size)
-        self.decoder = ReinflectionDecoder(config, output_size)
+        if self.config.share_embedding:
+            self.decoder = ReinflectionDecoder(
+                config, output_size, self.lemma_encoder.embedding)
+        else:
+            self.decoder = ReinflectionDecoder(config, output_size)
         self.config = config
         self.output_size = output_size
         self.criterion = nn.CrossEntropyLoss(ignore_index=Vocab.CONSTANTS['PAD'])

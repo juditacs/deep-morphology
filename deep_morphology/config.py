@@ -36,6 +36,7 @@ class Config:
         'min_epochs': 0,
         'early_stopping_strategy': 'ratio',
         'early_stopping_window': 5,
+        'share_embedding': False,  # inflection
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded
