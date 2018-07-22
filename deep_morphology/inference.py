@@ -32,7 +32,7 @@ class Inference(Experiment):
             self.config.save_attention_weights = save_attention_weights
         dc = getattr(data_module, self.config.dataset_class)
         self.test_data = getattr(data_module, dc.unlabeled_data_class)(
-            self.config, stream_or_file, spaces)
+            self.config, stream_or_file)
         self.init_model(model_file)
 
     def init_model(self, model_file=None):

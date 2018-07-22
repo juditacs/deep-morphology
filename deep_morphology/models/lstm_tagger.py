@@ -9,10 +9,8 @@
 import torch
 import torch.nn as nn
 from torch import optim
-from torch.autograd import Variable
 
 from deep_morphology.models import BaseModel
-from deep_morphology.data import Vocab
 
 
 use_cuda = torch.cuda.is_available()
@@ -40,10 +38,10 @@ class LSTMTagger(BaseModel):
                             bidirectional=True)
         self.out_proj = nn.Linear(self.hidden_size, output_size)
         self.criterion = nn.CrossEntropyLoss(
-            ignore_index=Vocab.CONSTANTS['PAD'])
+            ignore_index=dataset.vocab.tgt['PAD'])
 
     def forward(self, batch):
-        input = to_cuda(Variable(torch.from_numpy(batch[0]).long()))
+        input = to_cuda(torch.from_numpy(batch[0]).long())
         input = input.transpose(0, 1)  # time_major
         input_seqlen = batch[1]
         embedded = self.embedding(input)
