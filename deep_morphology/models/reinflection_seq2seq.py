@@ -122,8 +122,13 @@ class ReinflectionDecoder(nn.Module):
 class ReinflectionSeq2seq(BaseModel):
     def __init__(self, config, dataset):
         super().__init__(config)
-        input_size = len(dataset.vocab_src)
-        output_size = len(dataset.vocab_tgt)
+        if self.config.share_embedding:
+            input_size = len(set(dataset.vocab_src.keys()) |
+                             set(dataset.vocab_tgt.keys()))
+            output_size = input_size
+        else:
+            input_size = len(dataset.vocab_src)
+            output_size = len(dataset.vocab_tgt)
         self.tag_size = len(dataset.vocab_tag)
         self.lemma_encoder = LemmaEncoder(config, input_size)
         self.tag_encoder = TagEncoder(config, self.tag_size)
