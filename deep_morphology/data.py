@@ -656,8 +656,8 @@ class SIGMORPOHTask2Track1UnlabeledDataset(SIGMORPOHTask2Track1Dataset):
                 stream.write("\n")
 
 
-class SIGMORPOHTask2Track2Dataset(LabeledDataset):
-    unlabeled_data_class = 'SIGMORPOHTask2Track2UnlabeledDataset'
+class SIGMORPHONTask2Track2Dataset(LabeledDataset):
+    unlabeled_data_class = 'SIGMORPHONTask2Track2UnlabeledDataset'
 
     def create_vocab(self, **kwargs):
         return Vocab(constants=['PAD', 'SOS', 'EOS'], **kwargs)
@@ -776,7 +776,7 @@ class SIGMORPOHTask2Track2Dataset(LabeledDataset):
             )
 
 
-class SIGMORPOHTask2Track2UnlabeledDataset(SIGMORPOHTask2Track2Dataset):
+class SIGMORPHONTask2Track2UnlabeledDataset(SIGMORPHONTask2Track2Dataset):
     def __init__(self, config, input_, spaces=True):
         super().__init__(config, input_)
 
@@ -787,19 +787,17 @@ class SIGMORPOHTask2Track2UnlabeledDataset(SIGMORPOHTask2Track2Dataset):
             if idx == 0 or self.sentence_mapping[idx] != self.sentence_mapping[idx-1]:
                 lemmas = []
                 words = []
-                for left_i in range(1, len(self.raw[idx].left_words)):
-                    lemmas.append('_')
-                    words.append(self.raw[idx].left_words[left_i])
+                lemmas.extend('_' * len(self.raw[idx].left_words))
+                words.extend(self.raw[idx].left_words)
                 lemmas.append(self.raw[idx].lemma)
                 words.append('_')
-                for right_i in range(len(self.raw[idx].right_words)-1):
-                    lemmas.append('_')
-                    words.append(self.raw[idx].right_words[right_i])
-                sentences.append((lemmas, words))
+                lemmas.extend('_' * len(self.raw[idx].right_words))
+                words.extend(self.raw[idx].right_words)
+                sentences.append((words, lemmas))
             out_word = [self.vocab_tgt.inv_lookup(s) for s in sample]
             if 'EOS' in out_word:
                 out_word = out_word[:out_word.index('EOS')]
-            word_id = len(self.raw[idx].left_words)-1
+            word_id = len(self.raw[idx].left_words)
             sentences[-1][0][word_id] = ''.join(out_word)
 
         for i, sent in enumerate(sentences):
