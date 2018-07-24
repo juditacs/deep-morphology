@@ -727,7 +727,7 @@ class SIGMORPOHTask2Track2Dataset(LabeledDataset):
             if sample.target == None:
                 targets = None
             else:
-                targets.append([self.vocab_word[c] for c in sample.target])
+                targets.append([self.vocab_word[c] for c in sample.target] + [EOS])
             lemmas.append([self.vocab_lemma[c] for c in sample.lemma])
         self.matrices = SIGMORPOHTask2Track2Fields(
             left_words=left_wordss,
