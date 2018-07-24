@@ -117,12 +117,15 @@ class ContextInflectionSeq2seq(BaseModel):
             bidirectional=True,
             batch_first=False,
             dropout=dropout)
-        self.right_context_encoder = nn.LSTM(
-            context_input_size, self.config.context_hidden_size,
-            num_layers=self.config.context_num_layers,
-            bidirectional=True,
-            batch_first=False,
-            dropout=dropout)
+        if self.config.share_context_encoder:
+            self.right_context_encoder = self.left_context_encoder
+        else:
+            self.right_context_encoder = nn.LSTM(
+                context_input_size, self.config.context_hidden_size,
+                num_layers=self.config.context_num_layers,
+                bidirectional=True,
+                batch_first=False,
+                dropout=dropout)
         self.decoder = Decoder(config, self.char_embedding)
         self.criterion = nn.CrossEntropyLoss(ignore_index=Vocab.CONSTANTS['PAD'])
 
