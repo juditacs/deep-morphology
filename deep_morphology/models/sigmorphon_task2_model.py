@@ -222,6 +222,138 @@ class ContextInflectionSeq2seq(BaseModel):
         return all_decoder_outputs.transpose(0, 1)
 
 
+class Task2Track2Model(BaseModel):
+    def __init__(self, config, dataset):
+        super().__init__(config)
+        word_vocab_size = len(dataset.vocab_word)
+        self.dataset = dataset
+        lemma_vocab_size = len(dataset.vocab_lemma)
+        self.output_size = word_vocab_size
+
+        assert self.config.share_vocab is True
+
+        self.embedding = nn.Embedding(word_vocab_size, self.config.char_embedding_size)
+        self.embedding_dropout = nn.Dropout(self.config.dropout)
+
+        dropout = self.config.dropout
+        self.encoder = Encoder(self.embedding, dropout,
+                                    self.config.word_hidden_size, self.config.word_num_layers)
+
+        self.left_context_encoder = nn.LSTM(
+            self.config.word_hidden_size, self.config.context_hidden_size,
+            num_layers=self.config.context_num_layers,
+            bidirectional=True,
+            batch_first=False,
+            dropout=dropout
+        )
+
+        if self.config.share_context_encoder is True:
+            self.right_context_encoder = self.left_context_encoder
+        else:
+            self.right_context_encoder = nn.LSTM(
+                self.config.word_hidden_size, self.config.context_hidden_size,
+                num_layers=self.config.context_num_layers,
+                bidirectional=True,
+                batch_first=False,
+                dropout=dropout
+            )
+        self.decoder = nn.LSTM(
+            self.config.char_embedding_size, self.config.word_hidden_size, num_layers=self.config.decoder_num_layers,
+            bidirectional=False, batch_first=False, dropout=dropout,
+        )
+        concat_size = self.config.word_hidden_size + 2 * self.config.context_hidden_size
+        self.attn_proj = nn.Linear(self.config.word_hidden_size, concat_size)
+        self.softmax = nn.Softmax(dim=-1)
+        self.concat = nn.Linear(concat_size+self.config.word_hidden_size, self.config.word_hidden_size)
+        self.output_proj = nn.Linear(self.config.word_hidden_size, self.output_size)
+        self.criterion = nn.CrossEntropyLoss(ignore_index=dataset.vocab_word['PAD'])
+
+    def compute_loss(self, target, output):
+        target = to_cuda(Variable(torch.LongTensor(target.target)))
+        batch_size, seqlen, dim = output.size()
+        output = output.contiguous().view(seqlen * batch_size, dim)
+        target = target.view(seqlen * batch_size)
+        loss = self.criterion(output, target)
+        return loss
+
+    def forward(self, batch):
+        left_lens = [len(l) for l in batch.left_words]
+        right_lens = [len(r) for r in batch.right_words]
+
+        left_words = torch.cat([torch.LongTensor(m) for m in batch.left_words], dim=0).t()
+        right_words = torch.cat([torch.LongTensor(m) for m in batch.right_words], dim=0).t()
+
+        if use_cuda:
+            left_words = left_words.cuda()
+            right_words = right_words.cuda()
+
+        left_context, _ = self.encoder(left_words)
+        left_context = torch.split(left_context[-1], left_lens)
+
+        left_context_enc = []
+        ch = self.config.context_hidden_size
+        for lc in left_context:
+            out = self.left_context_encoder(lc.unsqueeze(1))[0][-1]
+            out = out[:, :ch] + out[:, ch:]
+            left_context_enc.append(out)
+        left_context = torch.cat(left_context_enc)
+
+        right_context, _ = self.encoder(right_words)
+        right_context = torch.split(right_context[-1], right_lens)
+
+        right_context_enc = []
+        for rc in right_context:
+            out = self.right_context_encoder(rc.unsqueeze(1))[0][-1]
+            out = out[:, :ch] + out[:, ch:]
+            right_context_enc.append(out)
+        right_context = torch.cat(right_context_enc)
+
+        lemma_input = to_cuda(torch.LongTensor(batch.lemma).t())
+        lemma_outputs, lemma_hidden = self.encoder(lemma_input)
+
+        decoder_hidden = tuple(e[:self.config.decoder_num_layers] for e in lemma_hidden)
+        batch_size = len(batch.left_words)
+        decoder_input = to_cuda(Variable(torch.LongTensor(
+            [self.dataset.vocab_word['SOS']] * batch_size)))
+
+        has_target = batch.target is not None
+
+        seqlen_tgt = len(batch.target[0]) if has_target else len(batch.lemma[0]) * 2
+        all_decoder_outputs = to_cuda(Variable(torch.zeros((
+            seqlen_tgt, batch_size, self.output_size))))
+
+        if has_target:
+            target = to_cuda(torch.LongTensor(batch.target).t())
+
+        for t in range(seqlen_tgt):
+            embedded = self.embedding(decoder_input)
+            embedded = self.embedding_dropout(embedded)
+            embedded = embedded.view(1, *embedded.size())
+            rnn_output, hidden = self.decoder(embedded, decoder_hidden)
+            input_vec = torch.cat((rnn_output, left_context.unsqueeze(0), right_context.unsqueeze(0)), -1)
+
+            # attention
+            e = self.attn_proj(lemma_outputs)
+            e = e.transpose(0, 1).bmm(input_vec.permute(1, 2, 0))
+            e = e.squeeze(2)
+            e = self.softmax(e)
+            context = e.unsqueeze(1).bmm(lemma_outputs.transpose(0, 1))
+
+            concat_input = torch.cat((input_vec.transpose(0, 1), context), -1)
+            concat_output = F.tanh(self.concat(concat_input.squeeze(1)))
+            decoder_output = self.output_proj(concat_output).squeeze(1)
+            all_decoder_outputs[t] = decoder_output
+            if has_target:
+                decoder_input = target[t]
+            else:
+                val, idx = decoder_output.max(-1)
+                decoder_input = idx
+        return all_decoder_outputs.transpose(0, 1)
+
+
+
+
+
 class ThreeHeadedDecoder(nn.Module):
     def __init__(self, config, embedding):
         super().__init__()

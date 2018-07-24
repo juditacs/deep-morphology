@@ -29,6 +29,8 @@ MorphoSyntaxBatch = namedtuple(
     'MorphoSyntaxBatch',
     ['left_context', 'right_context', 'left_lens', 'right_lens', 'target']
 )
+SIGMORPOHTask2Track2Fields = namedtuple(
+    'SIGMORPOHTask2Track2Fields', ['left_words', 'right_words', 'lemma', 'target'])
 
 
 class Vocab:
@@ -650,6 +652,159 @@ class SIGMORPOHTask2Track1UnlabeledDataset(SIGMORPOHTask2Track1Dataset):
         for i, sent in enumerate(sentences):
             for word in sent:
                 stream.write("{}\t{}\t{}\n".format(*word))
+            if i < len(sentences) - 1:
+                stream.write("\n")
+
+
+class SIGMORPOHTask2Track2Dataset(LabeledDataset):
+    unlabeled_data_class = 'SIGMORPOHTask2Track2UnlabeledDataset'
+
+    def create_vocab(self, **kwargs):
+        return Vocab(constants=['PAD', 'SOS', 'EOS'], **kwargs)
+
+    def load_stream(self, stream):
+        self.sentence_mapping = []
+        self.raw = []
+
+        for sent_i, (words, lemmas) in enumerate(self.read_sentences(stream)):
+            for word_i, (word, lemma) in enumerate(zip(words, lemmas)):
+                if self.skip_sample(word, lemma):
+                    continue
+                if word == '_':
+                    word = None
+                self.raw.append(SIGMORPOHTask2Track2Fields(
+                    left_words=words[:word_i],
+                    right_words=words[word_i+1:],
+                    target=word,
+                    lemma=lemma,
+                ))
+                self.sentence_mapping.append(sent_i)
+
+    @staticmethod
+    def read_sentences(stream):
+        words = []
+        lemmas = []
+        for line in stream:
+            if line.strip():
+                word, lemma = line.strip().split('\t')[:2]
+                words.append(word)
+                lemmas.append(lemma)
+            else:
+                if words and lemmas:
+                    yield words, lemmas
+                words = []
+                lemmas = []
+        if words:
+            yield words, lemmas
+
+    def skip_sample(self, word, lemma):
+        return lemma == '_'
+
+    def load_or_create_vocabs(self):
+        super().load_or_create_vocabs()
+        #FIXME dirty hack
+        self.vocab_lemma = self.vocab_src
+        self.vocab_word = self.vocab_tgt
+
+    def create_padded_matrices(self):
+        left_wordss = []
+        right_wordss = []
+        lemmas = []
+        targets = []
+        SOS = self.vocab_word['SOS']
+        EOS = self.vocab_word['EOS']
+        for sample in self.raw:
+            lc = [[SOS]]
+            lc.extend(
+                [self.vocab_word[c] for c in word] for word in sample.left_words
+            )
+            rc = list(
+                [self.vocab_word[c] for c in word] for word in sample.right_words
+            )
+            rc.append([EOS])
+            left_wordss.append(lc)
+            right_wordss.append(rc)
+            if sample.target == None:
+                targets = None
+            else:
+                targets.append([self.vocab_word[c] for c in sample.target])
+            lemmas.append([self.vocab_lemma[c] for c in sample.lemma])
+        self.matrices = SIGMORPOHTask2Track2Fields(
+            left_words=left_wordss,
+            right_words=right_wordss,
+            target=targets,
+            lemma=lemmas,
+        )
+
+    def batched_iter(self, batch_size):
+
+        for start in range(0, len(self), batch_size):
+            end = start + batch_size
+
+            PAD = self.vocab_word['PAD']
+            batch_lc = self.matrices.left_words[start:end]
+            maxlen = max(max(len(w) for w in sample) for sample in batch_lc)
+            padded_left = [
+                [l + [PAD] * (maxlen-len(l)) for l in sample]
+                for sample in batch_lc
+            ]
+
+            batch_rc = self.matrices.right_words[start:end]
+            maxlen = max(max(len(w) for w in sample) for sample in batch_rc)
+            padded_right = [
+                [l + [PAD] * (maxlen-len(l)) for l in sample]
+                for sample in batch_rc
+            ]
+
+            if self.matrices.target is None:
+                padded_targets = None
+            else:
+                batch_target = self.matrices.target[start:end]
+                maxlen = max(len(t) for t in batch_target)
+                padded_targets = [l + [PAD] * (maxlen-len(l)) for l in batch_target]
+
+            PAD = self.vocab_lemma['PAD']
+            batch_lemma = self.matrices.lemma[start:end]
+            maxlen = max(len(t) for t in batch_lemma)
+            padded_lemmas = [l + [PAD] * (maxlen-len(l)) for l in batch_lemma]
+
+            yield SIGMORPOHTask2Track2Fields(
+                left_words=padded_left,
+                right_words=padded_right,
+                lemma=padded_lemmas,
+                target=padded_targets,
+            )
+
+
+class SIGMORPOHTask2Track2UnlabeledDataset(SIGMORPOHTask2Track2Dataset):
+    def __init__(self, config, input_, spaces=True):
+        super().__init__(config, input_)
+
+    def decode_and_print(self, model_output, stream):
+        sentences = []
+
+        for idx, sample in enumerate(model_output):
+            if idx == 0 or self.sentence_mapping[idx] != self.sentence_mapping[idx-1]:
+                lemmas = []
+                words = []
+                for left_i in range(1, len(self.raw[idx].left_words)):
+                    lemmas.append('_')
+                    words.append(self.raw[idx].left_words[left_i])
+                lemmas.append(self.raw[idx].lemma)
+                words.append('_')
+                for right_i in range(len(self.raw[idx].right_words)-1):
+                    lemmas.append('_')
+                    words.append(self.raw[idx].right_words[right_i])
+                sentences.append((lemmas, words))
+            out_word = [self.vocab_tgt.inv_lookup(s) for s in sample]
+            if 'EOS' in out_word:
+                out_word = out_word[:out_word.index('EOS')]
+            word_id = len(self.raw[idx].left_words)-1
+            sentences[-1][0][word_id] = ''.join(out_word)
+
+        for i, sent in enumerate(sentences):
+            for word, lemma in zip(sent[0], sent[1]):
+                stream.write("{}\t{}\t_\n".format(word, lemma))
             if i < len(sentences) - 1:
                 stream.write("\n")
 
