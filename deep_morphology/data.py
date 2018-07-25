@@ -474,6 +474,16 @@ class UnlabeledReinflectionDataset(UnlabeledDataset):
                 ])
             yield InflectionBatch(*padded_batch)
 
+    def decode_and_print(self, model_output, stream):
+        for i, output in enumerate(model_output):
+            decoded = [self.vocab_tgt.inv_lookup(c) for c in output]
+            if 'EOS' in decoded:
+                decoded = decoded[:decoded.index('EOS')]
+            lemma = self.raw_src[i]
+            tags = self.raw_tags[i]
+            stream.write("{}\t{}\t{}\n".format(''.join(lemma), ''.join(decoded), ';'.join(tags)))
+
+
 class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
     unlabeled_data_class = 'SIGMORPOHTask2Track1UnlabeledDataset'
 
