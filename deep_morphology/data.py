@@ -727,8 +727,10 @@ class SIGMORPHONTask2Track2Dataset(LabeledDataset):
             if sample.target == None:
                 targets = None
             else:
-                targets.append([self.vocab_word[c] for c in sample.target] + [EOS])
-            lemmas.append([self.vocab_lemma[c] for c in sample.lemma])
+                targets.append(
+                    [self.vocab_word[c] for c in sample.target] + [EOS])
+            lemmas.append(
+                [self.vocab_lemma[c] for c in sample.lemma])
         self.matrices = SIGMORPOHTask2Track2Fields(
             left_words=left_wordss,
             right_words=right_wordss,
@@ -799,6 +801,7 @@ class SIGMORPHONTask2Track2UnlabeledDataset(SIGMORPHONTask2Track2Dataset):
                 out_word = out_word[:out_word.index('EOS')]
             word_id = len(self.raw[idx].left_words)
             sentences[-1][0][word_id] = ''.join(out_word)
+            sentences[-1][1][word_id] = self.raw[idx].lemma
 
         for i, sent in enumerate(sentences):
             for word, lemma in zip(sent[0], sent[1]):
