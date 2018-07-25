@@ -426,7 +426,7 @@ class UnlabeledReinflectionDataset(UnlabeledDataset):
             src = fd[0]
             src = src.split(" ") if " " in src else list(src)
             self.raw_src.append(src)
-            self.raw_tags.append(fd[2].split(';'))
+            self.raw_tags.append(fd[-1].split(';'))
 
     def load_or_create_vocabs(self):
         super().load_or_create_vocabs()
