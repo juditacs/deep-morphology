@@ -104,7 +104,10 @@ def main():
         inf = Inference(args.experiment_dir, stdin, spaces=False,
                         model_file=args.model_file,
                         save_attention_weights=args.save_attention_weights)
-    if hasattr(inf.test_data, 'raw_src'):
+    # FIXME
+    if hasattr(inf.test_data, 'decode_and_print'):
+        inf.run_and_print()
+    elif hasattr(inf.test_data, 'raw_src'):
         words = inf.run()
         for i, raw_word in enumerate(inf.test_data.raw_src):
             print("{}\t{}".format(
