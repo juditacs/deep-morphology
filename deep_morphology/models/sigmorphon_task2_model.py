@@ -191,7 +191,6 @@ class ContextInflectionSeq2seq(BaseModel):
 
         lemma_input = to_cuda(Variable(torch.LongTensor(batch.covered_lemma)).t())
         lemma_outputs, lemma_hidden = self.word_encoder(lemma_input)
-
         decoder_hidden = tuple(e[:self.config.decoder_num_layers] for e in lemma_hidden)
         batch_size = len(batch.left_words)
         decoder_input = to_cuda(Variable(torch.LongTensor(
@@ -240,7 +239,7 @@ class Task2Track2Model(BaseModel):
 
         dropout = self.config.dropout
         self.encoder = Encoder(self.embedding, dropout,
-                                    self.config.word_hidden_size, self.config.word_num_layers)
+                               self.config.word_hidden_size, self.config.word_num_layers)
 
         self.left_context_encoder = nn.LSTM(
             self.config.word_hidden_size, self.config.context_hidden_size,
@@ -321,7 +320,8 @@ class Task2Track2Model(BaseModel):
 
         has_target = batch.target is not None
 
-        seqlen_tgt = len(batch.target[0]) if has_target else len(batch.lemma[0]) * 2
+        seqlen_tgt = len(batch.target[0]) \
+            if has_target else len(batch.lemma[0]) * 4
         all_decoder_outputs = to_cuda(Variable(torch.zeros((
             seqlen_tgt, batch_size, self.output_size))))
 
@@ -332,7 +332,7 @@ class Task2Track2Model(BaseModel):
             embedded = self.embedding(decoder_input)
             embedded = self.embedding_dropout(embedded)
             embedded = embedded.view(1, *embedded.size())
-            rnn_output, hidden = self.decoder(embedded, decoder_hidden)
+            rnn_output, decoder_hidden = self.decoder(embedded, decoder_hidden)
             input_vec = torch.cat((rnn_output, left_context.unsqueeze(0), right_context.unsqueeze(0)), -1)
 
             # attention
@@ -352,9 +352,6 @@ class Task2Track2Model(BaseModel):
                 val, idx = decoder_output.max(-1)
                 decoder_input = idx
         return all_decoder_outputs.transpose(0, 1)
-
-
-
 
 
 class ThreeHeadedDecoder(nn.Module):
