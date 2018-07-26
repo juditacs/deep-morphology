@@ -424,7 +424,7 @@ class UnlabeledReinflectionDataset(UnlabeledDataset):
         for line in stream:
             fd = line.rstrip("\n").split("\t")
             src = fd[0]
-            src = src.split(" ") if " " in src else list(src)
+            src = list(src)
             self.raw_src.append(src)
             self.raw_tags.append(fd[-1].split(';'))
 
