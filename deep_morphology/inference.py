@@ -22,14 +22,32 @@ from deep_morphology import models
 use_cuda = torch.cuda.is_available()
 
 
+def parse_param_str(params):
+    param_d = {}
+    for p in params.split(','):
+        key, val = p.split('=')
+        try:
+            param_d[key] = int(val)
+        except ValueError:
+            try:
+                param_d[key] = float(val)
+            except ValueError:
+                param_d[key] = val
+    return param_d
+
+
 class Inference(Experiment):
     def __init__(self, experiment_dir, stream_or_file, spaces=True,
                  save_attention_weights=None,
+                 param_str=None,
                  model_file=None):
         self.config = InferenceConfig.from_yaml(
             os.path.join(experiment_dir, 'config.yaml'))
         if save_attention_weights is not None:
             self.config.save_attention_weights = save_attention_weights
+        if param_str is not None:
+            for param, val in parse_param_str(param_str).items():
+                setattr(self.config, param, val)
         dc = getattr(data_module, self.config.dataset_class)
         self.test_data = getattr(data_module, dc.unlabeled_data_class)(
             self.config, stream_or_file, spaces)
@@ -90,6 +108,7 @@ def parse_args():
     p.add_argument("--save-attention-weights", type=str, default=None,
                    help="Save attention weights to file. "
                    "Only effective when using Luong Attention.")
+    p.add_argument("--override-params", type=str, default=None)
     return p.parse_args()
 
 
@@ -99,10 +118,12 @@ def main():
     if args.test_file:
         inf = Inference(args.experiment_dir, args.test_file,
                         model_file=args.model_file,
+                        param_str=args.override_params,
                         save_attention_weights=args.save_attention_weights)
     else:
         inf = Inference(args.experiment_dir, stdin, spaces=False,
                         model_file=args.model_file,
+                        param_str=args.override_params,
                         save_attention_weights=args.save_attention_weights)
     # FIXME
     if hasattr(inf.test_data, 'decode_and_print'):
