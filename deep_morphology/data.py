@@ -660,8 +660,10 @@ class SIGMORPHONTask2Track2Dataset(LabeledDataset):
     def load_stream(self, stream):
         self.sentence_mapping = []
         self.raw = []
+        self.raw_sentences = []
 
         for sent_i, (words, lemmas) in enumerate(self.read_sentences(stream)):
+            self.raw_sentences.append([words, lemmas])
             for word_i, (word, lemma) in enumerate(zip(words, lemmas)):
                 if self.skip_sample(word, lemma):
                     continue
@@ -778,31 +780,19 @@ class SIGMORPHONTask2Track2UnlabeledDataset(SIGMORPHONTask2Track2Dataset):
         super().__init__(config, input_)
 
     def decode_and_print(self, model_output, stream):
-        sentences = []
-
         for idx, sample in enumerate(model_output):
-            if idx == 0 or self.sentence_mapping[idx] != self.sentence_mapping[idx-1]:
-                lemmas = []
-                words = []
-                lemmas.extend('_' * len(self.raw[idx].left_words))
-                words.extend(self.raw[idx].left_words)
-                lemmas.append(self.raw[idx].lemma)
-                words.append('_')
-                lemmas.extend('_' * len(self.raw[idx].right_words))
-                words.extend(self.raw[idx].right_words)
-                sentences.append((words, lemmas))
+            sent_id = self.sentence_mapping[idx]
             out_word = [self.vocab_tgt.inv_lookup(s) for s in sample]
             if 'EOS' in out_word:
                 out_word = out_word[:out_word.index('EOS')]
             word_id = len(self.raw[idx].left_words)
-            sentences[-1][0][word_id] = ''.join(out_word)
-            sentences[-1][1][word_id] = self.raw[idx].lemma
+            self.raw_sentences[sent_id][0][word_id] = out_word
 
-        for i, sent in enumerate(sentences):
-            for word, lemma in zip(sent[0], sent[1]):
-                stream.write("{}\t{}\t_\n".format(word, lemma))
-            if i < len(sentences) - 1:
-                stream.write("\n")
+        for i, sent in enumerate(self.raw_sentences):
+            for word, lemma in zip(*sent):
+                stream.write("{}\t{}\t_\n".format(
+                    ''.join(word), ''.join(lemma)))
+            stream.write("\n")
 
 
 class MorphoSyntaxDataset(LabeledDataset):
