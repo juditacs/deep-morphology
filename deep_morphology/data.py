@@ -502,12 +502,14 @@ class SIGMORPOHTask2Track1Dataset(ReinflectionDataset):
     def load_stream(self, stream):
         self.sentence_mapping = []
         self.raw = []
+        self.raw_sentences = []
 
         SOS = ['SOS']
         EOS = ['EOS']
 
         maxlens = {'word': 0, 'lemma': 0, 'tag': 0}
         for sent_i, (words, lemmas, tags) in enumerate(self.read_sentences(stream)):
+            self.raw_sentences.append([words, lemmas, tags])
             maxlens['word'] = max(maxlens['word'], max(len(w) for w in words))
             maxlens['lemma'] = max(maxlens['lemma'], max(len(w) for w in lemmas))
             maxlens['tag'] = max(maxlens['tag'], max(len(w) for w in tags))
@@ -634,36 +636,19 @@ class SIGMORPOHTask2Track1UnlabeledDataset(SIGMORPOHTask2Track1Dataset):
         return word[0] != '_'
 
     def decode_and_print(self, model_output, stream):
-        sentences = []
-
         for idx, sample in enumerate(model_output):
-            if idx == 0 or self.sentence_mapping[idx] != self.sentence_mapping[idx-1]:
-                new_sent = []
-                for left_i in range(1, len(self.raw[idx].left_words)):
-                    new_sent.append([
-                        ''.join(self.raw[idx].left_words[left_i]),
-                        ''.join(self.raw[idx].left_lemmas[left_i]),
-                        ';'.join(self.raw[idx].left_tags[left_i]),
-                    ])
-                new_sent.append(['_', ''.join(self.raw[idx].covered_lemma), '_'])
-                for right_i in range(len(self.raw[idx].right_words)-1):
-                    new_sent.append([
-                        ''.join(self.raw[idx].right_words[right_i]),
-                        ''.join(self.raw[idx].right_lemmas[right_i]),
-                        ';'.join(self.raw[idx].right_tags[right_i]),
-                    ])
-                sentences.append(new_sent)
+            sent_id = self.sentence_mapping[idx]
             out_word = [self.vocab_tgt.inv_lookup(s) for s in sample]
             if 'EOS' in out_word:
                 out_word = out_word[:out_word.index('EOS')]
             word_id = len(self.raw[idx].left_words)-1
-            sentences[-1][word_id][0] = ''.join(out_word)
+            self.raw_sentences[sent_id][0][word_id] = out_word
 
-        for i, sent in enumerate(sentences):
-            for word in sent:
-                stream.write("{}\t{}\t{}\n".format(*word))
-            if i < len(sentences) - 1:
-                stream.write("\n")
+        for i, sent in enumerate(self.raw_sentences):
+            for word, lemma, tags in zip(*sent):
+                stream.write("{}\t{}\t{}\n".format(
+                    ''.join(word), ''.join(lemma), ';'.join(tags)))
+            stream.write("\n")
 
 
 class SIGMORPHONTask2Track2Dataset(LabeledDataset):
