@@ -19,7 +19,7 @@ class BaseModel(nn.Module):
         super().__init__()
         self.config = config
 
-    def run_train(self, train_data, result, dev_data=None, toy_data=None):
+    def run_train(self, train_data, result, dev_data):
 
         self.init_optimizers()
 
@@ -29,37 +29,27 @@ class BaseModel(nn.Module):
             self.train(True)
             train_loss = self.run_epoch(train_data, do_train=True)
             result.train_loss.append(train_loss)
-            if dev_data is not None:
-                self.train(False)
-                dev_loss = self.run_epoch(dev_data, do_train=False)
-                result.dev_loss.append(dev_loss)
-            else:
-                dev_loss = None
+            self.train(False)
+            dev_loss = self.run_epoch(dev_data, do_train=False)
+            result.dev_loss.append(dev_loss)
             s = self.save_if_best(train_loss, dev_loss, epoch)
             saved = saved or s
             logging.info("Epoch {}, Train loss: {}, Dev loss: {}".format(
                 epoch+1, train_loss, dev_loss))
-            if toy_data:
-                self.run_toy_eval(toy_data)
-            if dev_loss is not None:
-                if self.should_early_stop(epoch, result):
-                    logging.info("Early stopping.")
-                    break
+            if self.should_early_stop(epoch, result):
+                logging.info("Early stopping.")
+                break
         if saved is False:
             self._save(epoch)
 
     def should_early_stop(self, epoch, result):
         if epoch < self.config.min_epochs - 1:
             return False
-        if self.config.early_stopping_strategy == 'ratio':
-            if result.dev_loss[-1] > result.train_loss[-1] * self.config.early_stopping_ratio:
+        window = self.config.early_stopping_window
+        if len(result.dev_loss) > 2 * window:
+            if sum(result.dev_loss[-2*window:-window]) < \
+                    sum(result.dev_loss[-window:]):
                 return True
-        elif self.config.early_stopping_strategy == 'dev_loss_increase':
-            window = self.config.early_stopping_window
-            if len(result.dev_loss) > 2 * window:
-                if sum(result.dev_loss[-2*window:-window]) < \
-                        sum(result.dev_loss[-window:]):
-                    return True
         return False
 
     def run_epoch(self, data, do_train):
@@ -75,18 +65,6 @@ class BaseModel(nn.Module):
                     opt.step()
             epoch_loss += loss.item()
         return epoch_loss / len(data)
-
-    def run_toy_eval(self, toy_data):
-        toy_output = self.run_inference(toy_data, 'greedy')
-        words = toy_data.decode(toy_output)
-
-        logging.info("Toy eval\n{}".format(
-            "\n".join("  {}\t{}".format(
-                "".join(toy_data.raw_src[i]),
-                "".join(words[i]).replace("<STEP>", ""))
-                for i in range(len(words))
-            )
-        ))
 
     def save_if_best(self, train_loss, dev_loss, epoch):
         if epoch < self.config.save_min_epoch:
@@ -108,9 +86,7 @@ class BaseModel(nn.Module):
         logging.info("Saving model to {}".format(save_path))
         torch.save(self.state_dict(), save_path)
 
-    def run_inference(self, data, mode, **kwargs):
-        if mode != 'greedy':
-            raise ValueError("Unsupported decoding mode: {}".format(mode))
+    def run_inference(self, data):
         self.train(False)
         all_output = []
         for bi, batch in enumerate(data.batched_iter(self.config.batch_size)):

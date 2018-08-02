@@ -44,37 +44,30 @@ class Result:
 
 
 class Experiment:
-    """Class in charge of an experiment.
-        1. loads the YAML config file
-        2. loads the dataset if needed (the dataset may be passed to init,
-        this is useful for bulk experiments)
-        3. creates the model
-        4. trains the model
-        5. saves the results
-    """
-    def __init__(self, config, train_data=None, dev_data=None, override_params=None):
+    def __init__(self, config, train_data=None, dev_data=None,
+                 override_params=None):
         git_hash = check_and_get_commit_hash()
         if isinstance(config, str):
             self.config = Config.from_yaml(config, override_params)
         elif isinstance(config, Config):
             self.config = config
         else:
-            raise ValueError("config must be an instance of Config or a filename")
+            raise ValueError("config must be an instance of Config "
+                             "or a filename")
         self.config.node = platform.node()
         self.set_random_seeds()
         self.config.commit_hash = git_hash
         self.data_class = getattr(data_module, self.config.dataset_class)
-        self.unlabeled_data_class = getattr(data_module, self.data_class.unlabeled_data_class)
+        self.unlabeled_data_class = getattr(
+            data_module, self.data_class.unlabeled_data_class)
         self.__load_data(train_data, dev_data)
-        self.create_toy_dataset()
         logging.info("Data loaded")
-        try:
-            for mtx in self.train_data.matrices:
-                logging.info("Train matrix shape: {}".format(mtx.shape))
-            for mtx in self.dev_data.matrices:
-                logging.info("Dev matrix shape: {}".format(mtx.shape))
-        except AttributeError:
-            pass
+        for i, field in enumerate(self.train_data.mtx._fields):
+            logging.info("Train [{}] size: {}".format(
+                field, len(self.train_data.mtx[i])))
+        for i, field in enumerate(self.dev_data.mtx._fields):
+            logging.info("Dev [{}] size: {}".format(
+                field, len(self.dev_data.mtx[i])))
         self.init_model()
 
     def set_random_seeds(self):
@@ -84,13 +77,6 @@ class Experiment:
         if not hasattr(self.config, 'numpy_random_seed'):
             self.config.numpy_random_seed = np.random.randint(0, 2**31)
         np.random.seed(self.config.numpy_random_seed)
-
-    def create_toy_dataset(self):
-        if self.config.toy_eval is None:
-            self.toy_data = None
-        else:
-            self.toy_data = self.unlabeled_data_class(
-                self.config, self.config.toy_eval)
 
     def __load_data(self, train_data, dev_data):
         if train_data is None and dev_data is None:
@@ -111,6 +97,8 @@ class Experiment:
 
     def __load_train_dev_data(self, train_fn, dev_fn):
         self.train_data = self.data_class(self.config, train_fn)
+        # saving vocabs so that dev_data can find the existing vocabs and load
+        # them
         self.train_data.save_vocabs()
         self.dev_data = self.data_class(self.config, dev_fn)
 
@@ -131,8 +119,5 @@ class Experiment:
         self.result.save(self.config.experiment_dir)
 
     def run(self):
-        if self.toy_data:
-            self.model.run_train(self.train_data, self.result, dev_data=self.dev_data,
-                                 toy_data=self.toy_data)
-        else:
-            self.model.run_train(self.train_data, self.result, dev_data=self.dev_data)
+        self.model.run_train(
+            self.train_data, self.result, dev_data=self.dev_data)
