@@ -61,7 +61,7 @@ class BaseDataset:
         self.load_stream_or_file(stream_or_file)
         self.to_idx()
         # index of target field, usually the last one
-        self.tgt_field_idx = -1 
+        self.tgt_field_idx = -1
 
     def load_or_create_vocabs(self):
         raise NotImplementedError("Subclass of BaseData must define "
@@ -123,16 +123,9 @@ class BaseDataset:
                 decoded = " ".join(decoded)
             else:
                 decoded = "".join(decoded)
-            out = []
-            for out_i, field in enumerate(sample):
-                if (out_i % len(sample)) == (self.tgt_field_idx % len(sample)):
-                    out.append(decoded)
-                else:
-                    if self.config.spaces:
-                        out.append(" ".join(field))
-                    else:
-                        out.append("".join(field))
-            stream.write("\t".join(out) + "\n")
+            self.raw[i][self.tgt_field_idx] = decoded
+        for sample in self.raw:
+            stream.write("{}\n".format("\t".join("".join(s) for s in sample)))
 
     def save_vocabs(self):
         for vocab_name in self.vocabs._fields:
