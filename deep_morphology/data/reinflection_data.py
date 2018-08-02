@@ -6,13 +6,13 @@
 #
 # Distributed under terms of the MIT license.
 
-from collections import namedtuple
+from recordclass import recordclass
 import os
 
 from deep_morphology.data.base_data import BaseDataset, Vocab
 
 
-ReinflectionFields = namedtuple(
+ReinflectionFields = recordclass(
     'ReinflectionFields', ['lemma', 'inflected', 'tags'])
 
 
@@ -43,16 +43,16 @@ class ReinflectionDataset(BaseDataset):
 
     def extract_sample_from_line(self, line):
         lemma, infl, tags = line.split("\t")
-        return (list(lemma), list(infl), tags.split(';'))
+        return ReinflectionFields(list(lemma), list(infl), tags.split(';'))
 
-    def create_namedtuple(self, *data):
+    def create_recordclass(self, *data):
         return ReinflectionFields(*data)
 
 
 class UnlabeledReinflectionDataset(ReinflectionDataset):
     def extract_sample_from_line(self, line):
         lemma, infl, tags = line.split("\t")
-        return (list(lemma), None, tags.split(';'))
+        return ReinflectionFields(list(lemma), None, tags.split(';'))
 
     def load_or_create_vocabs(self):
         vocabs = []

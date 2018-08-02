@@ -5,13 +5,13 @@
 # Copyright © 2018 Judit Acs <judit@sch.bme.hu>
 #
 # Distributed under terms of the MIT license.
-from collections import namedtuple
+from recordclass import recordclass
 import os
 
 from deep_morphology.data.base_data import BaseDataset, Vocab
 
 
-Seq2seqFields = namedtuple('Seq2seqFields', ['src', 'tgt'])
+Seq2seqFields = recordclass('Seq2seqFields', ['src', 'tgt'])
 
 
 class Seq2seqDataset(BaseDataset):
@@ -49,7 +49,7 @@ class Seq2seqDataset(BaseDataset):
             tgt = list(tgt)
         return (src, tgt)
 
-    def create_namedtuple(self, *data):
+    def create_recordclass(self, *data):
         return Seq2seqFields(*data)
 
 

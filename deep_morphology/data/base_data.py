@@ -105,11 +105,11 @@ class BaseDataset:
                     else:
                         idx = [vocab[s] for s in part]
                     mtx[i].append(idx)
-        self.mtx = self.create_namedtuple(*mtx)
+        self.mtx = self.create_recordclass(*mtx)
 
-    def create_namedtuple(self, *data):
+    def create_recordclass(self, *data):
         raise NotImplementedError("Subclass of BaseData must define "
-                                  "create_namedtuple")
+                                  "create_recordclass")
 
     def decode_and_print(self, model_output, stream=stdout):
         assert len(model_output) == len(self.mtx[0])
@@ -160,7 +160,7 @@ class BaseDataset:
                         for sample in this_batch
                     ]
                     batch.append(padded)
-            yield self.create_namedtuple(*batch)
+            yield self.create_recordclass(*batch)
 
     def __len__(self):
         return len(self.mtx[0])
