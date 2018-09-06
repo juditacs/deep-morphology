@@ -65,8 +65,15 @@ class BaseDataset:
         self.tgt_field_idx = -1
 
     def load_or_create_vocabs(self):
-        raise NotImplementedError("Subclass of BaseData must define "
-                                  "load_or_create_vocabs")
+        vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
+        vocabs = []
+        for field in self.data_recordclass._fields:
+            vocab_fn = vocab_pre + field
+            if os.path.exists(vocab_fn):
+                vocabs.append(Vocab(file=vocab_fn, frozen=True))
+            else:
+                vocabs.append(Vocab(constants=self.constants))
+        self.vocabs = self.data_recordclass(*vocabs)
 
     def load_stream_or_file(self, stream_or_file):
         if isinstance(stream_or_file, str):

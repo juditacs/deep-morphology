@@ -15,7 +15,9 @@ TaggingFields = recordclass('TaggingFields', ['src', 'tgt'])
 
 class TaggingDataset(BaseDataset):
 
+    unlabeled_data_class = 'UnlabeledTaggingDataset'
     data_recordclass = TaggingFields
+    constants = ['PAD']
 
     def extract_sample_from_line(self, line):
         src, tgt = line.split('\t')[:2]

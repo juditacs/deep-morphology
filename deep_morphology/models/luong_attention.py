@@ -196,7 +196,7 @@ class LuongAttentionSeq2seq(BaseModel):
             decoder_hidden = encoder_hidden[:num_layers]
         return decoder_hidden
 
-    def run_inference(self, data, mode, **kwargs):
+    def run_inference2(self, data, mode, **kwargs):
         if mode != 'greedy':
             raise ValueError("Unsupported decoding mode: {}".format(mode))
         self.train(False)

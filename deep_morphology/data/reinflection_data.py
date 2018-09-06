@@ -20,33 +20,16 @@ class ReinflectionDataset(BaseDataset):
 
     unlabeled_data_class = 'UnlabeledReinflectionDataset'
     data_recordclass = ReinflectionFields
+    constants = ['PAD', 'UNK', 'SOS', 'EOS']
 
     def __init__(self, config, stream_or_file):
-        self.constants = ['PAD', 'UNK', 'SOS', 'EOS']
         super().__init__(config, stream_or_file)
         self.tgt_field_idx = 1
 
     def load_or_create_vocabs(self):
-        vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
-        if os.path.exists(vocab_pre + 'lemma'):
-            assert os.path.exists(vocab_pre + 'inflected')
-            assert os.path.exists(vocab_pre + 'tags')
-            lemma_vocab = Vocab(file=vocab_pre + 'lemma', frozen=True)
-            infl_vocab = Vocab(file=vocab_pre + 'inflected', frozen=True)
-            tag_vocab = Vocab(file=vocab_pre + 'tags', frozen=True)
-        else:
-
-            lemma_vocab = Vocab(constants=self.constants)
-            if self.config.share_vocab:
-                infl_vocab = lemma_vocab
-            else:
-                infl_vocab = Vocab(constants=self.constants)
-            tag_vocab = Vocab(constants=['PAD', 'UNK'])
-        self.vocabs = ReinflectionFields(
-            lemma=lemma_vocab,
-            inflected=infl_vocab,
-            tags=tag_vocab,
-        )
+        super().load_or_create_vocabs()
+        if self.config.share_vocab:
+            self.vocabs.inflected = self.vocabs.lemma
 
     def extract_sample_from_line(self, line):
         lemma, infl, tags = line.split("\t")
