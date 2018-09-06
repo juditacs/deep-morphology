@@ -22,10 +22,7 @@ class ReinflectionDataset(BaseDataset):
     data_recordclass = ReinflectionFields
 
     def __init__(self, config, stream_or_file):
-        if config.use_eos:
-            self.constants = ['PAD', 'UNK', 'SOS', 'EOS']
-        else:
-            self.constants = ['PAD', 'UNK', 'SOS']
+        self.constants = ['PAD', 'UNK', 'SOS', 'EOS']
         super().__init__(config, stream_or_file)
         self.tgt_field_idx = 1
 

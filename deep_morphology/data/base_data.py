@@ -101,10 +101,7 @@ class BaseDataset:
                     mtx[i] = None
                 else:
                     vocab = self.vocabs[i]
-                    if self.config.use_eos:
-                        idx = [vocab[s] for s in part] + [vocab['EOS']]
-                    else:
-                        idx = [vocab[s] for s in part]
+                    idx = [vocab[s] for s in part] + [vocab['EOS']]
                     mtx[i].append(idx)
         self.mtx = self.create_recordclass(*mtx)
 
