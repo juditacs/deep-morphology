@@ -27,12 +27,22 @@ class ReinflectionDataset(BaseDataset):
         self.tgt_field_idx = 1
 
     def load_or_create_vocabs(self):
-        lemma_vocab = Vocab(constants=self.constants)
-        if self.config.share_vocab:
-            infl_vocab = lemma_vocab
+        print(self.config.experiment_dir)
+        vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
+        if os.path.exists(vocab_pre + 'lemma'):
+            assert os.path.exists(vocab_pre + 'inflected')
+            assert os.path.exists(vocab_pre + 'tags')
+            lemma_vocab = Vocab(file=vocab_pre + 'lemma', frozen=True)
+            infl_vocab = Vocab(file=vocab_pre + 'inflected', frozen=True)
+            tag_vocab = Vocab(file=vocab_pre + 'tags', frozen=True)
         else:
-            infl_vocab = Vocab(constants=self.constants)
-        tag_vocab = Vocab(constants=['PAD', 'UNK'])
+
+            lemma_vocab = Vocab(constants=self.constants)
+            if self.config.share_vocab:
+                infl_vocab = lemma_vocab
+            else:
+                infl_vocab = Vocab(constants=self.constants)
+            tag_vocab = Vocab(constants=['PAD', 'UNK'])
         self.vocabs = ReinflectionFields(
             lemma=lemma_vocab,
             inflected=infl_vocab,
