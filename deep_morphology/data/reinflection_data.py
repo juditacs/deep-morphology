@@ -27,7 +27,6 @@ class ReinflectionDataset(BaseDataset):
         self.tgt_field_idx = 1
 
     def load_or_create_vocabs(self):
-        print(self.config.experiment_dir)
         vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
         if os.path.exists(vocab_pre + 'lemma'):
             assert os.path.exists(vocab_pre + 'inflected')
