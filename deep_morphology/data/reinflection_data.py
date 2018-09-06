@@ -19,6 +19,7 @@ ReinflectionFields = recordclass(
 class ReinflectionDataset(BaseDataset):
 
     unlabeled_data_class = 'UnlabeledReinflectionDataset'
+    data_recordclass = ReinflectionFields
 
     def __init__(self, config, stream_or_file):
         if config.use_eos:
@@ -44,9 +45,6 @@ class ReinflectionDataset(BaseDataset):
     def extract_sample_from_line(self, line):
         lemma, infl, tags = line.split("\t")
         return ReinflectionFields(list(lemma), list(infl), tags.split(';'))
-
-    def create_recordclass(self, *data):
-        return ReinflectionFields(*data)
 
     def print_raw(self, stream):
         for sample in self.raw:

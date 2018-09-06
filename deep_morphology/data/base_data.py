@@ -53,6 +53,7 @@ class Vocab:
             for symbol, id_ in sorted(self.vocab.items(), key=lambda x: x[1]):
                 f.write('{}\t{}\n'.format(symbol, id_))
 
+
 class BaseDataset:
 
     def __init__(self, config, stream_or_file):
@@ -108,8 +109,7 @@ class BaseDataset:
         self.mtx = self.create_recordclass(*mtx)
 
     def create_recordclass(self, *data):
-        raise NotImplementedError("Subclass of BaseData must define "
-                                  "create_recordclass")
+        return self.__class__.data_recordclass(*data)
 
     def decode_and_print(self, model_output, stream=stdout):
         assert len(model_output) == len(self.mtx[0])

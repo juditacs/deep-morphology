@@ -17,6 +17,7 @@ Seq2seqFields = recordclass('Seq2seqFields', ['src', 'tgt'])
 class Seq2seqDataset(BaseDataset):
 
     unlabeled_data_class = 'UnlabeledSeq2seqDataset'
+    data_recordclass = Seq2seqFields
 
     def __init__(self, config, stream_or_file):
         if config.use_eos:
@@ -48,9 +49,6 @@ class Seq2seqDataset(BaseDataset):
             src = list(src)
             tgt = list(tgt)
         return (src, tgt)
-
-    def create_recordclass(self, *data):
-        return Seq2seqFields(*data)
 
 
 class UnlabeledSeq2seqDataset(Seq2seqDataset):

@@ -15,15 +15,14 @@ TaggingFields = recordclass('TaggingFields', ['src', 'tgt'])
 
 class TaggingDataset(BaseDataset):
 
+    data_recordclass = TaggingFields
+
     def extract_sample_from_line(self, line):
         src, tgt = line.split('\t')[:2]
         return src, tgt
 
     def ignore_sample(self, sample):
         return len(sample.src) != len(sample.tgt)
-
-    def create_recordclass(self, *data):
-        return TaggingFields(*data)
 
 
 class UnlabeledTaggingDataset(TaggingDataset):
