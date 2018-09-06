@@ -119,11 +119,10 @@ class BaseDataset:
                        for s in output]
             if 'EOS' in decoded:
                 decoded = decoded[:decoded.index('EOS')]
-            if self.config.spaces:
-                decoded = " ".join(decoded)
-            else:
-                decoded = "".join(decoded)
             self.raw[i][self.tgt_field_idx] = decoded
+        self.print_raw(stream)
+
+    def print_raw(self, stream):
         for sample in self.raw:
             stream.write("{}\n".format("\t".join("".join(s) for s in sample)))
 
@@ -134,8 +133,7 @@ class BaseDataset:
             with open(path, 'w') as f:
                 for sym, idx in sorted(
                     getattr(self.vocabs, vocab_name).vocab.items(),
-                    key=lambda x: x[1]):
-                    f.write("{}\t{}\n".format(sym, idx))
+                    key=lambda x: x[1]): f.write("{}\t{}\n".format(sym, idx))
 
     def batched_iter(self, batch_size):
         PAD = [vocab['PAD'] for vocab in self.vocabs]

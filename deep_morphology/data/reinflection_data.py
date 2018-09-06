@@ -48,10 +48,20 @@ class ReinflectionDataset(BaseDataset):
     def create_recordclass(self, *data):
         return ReinflectionFields(*data)
 
+    def print_raw(self, stream):
+        for sample in self.raw:
+            stream.write("{}\t{}\t{}\n".format(
+                "".join(sample.lemma),
+                "".join(sample.inflected),
+                ";".join(sample.tags)
+            ))
+
 
 class UnlabeledReinflectionDataset(ReinflectionDataset):
     def extract_sample_from_line(self, line):
-        lemma, infl, tags = line.split("\t")
+        fd = line.split("\t")
+        lemma = fd[0]
+        tags = fd[-1]
         return ReinflectionFields(list(lemma), None, tags.split(';'))
 
     def load_or_create_vocabs(self):
