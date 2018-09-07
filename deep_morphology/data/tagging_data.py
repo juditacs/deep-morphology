@@ -17,7 +17,7 @@ class TaggingDataset(BaseDataset):
 
     unlabeled_data_class = 'UnlabeledTaggingDataset'
     data_recordclass = TaggingFields
-    constants = ['PAD', 'UNK', 'EOS']
+    constants = ['PAD', 'UNK']
 
     def extract_sample_from_line(self, line):
         src, tgt = line.split('\t')[:2]
