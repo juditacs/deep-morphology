@@ -28,7 +28,9 @@ class Vocab:
 
     def __getitem__(self, key):
         if self.frozen:
-            return self.vocab.get(key, self.vocab['UNK'])
+            if 'UNK' in self.vocab:
+                return self.vocab.get(key, self.vocab['UNK'])
+            return self.vocab[key]
         return self.vocab.setdefault(key, len(self.vocab))
 
     def __len__(self):
@@ -106,6 +108,8 @@ class BaseDataset:
             for i, part in enumerate(sample):
                 if part is None:  # unlabeled data
                     mtx[i] = None
+                elif isinstance(part, str):
+                    mtx[i].append(self.vocabs[i][part])
                 else:
                     vocab = self.vocabs[i]
                     idx = []
@@ -150,18 +154,20 @@ class BaseDataset:
                     key=lambda x: x[1]): f.write("{}\t{}\n".format(sym, idx))
 
     def batched_iter(self, batch_size):
-        PAD = [vocab['PAD'] for vocab in self.vocabs]
         for start in range(0, len(self), batch_size):
             end = start + batch_size
             batch = []
             for i, mtx in enumerate(self.mtx):
                 if mtx is None:
                     batch.append(None)
+                elif isinstance(mtx[0], int):
+                    batch.append(mtx[start:end])
                 else:
+                    PAD = self.vocabs[i]['PAD']
                     this_batch = mtx[start:end]
                     maxlen = max(len(d) for d in this_batch)
                     padded = [
-                        sample + [PAD[i]] * (maxlen-len(sample))
+                        sample + [PAD] * (maxlen-len(sample))
                         for sample in this_batch
                     ]
                     batch.append(padded)
