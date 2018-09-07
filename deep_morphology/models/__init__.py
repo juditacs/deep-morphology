@@ -4,5 +4,4 @@ from deep_morphology.models.hard_monotonic_attention import HardMonotonicAttenti
 from deep_morphology.models.luong_attention import LuongAttentionSeq2seq
 from deep_morphology.models.lstm_tagger import LSTMTagger
 from deep_morphology.models.reinflection_seq2seq import ReinflectionSeq2seq
-from deep_morphology.models.sigmorphon_task2_model import ContextInflectionSeq2seq, TwoHeadedContextAttention, MorphoSyntaxModel
-from deep_morphology.models.sigmorphon_task2_model import Task2Track2Model
+#from deep_morphology.models.sigmorphon_task2_model import ContextInflectionSeq2seq, TwoHeadedContextAttention, MorphoSyntaxModel

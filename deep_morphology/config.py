@@ -25,7 +25,7 @@ class Config:
         'toy_eval': None,
         'optimizer': 'Adam',
         'optimizer_kwargs': {},
-        'dataset_class': 'LabeledDataset',
+        'dataset_class': 'Seq2seqDataset',
         'early_stopping_ratio': 1.5,
         'cell_type': 'LSTM',
         'use_step': False,

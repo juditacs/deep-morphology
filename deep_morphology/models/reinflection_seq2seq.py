@@ -8,10 +8,8 @@
 
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
 import torch.nn.functional as F
 
-from deep_morphology.data import Vocab
 from deep_morphology.models.base import BaseModel
 
 use_cuda = torch.cuda.is_available()
@@ -122,18 +120,15 @@ class ReinflectionDecoder(nn.Module):
 class ReinflectionSeq2seq(BaseModel):
     def __init__(self, config, dataset):
         super().__init__(config)
-        if self.config.share_embedding:
-            input_size = len(set(dataset.vocab_src.keys()) |
-                             set(dataset.vocab_tgt.keys()))
-            output_size = input_size
-        else:
-            input_size = len(dataset.vocab_src)
-            output_size = len(dataset.vocab_tgt)
-        self.tag_size = len(dataset.vocab_tag)
+        input_size = len(dataset.vocabs.lemma)
+        output_size = len(dataset.vocabs.inflected)
+        self.tag_size = len(dataset.vocabs.tags)
         self.lemma_encoder = LemmaEncoder(config, input_size)
         self.tag_encoder = TagEncoder(config, self.tag_size)
         self.config = config
-        if self.config.share_embedding:
+        self.PAD = dataset.vocabs.inflected['PAD']
+        self.SOS = dataset.vocabs.inflected['SOS']
+        if self.config.share_vocab:
             #FIXME
             self.config.inflected_embedding_size = self.config.lemma_embedding_size
             self.decoder = ReinflectionDecoder(
@@ -141,14 +136,14 @@ class ReinflectionSeq2seq(BaseModel):
         else:
             self.decoder = ReinflectionDecoder(config, output_size)
         self.output_size = output_size
-        self.criterion = nn.CrossEntropyLoss(ignore_index=Vocab.CONSTANTS['PAD'])
+        self.criterion = nn.CrossEntropyLoss(ignore_index=self.PAD)
         self.h_proj = nn.Linear(self.config.lemma_hidden_size+self.config.tag_hidden_size,
                                 self.config.inflected_hidden_size)
         self.c_proj = nn.Linear(self.config.lemma_hidden_size+self.config.tag_hidden_size,
                                 self.config.inflected_hidden_size)
 
     def compute_loss(self, target, output):
-        target = to_cuda(Variable(torch.LongTensor(target[-1])))
+        target = to_cuda(torch.LongTensor(target.inflected))
         batch_size, seqlen, dim = output.size()
         output = output.contiguous().view(seqlen * batch_size, dim)
         target = target.view(seqlen * batch_size)
@@ -156,14 +151,11 @@ class ReinflectionSeq2seq(BaseModel):
         return loss
 
     def forward(self, batch):
-        has_target = batch.targets is not None and \
-            batch.targets[0] is not None
-        X_lemma = to_cuda(Variable(
-            torch.LongTensor(batch.lemmas))).transpose(0, 1)
-        X_tag = to_cuda(Variable(
-            torch.LongTensor(batch.tags))).transpose(0, 1)
+        has_target = batch.inflected is not None
+        X_lemma = to_cuda(torch.LongTensor(batch.lemma)).transpose(0, 1)
+        X_tag = to_cuda(torch.LongTensor(batch.tags)).transpose(0, 1)
         if has_target:
-            Y = to_cuda(Variable(torch.LongTensor(batch.targets)))
+            Y = to_cuda(torch.LongTensor(batch.inflected))
             Y = Y.transpose(0, 1)
 
         batch_size = X_lemma.size(1)
@@ -173,11 +165,10 @@ class ReinflectionSeq2seq(BaseModel):
         tag_outputs, tag_hidden = self.tag_encoder(X_tag)
 
         decoder_hidden = self.init_decoder_hidden(lemma_hidden, tag_hidden)
-        decoder_input = to_cuda(Variable(torch.LongTensor(
-            [Vocab.CONSTANTS['SOS']] * batch_size)))
+        decoder_input = to_cuda(torch.LongTensor([self.SOS] * batch_size))
 
-        all_decoder_outputs = to_cuda(Variable(torch.zeros((
-            seqlen_tgt, batch_size, self.output_size))))
+        all_decoder_outputs = to_cuda(torch.zeros((
+            seqlen_tgt, batch_size, self.output_size)))
 
         for t in range(seqlen_tgt):
             decoder_output, decoder_hidden = self.decoder(
