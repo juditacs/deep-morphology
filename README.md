@@ -120,3 +120,41 @@ This example can be found
 
 Each parameter is replaced in the base config with a randomly samples value
 from the parameter ranges file.
+
+# Adding a new dataset
+
+* Create a new source file in `deep_morphology/data`. Let's name it
+  `dummy_data.py`
+* Create a data class that inherits `BaseDataset`.
+* Create a `recordclass` (mutable version of `collections.namedtuple`) which
+  lists the fields of this class.
+* Define the labeled and unlabeled dataset classes (see below).
+* Add these to `deep_morphology/data/__init__.py`
+
+## Dataset class
+
+The dataset class must define 3 class attributes:
+
+1. `unlabeled_data_class`: this is the name of the corresponding unlabeled dataset class. The name should be a string since the class does not exits yet.
+2. `data_recordclass`: he recordclass corresponding to this dataset class. This should be the type itself (not a string).
+3. `constants`: list of constants that the vocabularies should define. Note that these used by `load_or_create_vocab` which can be redefined if necessary (for example different fields of the dataset should use different constants).
+
+The class must define the following functions:
+
+1. `extract_sample_from_line`: extracts a single sample from a line and returns and instance of the class' recordclass.
+2. `
+
+The class may override the following functions:
+
+1. `ignore_sample`: returns `True` if a sample should be skipped.
+
+### Unlabeled dataset class
+
+This class is used during inference.  This should inherit from the labeled
+dataset class.  You most likely need to override `extract_sample_from_line` to
+read unlabeled samples.
+
+
+# Adding a new model
+
+Models should inherit from `BaseModel` and define an `__init__`, and a `forward` function.
