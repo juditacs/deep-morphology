@@ -79,11 +79,23 @@ directory.
 An experiment directory contains:
 
 1. `config.yaml`: the final full configuration is saved here.
-2. `result.yaml`: contains the train and val loss in each epoch and the experiment's timestamp and running time.
-3. `vocab_src` and `vocab_tgt`: the source and target language vocabularies.
-4. `model.epoch_N` and similar: model parameters after epoch N if the
-   validation loss decreased compared to the current minimum.
+2. `result.yaml`: contains the train and val loss in each epoch and the
+   experiment's timestamp and running time.
+3. `vocab_*` and `vocab_*`: vocabularies for the model. Most models have a
+   source and a target vocabulary but some models have more than two.
+4. `model*` and similar: saved model(s). By default only the best (lowest dev
+   loss) model is saved. If `overwrite_model` is set to False, every model that
+   is better than the previous best one is saved as `model.epoch_N`, where `N`
+   is the epoch number (starting from 0).
 
+## Inference
+
+   python deep_morphology/inference.py -e <EXPERIMENT DIR> -t <TEST FILE> > output
+
+The inference script's only mandatory argument is the experiment directory. It
+loads the configuration and the model from the directory and runs the model on
+the test data. Test data may be provided via a file (`-t` option), otherwise it
+is read from the standard input. The output is written to the standard output.
 
 ## Hyperparameter tuning
 
