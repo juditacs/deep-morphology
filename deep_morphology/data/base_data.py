@@ -130,6 +130,8 @@ class BaseDataset:
             output = list(model_output[i])
             decoded = [self.vocabs[self.tgt_field_idx].inv_lookup(s)
                        for s in output]
+            if decoded[0] == 'SOS':
+                decoded = decoded[1:]
             if 'EOS' in decoded:
                 decoded = decoded[:decoded.index('EOS')]
             self.raw[i][self.tgt_field_idx] = decoded
