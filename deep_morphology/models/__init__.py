@@ -2,4 +2,5 @@ from deep_morphology.models.base import BaseModel
 from deep_morphology.models.hard_monotonic_attention import HardMonotonicAttentionSeq2seq
 from deep_morphology.models.luong_attention import LuongAttentionSeq2seq
 from deep_morphology.models.lstm_tagger import LSTMTagger
+from deep_morphology.models.sequence_classifier import SequenceClassifier
 from deep_morphology.models.reinflection_seq2seq import ReinflectionSeq2seq
