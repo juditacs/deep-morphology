@@ -8,7 +8,6 @@
 
 import torch
 import torch.nn as nn
-from torch import optim
 
 from deep_morphology.models import BaseModel
 
@@ -25,8 +24,8 @@ def to_cuda(var):
 class LSTMTagger(BaseModel):
     def __init__(self, config, dataset):
         super().__init__(config)
-        input_size = len(dataset.vocab_src)
-        output_size = len(dataset.vocab_tgt)
+        input_size = len(dataset.vocabs.src)
+        output_size = len(dataset.vocabs.tgt)
         self.hidden_size = self.config.hidden_size_src
         self.embedding_dropout = nn.Dropout(self.config.dropout)
         self.embedding = nn.Embedding(
@@ -38,32 +37,24 @@ class LSTMTagger(BaseModel):
                             bidirectional=True)
         self.out_proj = nn.Linear(self.hidden_size, output_size)
         self.criterion = nn.CrossEntropyLoss(
-            ignore_index=dataset.vocab.tgt['PAD'])
+            ignore_index=dataset.vocabs.tgt['PAD'])
 
     def forward(self, batch):
-        input = to_cuda(torch.from_numpy(batch[0]).long())
+        input = to_cuda(torch.LongTensor(batch.src))
         input = input.transpose(0, 1)  # time_major
-        input_seqlen = batch[1]
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
-        packed = torch.nn.utils.rnn.pack_padded_sequence(embedded, input_seqlen)
-        outputs, hidden = self.cell(packed)
-        outputs, ol = torch.nn.utils.rnn.pad_packed_sequence(outputs)
+        outputs, hidden = self.cell(embedded)
         outputs = outputs[:, :, :self.hidden_size] + \
             outputs[:, :, self.hidden_size:]
         outputs = self.out_proj(outputs)
         return outputs.transpose(0, 1)
 
     def compute_loss(self, target, output):
-        target = to_cuda(torch.from_numpy(target[2]).long())
+        target = to_cuda(torch.LongTensor(target.tgt))
         batch_size, seqlen, dim = output.size()
         output = output.contiguous().view(seqlen * batch_size, dim)
         target = target[:, :seqlen].contiguous()
         target = target.view(seqlen * batch_size)
         loss = self.criterion(output, target)
         return loss
-
-    def init_optimizers(self):
-        opt_type = getattr(optim, self.config.optimizer)
-        kwargs = self.config.optimizer_kwargs
-        self.optimizers = [opt_type(self.parameters(), **kwargs)]
