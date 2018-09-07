@@ -121,6 +121,10 @@ class BaseDataset:
         return self.__class__.data_recordclass(*data)
 
     def decode_and_print(self, model_output, stream=stdout):
+        self.decode(model_output)
+        self.print_raw(stream)
+
+    def decode(self, model_output):
         assert len(model_output) == len(self.mtx[0])
         for i, sample in enumerate(self.raw):
             output = list(model_output[i])
@@ -129,11 +133,10 @@ class BaseDataset:
             if 'EOS' in decoded:
                 decoded = decoded[:decoded.index('EOS')]
             self.raw[i][self.tgt_field_idx] = decoded
-        self.print_raw(stream)
 
     def print_raw(self, stream):
         for sample in self.raw:
-            stream.write("{}\n".format("\t".join("".join(s) for s in sample)))
+            stream.write("{}\n".format("\t".join(" ".join(s) for s in sample)))
 
     def save_vocabs(self):
         for vocab_name in self.vocabs._fields:
