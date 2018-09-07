@@ -108,7 +108,12 @@ class BaseDataset:
                     mtx[i] = None
                 else:
                     vocab = self.vocabs[i]
-                    idx = [vocab[s] for s in part] + [vocab['EOS']]
+                    idx = []
+                    if 'SOS' in vocab:
+                        idx.append(vocab['SOS'])
+                    idx.extend([vocab[s] for s in part])
+                    if 'EOS' in vocab:
+                        idx.append(vocab['EOS'])
                     mtx[i].append(idx)
         self.mtx = self.create_recordclass(*mtx)
 
