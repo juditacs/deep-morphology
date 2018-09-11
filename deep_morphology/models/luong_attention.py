@@ -29,11 +29,12 @@ class EncoderRNN(nn.Module):
         self.embedding_dropout = nn.Dropout(config.dropout)
         self.embedding = nn.Embedding(input_size, config.embedding_size_src)
         nn.init.xavier_uniform_(self.embedding.weight)
+        dropout = 0 if self.config.num_layers_src < 2 else self.config.dropout
         self.cell = nn.LSTM(
             self.config.embedding_size_src, self.config.hidden_size,
             num_layers=self.config.num_layers_src,
             bidirectional=True,
-            dropout=self.config.dropout,
+            dropout=dropout,
         )
 
     def forward(self, input):
@@ -94,19 +95,20 @@ class LuongAttentionDecoder(nn.Module):
         self.attn = Attention('general', self.config.hidden_size)
 
     def __init_cell(self):
+        dropout = 0 if self.config.num_layers_tgt < 2 else self.config.dropout
         if self.config.cell_type == 'LSTM':
             self.cell = nn.LSTM(
                 self.config.embedding_size_tgt, self.config.hidden_size,
                 num_layers=self.config.num_layers_tgt,
                 bidirectional=False,
-                dropout=self.config.dropout,
+                dropout=dropout,
             )
         elif self.config.cell_type == 'GRU':
             self.cell = nn.GRU(
                 self.config.embedding_size_tgt, self.config.hidden_size,
                 num_layers=self.config.num_layers_tgt,
                 bidirectional=False,
-                dropout=self.config.dropout,
+                dropout=dropout,
             )
 
     def forward(self, input_seq, last_hidden, encoder_outputs):
