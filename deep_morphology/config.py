@@ -95,6 +95,9 @@ class Config:
             self.experiment_dir = os.path.join(
                 self.experiment_dir, fmt.format(i))
             os.makedirs(self.experiment_dir)
+        else:
+            if not os.path.exists(self.experiment_dir):
+                os.makedirs(self.experiment_dir)
         if self.vocab_path_src is None:
             self.vocab_path_src = os.path.join(
                 self.experiment_dir, 'vocab_src')
