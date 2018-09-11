@@ -65,13 +65,17 @@ class Config:
         return cfg
 
     def __init__(self, **kwargs):
-        for param, val in self.defaults.items():
-            setattr(self, param, val)
         for param, val in kwargs.items():
             setattr(self, param, val)
         self.__expand_variables()
         self.__derive_params()
         self.__validate_params()
+
+    def __getattr__(self, attr):
+        if attr in self.defaults:
+            setattr(self, attr, self.__class__.defaults[attr])
+            return getattr(self, attr)
+        raise AttributeError(attr)
 
     def __expand_variables(self):
         var_re = re.compile(r'\$\{([^}]+)\}')
@@ -115,7 +119,7 @@ class Config:
         for k in dir(self):
             if k.startswith('__') and k.endswith('__'):
                 continue
-            if k == 'path_variables':
+            if k in ('path_variables', 'defaults'):
                 continue
             if not hasattr(self, k):
                 continue
@@ -127,7 +131,7 @@ class Config:
                 v = getattr(self, k, None)
             d[k.lstrip('_')] = v
         with open(save_fn, 'w') as f:
-            yaml.dump(d, f)
+            yaml.dump(d, f, default_flow_style=False)
 
 
 class InferenceConfig(Config):
