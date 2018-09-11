@@ -43,10 +43,13 @@ def check_and_get_commit_hash():
             staged.append(filename)
         else:
             raise ValueError("Unable to parse status message")
-    #if len(unstaged) > 0 or len(staged) > 0:
-        #raise UncleanWorkingDirectoryException(
-            #"Unstaged files: {}\nStaged but not commited files: {}".format(
-                #"\n".join(unstaged), "\n".join(staged)))
+    if len(unstaged) > 0 or len(staged) > 0:
+        CRED = '\033[91m'
+        CGREEN = '\033[32m'
+        CEND = '\033[0m'
+        raise UncleanWorkingDirectoryException(
+            "Unstaged files:\n{0}{3}{2}\nStaged but not commited files: {1}{4}{2}".format(
+                CRED, CGREEN, CEND, "\n".join(unstaged), "\n".join(staged)))
 
     commit_hash, _ = run_command(
         "cd {}; git log --pretty=format:'%H' -n 1".format(
