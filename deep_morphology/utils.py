@@ -48,7 +48,8 @@ def check_and_get_commit_hash():
         CGREEN = '\033[32m'
         CEND = '\033[0m'
         raise UncleanWorkingDirectoryException(
-            "Unstaged files:\n{0}{3}{2}\nStaged but not commited files: {1}{4}{2}".format(
+            "Unstaged files:\n{0}{3}{2}\nStaged "
+            "but not commited files:\n{1}{4}{2}".format(
                 CRED, CGREEN, CEND, "\n".join(unstaged), "\n".join(staged)))
 
     commit_hash, _ = run_command(
