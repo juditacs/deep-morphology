@@ -197,24 +197,3 @@ class LuongAttentionSeq2seq(BaseModel):
         else:
             decoder_hidden = encoder_hidden[:num_layers]
         return decoder_hidden
-
-    def run_inference2(self, data, mode, **kwargs):
-        if mode != 'greedy':
-            raise ValueError("Unsupported decoding mode: {}".format(mode))
-        self.train(False)
-        all_output = []
-        attn_weights = []
-        for bi, batch in enumerate(data.batched_iter(self.config.batch_size)):
-            if self.config.save_attention_weights:
-                output, aw = self.forward(batch)
-                attn_weights.append(aw)
-            else:
-                output = self.forward(batch)
-            output = output.data.cpu().numpy()
-            if output.ndim == 3:
-                output = output.argmax(axis=2)
-            all_output.extend(list(output))
-        if self.config.save_attention_weights:
-            torch.save(torch.cat(attn_weights),
-                       self.config.save_attention_weights)
-        return all_output
