@@ -25,7 +25,7 @@ def parse_args():
 
 
 def get_config_name(config_or_dir):
-    if os.path.basename(config_or_dir) == "config.yaml":
+    if os.path.splitext(config_or_dir)[-1] == ".yaml":
         return config_or_dir
     return os.path.join(config_or_dir, "config.yaml")
 
