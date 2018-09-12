@@ -9,6 +9,7 @@ setup(name='deep_morphology',
       license='MIT',
       packages=['deep_morphology'],
       install_requires=[
+          'recordclass',
           'pyyaml',
           'numpy',
           'torch',
