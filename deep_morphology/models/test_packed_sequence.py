@@ -25,12 +25,12 @@ class Encoder(nn.Module):
         self.config = config
 
         self.embedding_dropout = nn.Dropout(config.dropout)
-        self.embedding = nn.Embedding(input_size, config.embedding_size_src)
+        self.embedding = nn.Embedding(input_size, config.embedding_size)
         nn.init.xavier_uniform_(self.embedding.weight)
-        dropout = 0 if self.config.num_layers_src < 2 else self.config.dropout
+        dropout = 0 if self.config.num_layers < 2 else self.config.dropout
         self.cell = nn.LSTM(
-            self.config.embedding_size_src, self.config.hidden_size,
-            num_layers=self.config.num_layers_src,
+            self.config.embedding_size, self.config.hidden_size,
+            num_layers=self.config.num_layers,
             bidirectional=True,
             dropout=dropout,
         )
@@ -59,8 +59,8 @@ class Decoder(nn.Module):
         nn.init.xavier_uniform_(self.embedding.weight)
         hidden_size = self.config.hidden_size
         self.cell = nn.LSTM(
-            self.config.inflected_embedding_size, hidden_size,
-            num_layers=self.config.inflected_num_layers,
+            self.config.embedding_size, hidden_size,
+            num_layers=self.config.num_layers,
             bidirectional=False,
             batch_first=False,
             dropout=self.config.dropout)
@@ -79,16 +79,15 @@ class Decoder(nn.Module):
         e = e.transpose(0, 1).bmm(rnn_output.permute(1, 2, 0))
         e = e.squeeze(2)
         attn = self.softmax(e)
-        context = attn.unsqueeze(1).bmm(
-            encoder_outputs.transpose(0, 1))
+        context = attn.unsqueeze(1).bmm(encoder_outputs.transpose(0, 1))
 
-        concat_input = torch.cat((rnn_output, context), 1)
-        concat_output = F.tanh(self.concat(concat_input))
-        output = self.out(concat_output)
+        concat_input = torch.cat((rnn_output.squeeze(0), context.squeeze(1)), 1)
+        concat_output = torch.tanh(self.concat(concat_input))
+        output = self.output_proj(concat_output)
         return output, hidden
 
 
-class TestAttentionSeq2seq(BaseModel):
+class TestPackedSeq2seq(BaseModel):
     def __init__(self, config, dataset):
         super().__init__(config)
         input_size = len(dataset.vocabs.src)
@@ -123,29 +122,21 @@ class TestAttentionSeq2seq(BaseModel):
         seqlen_tgt = Y.size(0) if has_target else seqlen_src * 4
         encoder_outputs, encoder_hidden = self.encoder(X)
 
-        decoder_hidden = encoder_hidden
+        nl = self.config.num_layers
+        decoder_hidden = tuple(e[:nl] + e[nl:] for e in encoder_hidden)
         decoder_input = to_cuda(torch.LongTensor([self.SOS] * batch_size))
 
         all_decoder_outputs = to_cuda(torch.zeros((
             seqlen_tgt, batch_size, self.output_size)))
 
-        if self.config.save_attention_weights:
-            all_attn_weights = to_cuda(torch.zeros((
-                seqlen_tgt, batch_size, seqlen_src-1)))
-
         for t in range(seqlen_tgt):
-            decoder_output, decoder_hidden, attn_weights = self.decoder(
+            decoder_output, decoder_hidden = self.decoder(
                 decoder_input, decoder_hidden, encoder_outputs
             )
             all_decoder_outputs[t] = decoder_output
-            if self.config.save_attention_weights:
-                all_attn_weights[t] = attn_weights
             if has_target:
                 decoder_input = Y[t]
             else:
                 val, idx = decoder_output.max(-1)
                 decoder_input = idx
-        if self.config.save_attention_weights:
-            return all_decoder_outputs.transpose(0, 1), \
-                all_attn_weights.transpose(0, 1)
         return all_decoder_outputs.transpose(0, 1)
