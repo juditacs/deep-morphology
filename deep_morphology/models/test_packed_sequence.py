@@ -7,6 +7,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 from deep_morphology.models.base import BaseModel
 
@@ -33,12 +34,18 @@ class Encoder(nn.Module):
             num_layers=self.config.num_layers,
             bidirectional=True,
             dropout=dropout,
+            batch_first=False,
         )
 
-    def forward(self, input):
+    def forward(self, input, input_len):
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
-        outputs, hidden = self.cell(embedded)
+        if self.config.packed:
+            embedded = torch.nn.utils.rnn.pack_padded_sequence(embedded, input_len)
+            outputs, hidden = self.cell(embedded)
+            outputs, _ = torch.nn.utils.rnn.pad_packed_sequence(outputs)
+        else:
+            outputs, hidden = self.cell(embedded)
         outputs = outputs[:, :, :self.config.hidden_size] + \
             outputs[:, :, self.config.hidden_size:]
         return outputs, hidden
@@ -98,7 +105,10 @@ class TestPackedSeq2seq(BaseModel):
         self.PAD = dataset.vocabs.src['PAD']
         self.SOS = dataset.vocabs.tgt['SOS']
         self.output_size = output_size
-        self.criterion = nn.CrossEntropyLoss(ignore_index=self.PAD)
+        if config.mask_pad_in_loss:
+            self.criterion = nn.CrossEntropyLoss(ignore_index=self.PAD)
+        else:
+            self.criterion = nn.CrossEntropyLoss()
 
     def compute_loss(self, target, output):
         target = to_cuda(torch.LongTensor(target.tgt))
@@ -120,7 +130,7 @@ class TestPackedSeq2seq(BaseModel):
         batch_size = X.size(1)
         seqlen_src = X.size(0)
         seqlen_tgt = Y.size(0) if has_target else seqlen_src * 4
-        encoder_outputs, encoder_hidden = self.encoder(X)
+        encoder_outputs, encoder_hidden = self.encoder(X, batch.src_len)
 
         nl = self.config.num_layers
         decoder_hidden = tuple(e[:nl] + e[nl:] for e in encoder_hidden)
@@ -140,3 +150,31 @@ class TestPackedSeq2seq(BaseModel):
                 val, idx = decoder_output.max(-1)
                 decoder_input = idx
         return all_decoder_outputs.transpose(0, 1)
+
+    def run_epoch(self, data, do_train):
+        epoch_loss = 0
+        for bi, (batch, order) in enumerate(data.batched_iter(self.config.batch_size)):
+            output = self.forward(batch)
+            for opt in self.optimizers:
+                opt.zero_grad()
+            loss = self.compute_loss(batch, output)
+            if do_train:
+                loss.backward()
+                for opt in self.optimizers:
+                    opt.step()
+            epoch_loss += loss.item()
+        return epoch_loss / len(data)
+
+    def run_inference(self, data):
+        self.train(False)
+        all_output = []
+        for bi, (batch, order) in enumerate(data.batched_iter(self.config.batch_size)):
+            output = self.forward(batch)
+            output = output.data.cpu().numpy()
+            if self.config.packed:
+                output =  output[np.argsort(order)]
+            if output.ndim == 3:
+                output = output.argmax(axis=2)
+            all_output.extend(list(output))
+        return all_output
+
