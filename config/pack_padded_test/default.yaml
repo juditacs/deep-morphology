@@ -6,10 +6,16 @@ hidden_size: 512
 num_layers: 2
 dropout: 0.3
 
-epochs: 200
+epochs: 100
 batch_size: 128
 
 optimizer: Adam
 
 experiment_dir: exps/test_packed
-save_min_epoch: 0
+save_min_epoch: 5 
+
+# testing
+packed: false
+pad_batch_level: false
+pad_right: true
+mask_pad_in_loss: false
