@@ -49,89 +49,84 @@ MaxPlusSemiring = Semiring(
 )
 
 
-class SopaEncoder(nn.Module):
-    def __init__(self, config, input_size):
+class Sopa(nn.Module):
+    def __init__(self, config):
         super().__init__()
         self.config = config
-        self.input_size = input_size
 
-        self.embedding_dropout = nn.Dropout(config.dropout)
-        self.embedding = nn.Embedding(input_size, config.embedding_size)
-        self.embedding.requires_grad = False
-        nn.init.xavier_uniform_(self.embedding.weight)
-
-        dropout = 0 if self.config.num_layers < 2 else self.config.dropout
-        if dropout > 0:
-            self.dropout = torch.nn.Dropout(dropout)
-        self.cell = nn.LSTM(
-            self.config.embedding_size, self.config.hidden_size,
-            num_layers=self.config.num_layers,
-            bidirectional=True,
-            dropout=dropout,
-            batch_first=False,
-        )
-
-        # SOPA parameters
         self.semiring = MaxPlusSemiring
         # dict of patterns
         self.patterns = self.config.patterns
         self.pattern_maxlen = max(self.patterns.keys())
         self.num_patterns = sum(self.patterns.values())
         diag_size = 2 * self.num_patterns * self.pattern_maxlen
-        self.diags = torch.nn.Parameter(torch.randn((diag_size, self.config.hidden_size)))
+        self.diags = torch.nn.Parameter(torch.randn(
+            (diag_size, self.config.hidden_size)))
         self.bias = torch.nn.Parameter(torch.randn((diag_size, 1)))
-        self.epsilon = torch.nn.Parameter(torch.randn(self.num_patterns, self.pattern_maxlen - 1))
-        self.epsilon_scale = self.to_cuda(self.semiring.one(1))
+        self.epsilon = torch.nn.Parameter(torch.randn(
+            self.num_patterns, self.pattern_maxlen - 1))
+        self.epsilon_scale = self.semiring.one(1)
         self.epsilon_scale.requires_grad = False
-        self.self_loop_scale = torch.nn.Parameter(torch.randn(1), requires_grad=False)
+        self.self_loop_scale = torch.nn.Parameter(
+            torch.randn(1), requires_grad=False)
+        dropout = 0 if self.config.num_layers < 2 else self.config.dropout
+        if dropout > 0:
+            self.dropout = torch.nn.Dropout(dropout)
 
         end_states = []
         for plen, pnum in sorted(self.patterns.items()):
             end_states.extend([plen-1] * pnum)
-        self.end_states = self.to_cuda(torch.LongTensor(end_states).unsqueeze(1))
+        self.end_states = torch.LongTensor(end_states).unsqueeze(1)
         self.end_states.requires_grad = False
 
+    @property
+    def is_cuda(self):
+        return next(self.parameters()).is_cuda
+
     def forward(self, input, input_len):
-
-        embedded = self.embedding(input)
-        embedded = self.embedding_dropout(embedded)
-        outputs, hidden = self.cell(embedded)
-        outputs = outputs[:, :, :self.config.hidden_size] + \
-            outputs[:, :, self.config.hidden_size:]
-
-        transition_matrices = self.get_transition_matrices(outputs)
+        transition_matrices = self.get_transition_matrices(input)
 
         batch_size = input.size(1)
         num_patterns = self.num_patterns
-        scores = self.to_cuda(torch.FloatTensor(self.semiring.zero(batch_size, num_patterns)))
+        scores = self.to_cuda(torch.FloatTensor(
+            self.semiring.zero(batch_size, num_patterns)))
         scores.requires_grad = False
-        restart_padding = self.to_cuda(torch.FloatTensor(self.semiring.one(batch_size, num_patterns, 1)))
+        restart_padding = self.to_cuda(torch.FloatTensor(
+            self.semiring.one(batch_size, num_patterns, 1)))
         restart_padding.requires_grad = False
-        zero_padding = self.to_cuda(torch.FloatTensor(self.semiring.zero(batch_size, num_patterns, 1)))
+        zero_padding = self.to_cuda(torch.FloatTensor(
+            self.semiring.zero(batch_size, num_patterns, 1)))
         zero_padding.requires_grad = False
         self_loop_scale = self.semiring.from_float(self.self_loop_scale)
         self_loop_scale.requires_grad = False
 
-        batch_end_states = self.end_states.expand(batch_size, num_patterns, 1)
-        hiddens = self.to_cuda(self.semiring.zero(batch_size, num_patterns, self.pattern_maxlen))
-        hiddens[:, :, 0] = self.to_cuda(self.semiring.one(batch_size, num_patterns))
+        batch_end_states = self.end_states.expand(
+            batch_size, num_patterns, 1)
+        hiddens = self.to_cuda(self.semiring.zero(
+            batch_size, num_patterns, self.pattern_maxlen))
+        hiddens[:, :, 0] = self.to_cuda(
+            self.semiring.one(batch_size, num_patterns))
 
         all_hiddens = [hiddens]
         input_len = self.to_cuda(torch.LongTensor(input_len))
         input_len.requires_grad = False
 
         for i, tr_mtx in enumerate(transition_matrices):
-            hiddens = self.transition_once(hiddens, tr_mtx, zero_padding, restart_padding, self_loop_scale)
+            hiddens = self.transition_once(
+                hiddens, tr_mtx, zero_padding,
+                restart_padding, self_loop_scale)
             all_hiddens.append(hiddens)
 
-            end_state_vals = torch.gather(hiddens, 2, batch_end_states).view(batch_size, num_patterns)
+            end_state_vals = torch.gather(
+                hiddens, 2, batch_end_states).view(
+                    batch_size, num_patterns)
             active_docs = torch.nonzero(torch.gt(input_len, i)).squeeze()
             scores[active_docs] = self.semiring.plus(
                 scores[active_docs], end_state_vals[active_docs]
             )
 
         scores = self.semiring.to_float(scores)
-        return outputs, hidden, scores, all_hiddens
+        return scores, all_hiddens
 
     def transition_once(self, hiddens, transition_matrix, zero_padding, restart_padding, self_loop_scale):
         after_epsilons = self.semiring.plus(
@@ -168,6 +163,46 @@ class SopaEncoder(nn.Module):
 
         batched_scores = [scores[:, n, :, :, :] for n in range(l)]
         return batched_scores
+
+    def to_cuda(self, tensor):
+        if self.is_cuda:
+            return tensor.cuda()
+        return tensor
+
+
+class SopaEncoder(nn.Module):
+    def __init__(self, config, input_size):
+        super().__init__()
+        self.config = config
+        self.input_size = input_size
+
+        self.embedding_dropout = nn.Dropout(config.dropout)
+        self.embedding = nn.Embedding(input_size, config.embedding_size)
+        self.embedding.requires_grad = False
+        nn.init.xavier_uniform_(self.embedding.weight)
+
+        dropout = 0 if self.config.num_layers < 2 else self.config.dropout
+        if dropout > 0:
+            self.dropout = torch.nn.Dropout(dropout)
+        self.cell = nn.LSTM(
+            self.config.embedding_size, self.config.hidden_size,
+            num_layers=self.config.num_layers,
+            bidirectional=True,
+            dropout=dropout,
+            batch_first=False,
+        )
+        self.sopa = Sopa(config)
+
+    def forward(self, input, input_len):
+
+        embedded = self.embedding(input)
+        embedded = self.embedding_dropout(embedded)
+        outputs, hidden = self.cell(embedded)
+        outputs = outputs[:, :, :self.config.hidden_size] + \
+            outputs[:, :, self.config.hidden_size:]
+
+        scores, sopa_hiddens = self.sopa(outputs, input_len)
+        return outputs, hidden, scores, sopa_hiddens
 
     def to_cuda(self, tensor):
         if self.config.cpu_only:
