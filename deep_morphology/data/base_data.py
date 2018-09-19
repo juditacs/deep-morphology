@@ -108,6 +108,8 @@ class BaseDataset:
             for i, part in enumerate(sample):
                 if part is None:  # unlabeled data
                     mtx[i] = None
+                elif isinstance(part, int):
+                    mtx[i].append(part)
                 elif isinstance(part, str):
                     mtx[i].append(self.vocabs[i][part])
                 else:
