@@ -21,6 +21,9 @@ def parse_args():
                    help="YAML config file location")
     p.add_argument("--train-file", type=str, default=None)
     p.add_argument("--dev-file", type=str, default=None)
+    p.add_argument("-N", "--N", type=int, default=1,
+                   help="Number of experiments-per-combination to run. "
+                   "N*12 experiments are run in total.")
     return p.parse_args()
 
 
@@ -34,7 +37,7 @@ def vary_params(config_fn, params):
 
 def main():
     args = parse_args()
-    for n in range(20):
+    for n in range(args.N):
         logging.info("Round {}".format(n+1))
         # packed
 
