@@ -148,6 +148,8 @@ class BaseDataset:
 
     def save_vocabs(self):
         for vocab_name in self.vocabs._fields:
+            if getattr(self.vocabs, vocab_name) is None:
+                continue
             path = os.path.join(
                 self.config.experiment_dir, 'vocab_{}'.format(vocab_name))
             with open(path, 'w') as f:
