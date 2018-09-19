@@ -12,6 +12,7 @@ import torch.nn.functional as F
 import numpy as np
 
 from deep_morphology.models.base import BaseModel
+from deep_morphology.models.attention import LuongAttention
 
 use_cuda = torch.cuda.is_available()
 
@@ -197,7 +198,7 @@ class Decoder(nn.Module):
             bidirectional=False,
             batch_first=False,
             dropout=self.config.dropout)
-        self.attn_w = nn.Linear(hidden_size, hidden_size)
+        self.attention = LuongAttention(hidden_size, 'dot')
         self.concat = nn.Linear(2*hidden_size, hidden_size)
         self.output_proj = nn.Linear(hidden_size, output_size)
         self.softmax = nn.Softmax(dim=-1)
@@ -213,11 +214,7 @@ class Decoder(nn.Module):
         embedded = embedded.view(1, *embedded.size())
         rnn_output, hidden = self.cell(embedded, last_hidden)
 
-        e = self.attn_w(encoder_outputs)
-        e = e.transpose(0, 1).bmm(rnn_output.permute(1, 2, 0))
-        e = e.squeeze(2)
-        attn = self.softmax(e)
-        context = attn.unsqueeze(1).bmm(encoder_outputs.transpose(0, 1))
+        context = self.attention(encoder_outputs, rnn_output)
 
         concat_input = torch.cat((rnn_output.squeeze(0), context.squeeze(1)), 1)
         concat_output = torch.tanh(self.concat(concat_input))
