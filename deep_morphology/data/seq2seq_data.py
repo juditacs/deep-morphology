@@ -99,64 +99,11 @@ class InflectionDataset(BaseDataset):
             output = list(model_output[i])
             decoded = [self.vocabs.tgt.inv_lookup(s)
                        for s in output]
+            if decoded[0] == 'SOS':
+                decoded = decoded[1:]
             if 'EOS' in decoded:
                 decoded = decoded[:decoded.index('EOS')]
             self.raw[i].tgt = decoded
-
-    def batched_iter(self, batch_size):
-        for start in range(0, len(self), batch_size):
-            end = start + batch_size
-            batch = Seq2seqWithLenFields(*(s[start:end] for s in self.mtx))
-            order = np.argsort(-np.array(batch.src_len))
-            if self.config.pad_batch_level:
-                maxlen_src = max(batch.src_len)
-                maxlen_tgt = max(batch.tgt_len) + 1
-                PAD_src = self.vocabs.src['PAD']
-                PAD_tgt = self.vocabs.tgt['PAD']
-                if self.config.pad_right:
-                    batch.src = [
-                        sample + [PAD_src] * (maxlen_src - len(sample))
-                        for sample in batch.src
-                    ]
-                    batch.tgt = [
-                        sample + [PAD_tgt] * (maxlen_tgt - len(sample))
-                        for sample in batch.tgt
-                    ]
-                else:
-                    batch.src = [
-                        [PAD_src] * (maxlen_src - len(sample)) + sample
-                        for sample in batch.src
-                    ]
-                    batch.tgt = [
-                        sample + [PAD_tgt] * (maxlen_tgt - len(sample))
-                        for sample in batch.tgt
-                    ]
-            if self.config.packed:
-                batch = Seq2seqWithLenFields(*(np.array(b)[order].tolist() for b in batch))
-            yield batch, order
-
-    def to_idx(self):
-        self.mtx = Seq2seqWithLenFields([], [], [], [])
-        maxlen_src = max(sample.src_len for sample in self.raw)
-        maxlen_tgt = max(sample.tgt_len for sample in self.raw) + 1
-        for sample in self.raw:
-            self.mtx.src_len.append(sample.src_len)
-            self.mtx.tgt_len.append(sample.tgt_len)
-
-            if self.config.pad_batch_level is False:
-                if self.config.pad_right:
-                    src = sample.src + ['PAD'] * (maxlen_src - len(sample.src))
-                    tgt = sample.tgt + ['EOS'] + ['PAD'] * (maxlen_tgt - len(sample.tgt))
-                else:
-                    src = ['PAD'] * (maxlen_src - len(sample.src)) + sample.src
-                    tgt = sample.tgt + ['EOS'] + ['PAD'] * (maxlen_tgt - len(sample.tgt))
-            else:
-                src = sample.src
-                tgt = sample.tgt + ['EOS']
-            src = [self.vocabs.src[s] for s in src]
-            tgt = [self.vocabs.tgt[s] for s in tgt]
-            self.mtx.src.append(src)
-            self.mtx.tgt.append(tgt)
 
 
 class UnlabeledInflectionDataset(InflectionDataset):
@@ -168,49 +115,3 @@ class UnlabeledInflectionDataset(InflectionDataset):
         src = ["<L>"] + list(lemma) + ["</L>", "<T>"] + tags + ["</T>"]
         tgt = None
         return Seq2seqWithLenFields(src, tgt, len(src), None)
-    
-    def to_idx(self):
-        self.mtx = Seq2seqWithLenFields([], [], [], [])
-        maxlen_src = max(sample.src_len for sample in self.raw)
-        for sample in self.raw:
-            self.mtx.src_len.append(sample.src_len)
-            self.mtx.tgt_len.append(None)
-
-            if self.config.pad_batch_level is False:
-                if self.config.pad_right:
-                    src = sample.src + ['PAD'] * (maxlen_src - len(sample.src))
-                else:
-                    src = ['PAD'] * (maxlen_src - len(sample.src)) + sample.src
-            else:
-                src = sample.src
-            src = [self.vocabs.src[s] for s in src]
-            self.mtx.src.append(src)
-            self.mtx.tgt.append(None)
-
-    def batched_iter(self, batch_size):
-        for start in range(0, len(self), batch_size):
-            end = start + batch_size
-            batch = Seq2seqWithLenFields(*(s[start:end] for s in self.mtx))
-            order = np.argsort(-np.array(batch.src_len))
-            if self.config.pad_batch_level:
-                maxlen_src = max(batch.src_len)
-                PAD_src = self.vocabs.src['PAD']
-                if self.config.pad_right:
-                    batch.src = [
-                        sample + [PAD_src] * (maxlen_src - len(sample))
-                        for sample in batch.src
-                    ]
-                    batch.tgt = None
-                else:
-                    batch.src = [
-                        [PAD_src] * (maxlen_src - len(sample)) + sample
-                        for sample in batch.src
-                    ]
-                    batch.tgt = None
-            else:
-                batch.tgt = None
-            if self.config.packed:
-                batch.src = np.array(batch.src)[order].tolist()
-                batch.src_len = np.array(batch.src_len)[order].tolist()
-            yield batch, order
-
