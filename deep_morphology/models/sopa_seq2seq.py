@@ -72,6 +72,8 @@ class Sopa(nn.Module):
         dropout = 0 if self.config.num_layers < 2 else self.config.dropout
         if dropout > 0:
             self.dropout = torch.nn.Dropout(dropout)
+        else:
+            self.dropout = None
 
         end_states = []
         for plen, pnum in sorted(self.patterns.items()):
@@ -157,7 +159,7 @@ class Sopa(nn.Module):
         scores = self.semiring.from_float(
             torch.mm(self.diags, inputs.contiguous().view(b*l, self.config.hidden_size).t()) 
             + self.config.bias_scale_param * self.bias)
-        if self.config.dropout > 0:
+        if self.dropout:
             scores = self.dropout(scores)
         scores = scores.contiguous().view(b, l, self.num_patterns, 2, self.pattern_maxlen)
 
@@ -285,6 +287,14 @@ class SopaSeq2seq(BaseModel):
         self.output_size = output_size
         self.criterion = nn.CrossEntropyLoss(ignore_index=self.PAD)
 
+        sumpattern = sum(self.config.patterns.values()) * max(self.config.patterns.keys())
+        if self.config.decoder_hidden == 'sopa_hidden':
+            self.hidden_w1 = nn.Linear(sumpattern, self.config.hidden_size)
+            self.hidden_w2 = nn.Linear(sumpattern, self.config.hidden_size)
+        elif self.config.decoder_hidden == 'both':
+            self.hidden_w1 = nn.Linear(sumpattern+self.config.hidden_size, self.config.hidden_size)
+            self.hidden_w2 = nn.Linear(sumpattern+self.config.hidden_size, self.config.hidden_size)
+
     def compute_loss(self, target, output):
         target = self.to_cuda(torch.LongTensor(target.tgt))
         batch_size, seqlen, dim = output.size()
@@ -310,6 +320,7 @@ class SopaSeq2seq(BaseModel):
         encoder_outputs, encoder_hidden, sopa_scores, sopa_hiddens = self.encoder(X, batch.src_len)
 
         nl = self.config.num_layers
+        self.init_decoder_hidden(encoder_hidden, sopa_hiddens)
         decoder_hidden = tuple(e[:nl] + e[nl:] for e in encoder_hidden)
         decoder_input = self.to_cuda(torch.LongTensor([self.SOS] * batch_size))
 
@@ -327,3 +338,30 @@ class SopaSeq2seq(BaseModel):
                 val, idx = decoder_output.max(-1)
                 decoder_input = idx
         return all_decoder_outputs.transpose(0, 1)
+
+    def init_decoder_hidden(self, encoder_hidden, sopa_hiddens):
+        nl = self.config.num_layers
+        if self.config.decoder_hidden == 'encoder_hidden':
+            return tuple(e[:nl] + e[nl:] for e in encoder_hidden)
+        if self.config.decoder_hidden == 'sopa_hidden':
+            sopa_hidden = sopa_hiddens[-1]
+            concat_len = sopa_hidden.size(1) * sopa_hidden.size(2)
+            batch_size = sopa_hidden.size(0)
+            sopa_hidden = sopa_hidden.view(batch_size, concat_len)
+            return (
+                self.hidden_w1(sopa_hidden),
+                self.hidden_w2(sopa_hidden),
+            ) 
+        if self.config.decoder_hidden == 'both':
+            sopa_hidden = sopa_hiddens[-1]
+            concat_len = sopa_hidden.size(1) * sopa_hidden.size(2)
+            batch_size = sopa_hidden.size(0)
+            sopa_hidden = sopa_hidden.view(batch_size, concat_len)
+            encoder_hidden = tuple(e[:nl] + e[nl:] for e in encoder_hidden)
+            hidden0 = torch.cat((encoder_hidden[0].squeeze(0), sopa_hidden), -1)
+            hidden1 = torch.cat((encoder_hidden[1].squeeze(0), sopa_hidden), -1)
+            return (
+                self.hidden_w1(hidden0),
+                self.hidden_w2(hidden1),
+            ) 
+        raise ValueError("Unknown hidden projection option: {}".format(self.config.decoder_hidden))
