@@ -233,7 +233,7 @@ class Decoder(nn.Module):
             bidirectional=False,
             batch_first=False,
             dropout=self.config.dropout)
-        self.attention = LuongAttention(hidden_size, 'dot')
+        self.attention = LuongAttention(hidden_size, self.config.attention_variant)
         self.concat = nn.Linear(2*hidden_size, hidden_size)
         self.output_proj = nn.Linear(hidden_size, output_size)
         self.softmax = nn.Softmax(dim=-1)
