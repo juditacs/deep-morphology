@@ -1,0 +1,29 @@
+model: SopaSeq2seq
+dataset_class: InflectionDataset
+
+embedding_size: 40
+hidden_size: 64
+num_layers: 1
+dropout: 0.3
+
+epochs: 100
+batch_size: 128
+share_vocab: true
+
+optimizer: Adam
+
+attention_variant: general
+
+experiment_dir: exps/sopa
+save_min_epoch: 5 
+
+cpu_only: true
+bias_scale_param: 0.1
+
+patterns:
+    3: 20
+    4: 18
+    7: 3
+
+decoder_hidden: encoder_hidden
+attention_on: both
