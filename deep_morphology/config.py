@@ -19,31 +19,19 @@ class Config:
     defaults = {
         'generate_empty_subdir': True,
         'share_vocab': False,
-        'use_eos': True,
-        'vocab_path_src': None,
-        'vocab_path_tgt': None,
-        'toy_eval': None,
         'optimizer': 'Adam',
         'optimizer_kwargs': {},
         'dataset_class': 'Seq2seqDataset',
-        'early_stopping_ratio': 1.5,
-        'cell_type': 'LSTM',
-        'use_step': False,
-        'save_attention_weights': False,
         'overwrite_model': True,
-        'include_same_forms_ratio': 0.0,
-        'spaces': True,
+        'attention_variant': 'general',
         'min_epochs': 0,
-        'early_stopping_strategy': 'ratio',
         'early_stopping_window': 5,
         'share_embedding': False,  # inflection
-        'share_context_encoder': False,
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded
     path_variables = (
-        'train_file', 'dev_file', 'experiment_dir', 'vocab_path_src',
-        'vocab_path_tgt',
+        'train_file', 'dev_file', 'experiment_dir',
     )
 
     @classmethod
@@ -102,12 +90,6 @@ class Config:
         else:
             if not os.path.exists(self.experiment_dir):
                 os.makedirs(self.experiment_dir)
-        if self.vocab_path_src is None:
-            self.vocab_path_src = os.path.join(
-                self.experiment_dir, 'vocab_src')
-        if self.vocab_path_tgt is None:
-            self.vocab_path_tgt = os.path.join(
-                self.experiment_dir, 'vocab_tgt')
 
     def __validate_params(self):
         pass
