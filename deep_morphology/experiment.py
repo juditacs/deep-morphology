@@ -105,7 +105,7 @@ class Experiment:
     def init_model(self):
         model_class = getattr(models, self.config.model)
         self.model = model_class(self.config, self.train_data)
-        if use_cuda:
+        if self.config.cpu_only is False and use_cuda:
             self.model = self.model.cuda()
 
     def __enter__(self):
