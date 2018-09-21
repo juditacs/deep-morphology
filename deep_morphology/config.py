@@ -27,6 +27,7 @@ class Config:
         'min_epochs': 0,
         'early_stopping_window': 5,
         'share_embedding': False,  # inflection
+        'cpu_only': False,
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded
