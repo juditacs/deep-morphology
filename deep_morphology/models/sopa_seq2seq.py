@@ -17,12 +17,6 @@ from deep_morphology.models.attention import LuongAttention
 use_cuda = torch.cuda.is_available()
 
 
-def to_cuda2(var):
-    if use_cuda:
-        return var.cuda()
-    return var
-
-
 class Semiring:
     __slot__ = ('zero', 'one', 'plus', 'times', 'from_float', 'to_float')
 
