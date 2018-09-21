@@ -358,8 +358,9 @@ class SopaSeq2seq(BaseModel):
             batch_size = sopa_hidden.size(0)
             sopa_hidden = sopa_hidden.view(batch_size, concat_len)
             encoder_hidden = tuple(e[:nl] + e[nl:] for e in encoder_hidden)
-            hidden0 = torch.cat((encoder_hidden[0].squeeze(0), sopa_hidden), -1)
-            hidden1 = torch.cat((encoder_hidden[1].squeeze(0), sopa_hidden), -1)
+            sopa_hidden = sopa_hidden.squeeze(0).repeat(nl, 1, 1)
+            hidden0 = torch.cat((encoder_hidden[0], sopa_hidden), -1)
+            hidden1 = torch.cat((encoder_hidden[1], sopa_hidden), -1)
             return (
                 self.hidden_w1(hidden0),
                 self.hidden_w2(hidden1),
