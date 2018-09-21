@@ -84,10 +84,12 @@ class InflectionDataset(BaseDataset):
             lidx = sample.src.index("</L>")
             lemma = "".join(sample.src[1:lidx])
             tags = ";".join(sample.src[lidx+2:-1])
-            if sample.tgt[0] == "<I>":
-                sample.tgt = sample.tgt[1:]
-            if sample.tgt[-1] == "</I>":
-                sample.tgt = sample.tgt[:-1]
+            if len(sample.tgt) > 0:
+                if sample.tgt[0] == "<I>":
+                    sample.tgt = sample.tgt[1:]
+            if len(sample.tgt) > 0:
+                if sample.tgt[-1] == "</I>":
+                    sample.tgt = sample.tgt[:-1]
             inflected = "".join(sample.tgt)
             stream.write("{}\t{}\t{}\n".format(
                 lemma, inflected, tags
