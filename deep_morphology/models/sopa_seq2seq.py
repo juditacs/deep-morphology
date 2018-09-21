@@ -53,6 +53,10 @@ class Sopa(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
+        if self.config.use_lstm:
+            self.hidden_size = self.config.hidden_size
+        else:
+            self.hidden_size = self.config.embedding_size
 
         self.semiring = MaxPlusSemiring
         # dict of patterns
@@ -61,7 +65,7 @@ class Sopa(nn.Module):
         self.num_patterns = sum(self.patterns.values())
         diag_size = 2 * self.num_patterns * self.pattern_maxlen
         self.diags = torch.nn.Parameter(torch.randn(
-            (diag_size, self.config.hidden_size)))
+            (diag_size, self.hidden_size)))
         self.bias = torch.nn.Parameter(torch.randn((diag_size, 1)))
         self.epsilon = torch.nn.Parameter(torch.randn(
             self.num_patterns, self.pattern_maxlen - 1))
@@ -102,8 +106,8 @@ class Sopa(nn.Module):
         self_loop_scale = self.semiring.from_float(self.self_loop_scale)
         self_loop_scale.requires_grad = False
 
-        batch_end_states = self.end_states.expand(
-            batch_size, num_patterns, 1)
+        batch_end_states = self.to_cuda(self.end_states.expand(
+            batch_size, num_patterns, 1))
         hiddens = self.to_cuda(self.semiring.zero(
             batch_size, num_patterns, self.pattern_maxlen))
         hiddens[:, :, 0] = self.to_cuda(
@@ -157,7 +161,7 @@ class Sopa(nn.Module):
         b = inputs.size(1)
         l = inputs.size(0)
         scores = self.semiring.from_float(
-            torch.mm(self.diags, inputs.contiguous().view(b*l, self.config.hidden_size).t()) 
+            torch.mm(self.diags, inputs.contiguous().view(b*l, self.hidden_size).t()) 
             + self.config.bias_scale_param * self.bias)
         if self.dropout:
             scores = self.dropout(scores)
@@ -186,22 +190,27 @@ class SopaEncoder(nn.Module):
         dropout = 0 if self.config.num_layers < 2 else self.config.dropout
         if dropout > 0:
             self.dropout = torch.nn.Dropout(dropout)
-        self.cell = nn.LSTM(
-            self.config.embedding_size, self.config.hidden_size,
-            num_layers=self.config.num_layers,
-            bidirectional=True,
-            dropout=dropout,
-            batch_first=False,
-        )
+        if self.config.use_lstm:
+            self.cell = nn.LSTM(
+                self.config.embedding_size, self.config.hidden_size,
+                num_layers=self.config.num_layers,
+                bidirectional=True,
+                dropout=dropout,
+                batch_first=False,
+            )
         self.sopa = Sopa(config)
 
     def forward(self, input, input_len):
 
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
-        outputs, hidden = self.cell(embedded)
-        outputs = outputs[:, :, :self.config.hidden_size] + \
-            outputs[:, :, self.config.hidden_size:]
+        if self.config.use_lstm:
+            outputs, hidden = self.cell(embedded)
+            outputs = outputs[:, :, :self.config.hidden_size] + \
+                outputs[:, :, self.config.hidden_size:]
+        else:
+            outputs = embedded
+            hidden = None
 
         scores, sopa_hiddens = self.sopa(outputs, input_len)
         return outputs, hidden, scores, sopa_hiddens
@@ -228,35 +237,68 @@ class Decoder(nn.Module):
                 output_size, config.embedding_size)
         nn.init.xavier_uniform_(self.embedding.weight)
         hidden_size = self.config.hidden_size
-        lstm_input_size = self.config.embedding_size + sum(self.config.patterns.values()) * max(self.config.patterns.keys())
+        lstm_input_size = self.config.embedding_size 
+        if self.config.concat_sopa_to_decoder_input:
+            lstm_input_size += sum(self.config.patterns.values()) * max(self.config.patterns.keys())
         self.cell = nn.LSTM(
             lstm_input_size, hidden_size,
             num_layers=self.config.num_layers,
             bidirectional=False,
             batch_first=False,
             dropout=self.config.dropout)
-        self.attention = LuongAttention(hidden_size, self.config.attention_variant)
-        self.concat = nn.Linear(2*hidden_size, hidden_size)
+        size_mtx, size_vec = self.derive_attention_size()
+        self.attention = LuongAttention(encoder_size=size_mtx, decoder_size=size_vec,
+                                        method=self.config.attention_variant)
+        self.concat = nn.Linear(size_mtx + size_vec, hidden_size)
         self.output_proj = nn.Linear(hidden_size, output_size)
         self.softmax = nn.Softmax(dim=-1)
+
+    def derive_attention_size(self):
+        numpat = sum(self.config.patterns.values()) * max(self.config.patterns.keys())
+
+        if self.config.attention_on == 'sopa_hiddens':
+            size_mtx = numpat
+        elif self.config.attention_on == 'both':
+            size_mtx = self.config.hidden_size + numpat
+        elif self.config.attention_on == 'encoder_outputs':
+            size_mtx = self.config.hidden_size
+
+        size_vec = self.config.hidden_size
+        return size_mtx, size_vec
 
     def forward(self, input, last_hidden, encoder_outputs, sopa_hiddens):
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
         concat_len = sopa_hiddens[0].size(1) * sopa_hiddens[0].size(2)
         batch_size = sopa_hiddens[0].size(0)
-        sopa_hidden = sopa_hiddens[-1].view(batch_size, concat_len)
-        sopa_hidden = torch.zeros_like(sopa_hidden)
-        embedded = torch.cat((embedded, sopa_hidden), 1)
+        # skip start symbol
+        sopa_hiddens = torch.stack(sopa_hiddens[1:]).view(-1, batch_size, concat_len)
+        sopa_last_hidden = sopa_hiddens[-1]
+
+
+        if self.config.concat_sopa_to_decoder_input:
+            embedded = torch.cat((embedded, sopa_last_hidden), -1)
+
         embedded = embedded.view(1, *embedded.size())
-        rnn_output, hidden = self.cell(embedded, last_hidden)
+        attention_vec, lstm_hidden = self.cell(embedded, last_hidden)
 
-        context = self.attention(encoder_outputs, rnn_output)
 
-        concat_input = torch.cat((rnn_output.squeeze(0), context.squeeze(1)), 1)
+        if self.config.attention_on == 'sopa_hiddens':
+            attention_mtx = sopa_hiddens
+        elif self.config.attention_on == 'encoder_outputs':
+            attention_mtx = encoder_outputs
+        elif self.config.attention_on == 'both':
+            attention_mtx = torch.cat((encoder_outputs, sopa_hiddens), -1)
+        else:
+            raise ValueError("Unknown attention option: {}".format(self.config.attention_on))
+            
+        context = self.attention(attention_mtx, attention_vec)
+
+        concat_input = torch.cat((attention_vec.squeeze(0), context.squeeze(1)), 1)
+        self.concat(concat_input)
         concat_output = torch.tanh(self.concat(concat_input))
         output = self.output_proj(concat_output)
-        return output, hidden
+        return output, lstm_hidden
 
     def to_cuda(self, tensor):
         if self.config.cpu_only:
@@ -288,6 +330,11 @@ class SopaSeq2seq(BaseModel):
         self.criterion = nn.CrossEntropyLoss(ignore_index=self.PAD)
 
         sumpattern = sum(self.config.patterns.values()) * max(self.config.patterns.keys())
+        if self.config.use_lstm:
+            self.hidden_size = self.config.hidden_size
+        else:
+            self.hidden_size = self.config.embedding_size
+
         if self.config.decoder_hidden == 'sopa_hidden':
             self.hidden_w1 = nn.Linear(sumpattern, self.config.hidden_size)
             self.hidden_w2 = nn.Linear(sumpattern, self.config.hidden_size)
@@ -320,8 +367,7 @@ class SopaSeq2seq(BaseModel):
         encoder_outputs, encoder_hidden, sopa_scores, sopa_hiddens = self.encoder(X, batch.src_len)
 
         nl = self.config.num_layers
-        self.init_decoder_hidden(encoder_hidden, sopa_hiddens)
-        decoder_hidden = tuple(e[:nl] + e[nl:] for e in encoder_hidden)
+        decoder_hidden = self.init_decoder_hidden(encoder_hidden, sopa_hiddens)
         decoder_input = self.to_cuda(torch.LongTensor([self.SOS] * batch_size))
 
         all_decoder_outputs = self.to_cuda(torch.zeros((
@@ -347,7 +393,8 @@ class SopaSeq2seq(BaseModel):
             sopa_hidden = sopa_hiddens[-1]
             concat_len = sopa_hidden.size(1) * sopa_hidden.size(2)
             batch_size = sopa_hidden.size(0)
-            sopa_hidden = sopa_hidden.view(batch_size, concat_len)
+            sopa_hidden = sopa_hidden.view(1, batch_size, concat_len)
+            sopa_hidden = sopa_hidden.repeat(nl, 1, 1)
             return (
                 self.hidden_w1(sopa_hidden),
                 self.hidden_w2(sopa_hidden),
