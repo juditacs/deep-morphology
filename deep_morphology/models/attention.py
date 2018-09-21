@@ -10,12 +10,14 @@ import torch.nn as nn
 
 
 class LuongAttention(nn.Module):
-    def __init__(self, hidden_size, method='general'):
+    def __init__(self, encoder_size, decoder_size=None, method='general'):
         super().__init__()
+        if decoder_size is None:
+            decoder_size = encoder_size
         if method == 'general':
-            self.attn_weight = nn.Linear(hidden_size, hidden_size)
+            self.attn_weight = nn.Linear(encoder_size, decoder_size)
         elif method == 'concat':
-            self.attn_weight = nn.Linear(2 * hidden_size, hidden_size)
+            self.attn_weight = nn.Linear(input_size + hidden_size, hidden_size)
             self.v = nn.Linear(1, hidden_size)
         elif method == 'dot':
             pass
@@ -30,6 +32,7 @@ class LuongAttention(nn.Module):
         elif self.method == 'dot':
             energy = encoder_outputs
         elif self.method == 'concat':
+            # TODO incorrect, tanh missing
             seqlen = encoder_outputs.size(0)
             concat = torch.cat((encoder_outputs, decoder_output.repeat(seqlen, 1, 1)), 2)
             energy = self.attn_weight(concat)
