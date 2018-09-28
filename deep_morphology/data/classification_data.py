@@ -12,7 +12,7 @@ import os
 from deep_morphology.data.base_data import BaseDataset, Vocab
 
 
-ClassificationFields = recordclass('ClassificationFields', ['input', 'label'])
+ClassificationFields = recordclass('ClassificationFields', ['input', 'input_len', 'label'])
 
 
 class ClassificationDataset(BaseDataset):
@@ -23,11 +23,12 @@ class ClassificationDataset(BaseDataset):
 
     def extract_sample_from_line(self, line):
         src, label = line.split("\t")[:2]
-        return ClassificationFields(src.split(" "), label)
+        src = src.split(" ")
+        return ClassificationFields(src, len(src), label)
 
     def load_or_create_vocabs(self):
         vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
-        vocabs = ClassificationFields(None, None)
+        vocabs = ClassificationFields(None, None, None)
         if os.path.exists(vocab_pre+'input'):
             vocabs.input = Vocab(file=vocab_pre+'input', frozen=True)
         else:
@@ -52,4 +53,4 @@ class UnlabeledClassificationDataset(ClassificationDataset):
 
     def extract_sample_from_line(self, line):
         src = line.split("\t")[0]
-        return ClassificationFields(src.split(" "), None)
+        return ClassificationFields(src.split(" "), len(src), None)
