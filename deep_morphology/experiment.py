@@ -115,6 +115,7 @@ class Experiment:
         return self
 
     def __exit__(self, *args):
+        self.config.save()
         self.result.end()
         self.result.save(self.config.experiment_dir)
 
