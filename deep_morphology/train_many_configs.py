@@ -10,6 +10,7 @@ from argparse import ArgumentParser
 import yaml
 import logging
 import random
+import importlib.util
 
 from deep_morphology.config import Config
 from deep_morphology.experiment import Experiment
@@ -31,7 +32,6 @@ def parse_args():
 
 def main():
     args = parse_args()
-    import importlib.util
     spec = importlib.util.spec_from_file_location("config_generator", args.param_generator)
     config_generator = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(config_generator)
