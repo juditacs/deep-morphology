@@ -122,10 +122,11 @@ class Sopa(nn.Module):
             end_state_vals = torch.gather(
                 hiddens, 2, batch_end_states).view(
                     batch_size, num_patterns)
-            active_docs = torch.nonzero(torch.gt(input_len, i))  #.squeeze()
-            scores[active_docs] = self.semiring.plus(
-                scores[active_docs], end_state_vals[active_docs]
-            )
+            active_docs = torch.nonzero(torch.ge(input_len, i)).squeeze()
+            if active_docs.size():
+                scores[active_docs] = self.semiring.plus(
+                    scores[active_docs], end_state_vals[active_docs]
+                )
 
         scores = self.semiring.to_float(scores)
         return scores, all_hiddens
