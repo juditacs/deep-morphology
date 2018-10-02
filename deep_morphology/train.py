@@ -22,6 +22,9 @@ def parse_args():
     p.add_argument("--train-file", type=str, default=None)
     p.add_argument("--dev-file", type=str, default=None)
     p.add_argument("--params", type=str, default=None)
+    p.add_argument("--debug", action="store_true",
+                   help="Do not raise exception when the working "
+                   "directory is not clean.")
     return p.parse_args()
 
 
@@ -47,7 +50,8 @@ def main():
         override_params = None
     with Experiment(args.config, train_data=args.train_file,
                     dev_data=args.dev_file,
-                    override_params=override_params) as e:
+                    override_params=override_params,
+                    debug=args.debug) as e:
         logging.info("Experiment dir: {}".format(e.config.experiment_dir))
         e.run()
 

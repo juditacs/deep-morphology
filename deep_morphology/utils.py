@@ -7,6 +7,7 @@
 
 import subprocess
 import os
+import logging
 
 
 class UncleanWorkingDirectoryException(Exception):
@@ -22,7 +23,7 @@ def run_command(cmd):
     return stdout, stderr
 
 
-def check_and_get_commit_hash():
+def check_and_get_commit_hash(debug):
     src_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     stdout, stderr = run_command(
         "cd {}; git status --porcelain".format(src_path))
@@ -47,10 +48,20 @@ def check_and_get_commit_hash():
         CRED = '\033[91m'
         CGREEN = '\033[32m'
         CEND = '\033[0m'
-        raise UncleanWorkingDirectoryException(
-            "Unstaged files:\n{0}{3}{2}\nStaged "
-            "but not commited files:\n{1}{4}{2}".format(
-                CRED, CGREEN, CEND, "\n".join(unstaged), "\n".join(staged)))
+        error_msg = []
+        if len(unstaged) > 0:
+            error_msg.append("Unstaged files:{}".format(CRED))
+            error_msg.extend(unstaged)
+            error_msg[-1] += CEND
+        if len(staged) > 0:
+            error_msg.append("Staged but not commited:{}".format(CGREEN))
+            error_msg.extend(staged)
+            error_msg[-1] += CEND
+        error_msg = "\n".join(error_msg)
+        if debug:
+            logging.warning(error_msg)
+        else:
+            raise UncleanWorkingDirectoryException(error_msg)
 
     commit_hash, _ = run_command(
         "cd {}; git log --pretty=format:'%H' -n 1".format(

@@ -46,8 +46,8 @@ class Result:
 
 class Experiment:
     def __init__(self, config, train_data=None, dev_data=None,
-                 override_params=None):
-        git_hash = check_and_get_commit_hash()
+                 override_params=None, debug=False):
+        git_hash = check_and_get_commit_hash(debug)
         if isinstance(config, str):
             self.config = Config.from_yaml(config, override_params)
         elif isinstance(config, Config):
