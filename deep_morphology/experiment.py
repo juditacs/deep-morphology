@@ -25,7 +25,8 @@ use_cuda = torch.cuda.is_available()
 
 
 class Result:
-    __slots__ = ('train_loss', 'dev_loss', 'running_time', 'start_time')
+    __slots__ = ('train_loss', 'dev_loss', 'running_time', 'start_time',
+                 'node', 'gpu')
 
     def __init__(self):
         self.train_loss = []
@@ -54,7 +55,6 @@ class Experiment:
         else:
             raise ValueError("config must be an instance of Config "
                              "or a filename")
-        self.config.node = platform.node()
         self.set_random_seeds()
         self.config.commit_hash = git_hash
         self.data_class = getattr(data_module, self.config.dataset_class)
@@ -111,6 +111,11 @@ class Experiment:
     def __enter__(self):
         self.result = Result()
         self.result.start()
+        self.result.node = platform.node()
+        if use_cuda:
+            self.result.gpu = torch.cuda.get_device_name(torch.cuda.current_device())
+        else:
+            self.result.gpu = None
         self.config.save()
         return self
 
