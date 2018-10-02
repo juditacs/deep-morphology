@@ -43,6 +43,7 @@ class Seq2seqDataset(BaseDataset):
 
 
 class UnlabeledSeq2seqDataset(Seq2seqDataset):
+
     def extract_sample_from_line(self, line):
         src = line.split("\t")[0].split(" ")
         return Seq2seqFields(src, None)
