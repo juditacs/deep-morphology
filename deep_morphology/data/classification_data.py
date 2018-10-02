@@ -53,4 +53,25 @@ class UnlabeledClassificationDataset(ClassificationDataset):
 
     def extract_sample_from_line(self, line):
         src = line.split("\t")[0]
-        return ClassificationFields(src.split(" "), len(src), None)
+        src = src.split(" ")
+        return ClassificationFields(src, len(src), None)
+
+
+class NoSpaceClassificationDataset(ClassificationDataset):
+
+    unlabeled_data_class = 'UnlabeledNoSpaceClassificationDataset'
+
+    def extract_sample_from_line(self, line):
+        src, label = line.split("\t")[:2]
+        src = list(src)
+        return ClassificationFields(src, len(src), label)
+
+
+class UnlabeledNoSpaceClassificationDataset(UnlabeledClassificationDataset):
+    def extract_sample_from_line(self, line):
+        src = line.split("\t")[0]
+        return ClassificationFields(list(src), len(src), None)
+
+    def print_raw(self, stream):
+        for sample in self.raw:
+            stream.write("{}\t{}\n".format("".join(sample.input), sample.label))
