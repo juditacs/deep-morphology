@@ -35,13 +35,12 @@ class ReinflectionDataset(BaseDataset):
         lemma, infl, tags = line.split("\t")
         return ReinflectionFields(list(lemma), list(infl), tags.split(';'))
 
-    def print_raw(self, stream):
-        for sample in self.raw:
-            stream.write("{}\t{}\t{}\n".format(
-                "".join(sample.lemma),
-                "".join(sample.inflected),
-                ";".join(sample.tags)
-            ))
+    def print_sample(self, sample, stream):
+        stream.write("{}\t{}\t{}\n".format(
+            "".join(sample.lemma),
+            "".join(sample.inflected),
+            ";".join(sample.tags)
+        ))
 
 
 class UnlabeledReinflectionDataset(ReinflectionDataset):

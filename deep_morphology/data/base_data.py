@@ -144,7 +144,10 @@ class BaseDataset:
 
     def print_raw(self, stream):
         for sample in self.raw:
-            stream.write("{}\n".format("\t".join(" ".join(s) for s in sample)))
+            self.print_sample(sample, stream)
+
+    def print_sample(self, sample, stream):
+        stream.write("{}\n".format("\t".join(" ".join(s) for s in sample)))
 
     def save_vocabs(self):
         for vocab_name in self.vocabs._fields:

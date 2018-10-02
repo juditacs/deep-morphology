@@ -34,12 +34,11 @@ class Seq2seqDataset(BaseDataset):
         tgt = tgt.split(" ")
         return Seq2seqFields(src, tgt)
 
-    def print_raw(self, stream):
-        for sample in self.raw:
-            stream.write("{}\t{}\n".format(
-                " ".join(sample.src),
-                " ".join(sample.tgt),
-            ))
+    def print_sample(self, sample, stream):
+        stream.write("{}\t{}\n".format(
+            " ".join(sample.src),
+            " ".join(sample.tgt),
+        ))
 
 
 class UnlabeledSeq2seqDataset(Seq2seqDataset):
@@ -80,21 +79,20 @@ class InflectionDataset(BaseDataset):
         tgt = ["<I>"] + list(inflected) + ["</I>"]
         return Seq2seqWithLenFields(src, tgt, len(src), len(tgt))
     
-    def print_raw(self, stream):
-        for sample in self.raw:
-            lidx = sample.src.index("</L>")
-            lemma = "".join(sample.src[1:lidx])
-            tags = ";".join(sample.src[lidx+2:-1])
-            if len(sample.tgt) > 0:
-                if sample.tgt[0] == "<I>":
-                    sample.tgt = sample.tgt[1:]
-            if len(sample.tgt) > 0:
-                if sample.tgt[-1] == "</I>":
-                    sample.tgt = sample.tgt[:-1]
-            inflected = "".join(sample.tgt)
-            stream.write("{}\t{}\t{}\n".format(
-                lemma, inflected, tags
-            ))
+    def print_sample(self, sample, stream):
+        lidx = sample.src.index("</L>")
+        lemma = "".join(sample.src[1:lidx])
+        tags = ";".join(sample.src[lidx+2:-1])
+        if len(sample.tgt) > 0:
+            if sample.tgt[0] == "<I>":
+                sample.tgt = sample.tgt[1:]
+        if len(sample.tgt) > 0:
+            if sample.tgt[-1] == "</I>":
+                sample.tgt = sample.tgt[:-1]
+        inflected = "".join(sample.tgt)
+        stream.write("{}\t{}\t{}\n".format(
+            lemma, inflected, tags
+        ))
 
     def decode(self, model_output):
         assert len(model_output) == len(self.mtx[0])

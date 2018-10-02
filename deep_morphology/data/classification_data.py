@@ -44,9 +44,8 @@ class ClassificationDataset(BaseDataset):
             output = model_output[i].argmax()
             sample.label = self.vocabs.label.inv_lookup(output)
 
-    def print_raw(self, stream):
-        for sample in self.raw:
-            stream.write("{}\t{}\n".format(" ".join(sample.input), sample.label))
+    def print_sample(self, sample, stream):
+        stream.write("{}\t{}\n".format(" ".join(sample.input), sample.label))
 
 
 class UnlabeledClassificationDataset(ClassificationDataset):
@@ -72,6 +71,5 @@ class UnlabeledNoSpaceClassificationDataset(UnlabeledClassificationDataset):
         src = line.split("\t")[0]
         return ClassificationFields(list(src), len(src), None)
 
-    def print_raw(self, stream):
-        for sample in self.raw:
-            stream.write("{}\t{}\n".format("".join(sample.input), sample.label))
+    def print_sample(self, sample, stream):
+        stream.write("{}\t{}\n".format("".join(sample.input), sample.label))
