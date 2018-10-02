@@ -3,7 +3,7 @@ dataset_class: InflectionDataset
 
 embedding_size: 40
 hidden_size: 64
-num_layers: 1
+num_layers: 2
 dropout: 0.3
 
 epochs: 100
@@ -25,5 +25,11 @@ patterns:
     4: 18
     7: 3
 
-decoder_hidden: encoder_hidden
+# options: encoder_hidden, sopa_hidden, both
+decoder_hidden: both
+
+# options: encoder_outputs, sopa_hiddens, both
 attention_on: both
+
+use_lstm: true
+concat_sopa_to_decoder_input: true
