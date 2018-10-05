@@ -20,7 +20,7 @@ Seq2seqWithLenFields = recordclass('Seq2seqFields', ['src', 'tgt', 'src_len', 't
 class Seq2seqDataset(BaseDataset):
 
     unlabeled_data_class = 'UnlabeledSeq2seqDataset'
-    data_recordclass = Seq2seqFields
+    data_recordclass = Seq2seqWithLenFields
     constants = ['PAD', 'UNK', 'SOS', 'EOS']
 
     def load_or_create_vocabs(self):
@@ -32,7 +32,8 @@ class Seq2seqDataset(BaseDataset):
         src, tgt = line.split("\t")[:2]
         src = src.split(" ")
         tgt = tgt.split(" ")
-        return Seq2seqFields(src, tgt)
+        return Seq2seqWithLenFields(
+            src=src, src_len=len(src), tgt=tgt, tgt_len=len(tgt))
 
     def print_sample(self, sample, stream):
         stream.write("{}\t{}\n".format(
@@ -45,7 +46,7 @@ class UnlabeledSeq2seqDataset(Seq2seqDataset):
 
     def extract_sample_from_line(self, line):
         src = line.split("\t")[0].split(" ")
-        return Seq2seqFields(src, None)
+        return Seq2seqWithLenFields(src, None, len(src), None)
 
 
 class InflectionDataset(BaseDataset):
