@@ -10,286 +10,120 @@ import unittest
 import tempfile
 import os
 import yaml
+import subprocess
 
-from deep_morphology.data import LabeledDataset, Vocab, TaggingDataset
-from deep_morphology.config import Config
-from deep_morphology.experiment import Experiment
-from deep_morphology.inference import Inference
+from deep_morphology import models
 
 
-models = ['HardMonotonicAttentionSeq2seq']
+train_src = os.path.join(os.path.dirname(os.path.realpath(__file__)), "train.py")
+inference_src = os.path.join(os.path.dirname(os.path.realpath(__file__)), "inference.py")
 
+model_dataset_mapping = {
+    'HardMonotonicAttentionSeq2seq': ['Seq2seqDataset'],
+    'LuongAttentionSeq2seq': ['Seq2seqDataset', 'InflectionDataset'],
+    'SequenceClassifier': ['TaggingDataset'],
+}
 
-def create_toy_config_and_data(dirname, train_data, dev_data, cfg_update=None):
-    train_fn = os.path.join(dirname, 'train')
-    dev_fn = os.path.join(dirname, 'dev')
-    config_fn = os.path.join(dirname, 'config.yaml')
-    config_dict = {
-        'train_file': train_fn,
-        'dev_file': dev_fn,
-        'experiment_dir': dirname,
-        'model': 'DummyModel',
-        'dropout': 0,
-        'embedding_size_src': 20,
-        'embedding_size_tgt': 20,
-        'hidden_size_src': 20,
-        'hidden_size_tgt': 20,
-        'num_layers_src': 1,
-        'num_layers_tgt': 1,
-        'save_min_epoch': 0,
-        'epochs': 10,
-        'batch_size': 2,
-    }
-    if cfg_update is not None:
-        for k, v in cfg_update.items():
-            config_dict[k] = v
-    with open(config_fn, 'w') as f:
-        yaml.dump(config_dict, f)
-    if isinstance(train_data, list):
-        train_data = "\n".join(
-            "{}\t{}".format(d[0], d[1]) for d in train_data)
-    if isinstance(dev_data, list):
-        dev_data = "\n".join(
-            "{}\t{}".format(d[0], d[1]) for d in dev_data)
-    with open(train_fn, 'w') as f:
-        f.write(train_data)
-    with open(dev_fn, 'w') as f:
-        f.write(dev_data)
-    return Config.from_yaml(config_fn)
-
-
-toy_data = [
+s2s_train = [
     ("a b c", "a b c"),
     ("d a f g", "a b"),
+    ("d g", "b a a b b"),
+]
+s2s_dev = [
+    ("a", "a b c"),
+]
+classification_train = [
+    ("a b db c", 1),
+    ("d a f g", 3),
+    ("d g", 1),
+]
+classification_dev = [
+    ("d g", 1),
+]
+tagging_train = [
+    ("ab a a", "2 1 1"),
+    ("ab a a", "2 3 1"),
+    ("ab a", "2 1 1"),
+    ("ab b b d e", "2 1 1 4 3"),
+]
+tagging_test = [
+    ("ab a", "2 1 1"),
+    ("ab b b d e", "2 1 1 4 3"),
 ]
 
+base_config = {
+    'epochs': 2,
+    'batch_size': 2,
+    'optimizer': 'Adam',
+    'dropout': 0.1,
+}
 
-class TestToyCreator(unittest.TestCase):
-    def test_basic(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cfg = create_toy_config_and_data(
-                tmpdir, toy_data, toy_data)
-            ls = list(os.listdir(tmpdir))
-            self.assertIn('train', ls)
-            self.assertIn('dev', ls)
-            self.assertIn('config.yaml', ls)
-            # empty subdir generated
-            self.assertIn('0000', ls)
-            self.assertTrue(os.path.isdir(os.path.join(tmpdir, '0000')))
-            self.assertIsInstance(cfg, Config)
-            self.assertEqual(cfg.experiment_dir, os.path.join(tmpdir, '0000'))
-        self.assertFalse(os.path.exists(tmpdir))
+def run_command(cmd):
+    p = subprocess.Popen(
+        cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+    return stdout.decode('utf8'), stderr.decode('utf8')
 
 
-class VocabTest(unittest.TestCase):
-    def test_frozen(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cfg = create_toy_config_and_data(tmpdir, toy_data, toy_data)
-            train_data = LabeledDataset(cfg, cfg.train_file)
-            self.assertFalse(train_data.vocab_src.frozen)
-            self.assertFalse(train_data.vocab_tgt.frozen)
-            self.assertIsNot(train_data.vocab_src, train_data.vocab_tgt)
-            self.assertFalse(os.path.exists(cfg.vocab_path_src))
-            train_data.save_vocabs()
-            self.assertTrue(os.path.exists(cfg.vocab_path_src))
-            dev_data = LabeledDataset(cfg, cfg.dev_file)
-            self.assertTrue(dev_data.vocab_src.frozen)
-            self.assertTrue(dev_data.vocab_tgt.frozen)
-            self.assertTrue(os.path.exists(cfg.vocab_path_src))
+def run_experiment(config, train_data, dev_data):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        train_fn = os.path.join(tmpdir, 'train')
+        dev_fn = os.path.join(tmpdir, 'dev')
+        config_fn = os.path.join(tmpdir, 'config.yaml')
+        full_config = base_config.copy()
+        full_config.update(config)
+        full_config['experiment_dir'] = tmpdir
+        with open(config_fn, "w") as f:
+            yaml.dump(full_config, f)
+        with open(train_fn, "w") as f:
+            for sample in train_data:
+                f.write("{}\n".format("\t".join(sample)))
+        with open(dev_fn, "w") as f:
+            for sample in dev_data:
+                f.write("{}\n".format("\t".join(sample)))
+        # running experiment
 
-    def test_share_vocab(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cfg = create_toy_config_and_data(tmpdir, toy_data, toy_data)
-            cfg.share_vocab = True
-            train_data = LabeledDataset(cfg, cfg.train_file)
-            self.assertIs(train_data.vocab_src, train_data.vocab_tgt)
-
-    def test_contents(self):
-        data = [("a b", "b a"), ("b b", "a ab")]
-        constants = Vocab.CONSTANTS
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cfg = create_toy_config_and_data(tmpdir, data, data)
-            dataset = LabeledDataset(cfg, cfg.train_file)
-            self.assertEqual(len(dataset.vocab_src), len(constants) + 2)
-            self.assertEqual(len(dataset.vocab_tgt), len(constants) + 3)
-            self.assertIn("a", dataset.vocab_src)
-            self.assertIn("ab", dataset.vocab_tgt)
-            self.assertEqual(dataset.X[0, 2], constants['EOS'])
-            self.assertEqual(dataset.X[1, 2], constants['EOS'])
-            self.assertEqual(dataset.Y[0, 2], constants['EOS'])
-            self.assertEqual(dataset.Y[1, 2], constants['EOS'])
-            self.assertEqual(dataset.maxlen_src, 3)
-            self.assertEqual(dataset.maxlen_tgt, 3)
+        stdout, stderr = run_command(
+            "python {0} -c {1} --train {2} --dev {3} --debug".format(train_src, config_fn, train_fn, dev_fn)
+        )
+        result_fn = os.path.join(tmpdir, '0000', 'result.yaml')
+        with open(result_fn) as f:
+            result = yaml.load(f)
+        return stdout, stderr, result
 
 
-class LabeledDatasetTest(unittest.TestCase):
 
-    def test_toy_data_with_eos(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cfg = create_toy_config_and_data(tmpdir, toy_data, toy_data)
-            train_data = LabeledDataset(cfg, cfg.train_file)
-            self.assertEqual(train_data.X.shape, (2, 5))
-            self.assertEqual(train_data.X[0, 0], train_data.X[1, 1])
-            # EOS
-            self.assertEqual(train_data.X[0, 3], train_data.X[1, 4])
-            self.assertEqual(train_data.Y.shape, (2, 4))
-            self.assertEqual(train_data.Y[0, 0], train_data.Y[1, 0])
-            # EOS
-            self.assertEqual(train_data.Y[0, 3], train_data.Y[1, 2])
-            self.assertListEqual(list(train_data.X_len), [4, 5])
-            self.assertListEqual(list(train_data.Y_len), [4, 3])
+class BasicTest(unittest.TestCase):
 
-    def test_toy_data_without_eos(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cfg = create_toy_config_and_data(tmpdir, toy_data, toy_data,
-                                             cfg_update={'use_eos': False})
-            train_data = LabeledDataset(cfg, cfg.train_file)
-            self.assertEqual(train_data.X.shape, (2, 4))
-            self.assertEqual(train_data.Y.shape, (2, 3))
-            self.assertEqual(train_data.Y[0, 0], train_data.Y[1, 0])
-            self.assertListEqual(list(train_data.X_len), [3, 4])
-            self.assertListEqual(list(train_data.Y_len), [3, 2])
+    def test_1(self):
+        cfg = {
+            'model': 'LuongAttentionSeq2seq',
+            'dataset_class': 'Seq2seqDataset',
+            'embedding_size_src': 12,
+            'embedding_size_tgt': 14,
+            'num_layers_src': 1,
+            'num_layers_tgt': 1,
+            'hidden_size': 13,
+            'cell_type': 'LSTM',
+        }
+        stdout, stderr, result = run_experiment(cfg, s2s_train, s2s_dev)
 
-
-class TaggingDatasetTest(unittest.TestCase):
-
-    def test_filtering(self):
-        data = [
-            ("ab a a", "2 1 1"),
-            ("ab a a", "2 1"),
-            ("ab a", "2 1 1"),
-            ("ab b b d e", "2 1 1 4 3"),
-        ]
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cfg = create_toy_config_and_data(
-                tmpdir, data, data, cfg_update={'use_eos': False})
-            data = TaggingDataset(cfg, cfg.train_file)
-            self.assertEqual(data.X.shape, data.Y.shape)
-            self.assertEqual(data.Y.shape, (2, 5))
-
-    def test_padding(self):
-        data = [
-            ("ab a a a", "2 1 1 1"),
-            ("ab a", "2 1"),
-        ]
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cfg = create_toy_config_and_data(
-                tmpdir, data, data, cfg_update={'use_eos': False})
-            data = TaggingDataset(cfg, cfg.train_file)
-            self.assertEqual(data.X[0, 0], data.X[1, 0])
-            # PAD
-            self.assertEqual(data.X[1, 2], data.X[1, 3])
-            self.assertEqual(data.X[1, 2], data.Y[1, 2])
-
-
-class ExperimentTest(unittest.TestCase):
-    def test_creation_and_saving(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            create_toy_config_and_data(tmpdir, toy_data, toy_data)
-            cfg_fn = os.path.join(tmpdir, 'config.yaml')
-            with Experiment(cfg_fn) as e:
-                pass
-            new_cfg_fn = os.path.join(e.config.experiment_dir, 'config.yaml')
-            self.assertTrue(os.path.exists(new_cfg_fn))
-            result_fn = os.path.join(e.config.experiment_dir, 'result.yaml')
-            self.assertTrue(os.path.exists(result_fn))
-
-    def test_running(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            create_toy_config_and_data(tmpdir, toy_data, toy_data)
-            cfg_fn = os.path.join(tmpdir, 'config.yaml')
-            with Experiment(cfg_fn) as e:
-                e.run()
-
-    def test_saving(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            create_toy_config_and_data(tmpdir, toy_data, toy_data)
-            cfg_fn = os.path.join(tmpdir, 'config.yaml')
-            with Experiment(cfg_fn) as e:
-                e.run()
-            ls = list(os.listdir(e.config.experiment_dir))
-            self.assertIn('model.epoch_0000', ls)
-
-    def test_min_epoch_save(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            create_toy_config_and_data(tmpdir, toy_data, toy_data,
-                                       cfg_update={'save_min_epoch': 5})
-            cfg_fn = os.path.join(tmpdir, 'config.yaml')
-            with Experiment(cfg_fn) as e:
-                e.run()
-            ls = list(os.listdir(e.config.experiment_dir))
-            for i in range(e.config.save_min_epoch):
-                self.assertNotIn('model.epoch_{0:04d}'.format(i), ls)
-
-    def test_toy_eval(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            create_toy_config_and_data(tmpdir, toy_data, toy_data,
-                                       cfg_update={'toy_eval': ["a", "b"]})
-            cfg_fn = os.path.join(tmpdir, 'config.yaml')
-            with Experiment(cfg_fn) as e:
-                e.run()
-
-
-class LSTMTaggerTest(unittest.TestCase):
-
-    def test_creation(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            create_toy_config_and_data(tmpdir, toy_data, toy_data,
-                                       cfg_update={'model': 'LSTMTagger',
-                                                   'dataset_class': 'TaggingDataset'})
-            cfg_fn = os.path.join(tmpdir, 'config.yaml')
-            with Experiment(cfg_fn) as e:
-                e.run()
-
-    def test_padding(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            data = [
-                ('a b', 'B A'),
-                ('a b a', 'A B A'),
-            ]
-            create_toy_config_and_data(tmpdir, data, data,
-                                       cfg_update={'model': 'LSTMTagger',
-                                                   'dataset_class': 'TaggingDataset'})
-            cfg_fn = os.path.join(tmpdir, 'config.yaml')
-            with Experiment(cfg_fn) as e:
-                e.run()
-
-class InferenceTest(unittest.TestCase):
-
-    def test_data_loading(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            create_toy_config_and_data(tmpdir, toy_data, toy_data)
-            cfg_fn = os.path.join(tmpdir, 'config.yaml')
-            with Experiment(cfg_fn) as e:
-                e.run()
-            test_file = os.path.join(e.config.experiment_dir, '..', 'train')
-            inf = Inference(e.config.experiment_dir, test_file)
-            self.assertEqual(inf.test_data.X.shape, (2, 5))
-            self.assertEqual(inf.test_data.X[0, 0], inf.test_data.X[1, 1])
-
-    def test_data_loading_nospaces(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            data = [("".join(d[0]), "".join(d[1])) for d in toy_data]
-            create_toy_config_and_data(tmpdir, data, data)
-            cfg_fn = os.path.join(tmpdir, 'config.yaml')
-            with Experiment(cfg_fn) as e:
-                e.run()
-            test_file = os.path.join(e.config.experiment_dir, '..', 'train')
-            inf = Inference(e.config.experiment_dir, test_file, spaces=False)
-            self.assertEqual(inf.test_data.X.shape, (2, 8))
-            self.assertEqual(inf.test_data.X[0, 0], inf.test_data.X[1, 2])
-
-    def test_greedy(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            create_toy_config_and_data(tmpdir, toy_data, toy_data)
-            cfg_fn = os.path.join(tmpdir, 'config.yaml')
-            with Experiment(cfg_fn) as e:
-                e.run()
-            test_file = os.path.join(e.config.experiment_dir, '..', 'train')
-            inf = Inference(e.config.experiment_dir, test_file)
-            words = inf.run()
-            self.assertIsInstance(words, list)
-            self.assertEqual(len(words), len(inf.test_data))
+    def test_luong_overfit(self):
+        cfg = {
+            'model': 'LuongAttentionSeq2seq',
+            'dataset_class': 'Seq2seqDataset',
+            'embedding_size_src': 20,
+            'embedding_size_tgt': 20,
+            'num_layers_src': 1,
+            'num_layers_tgt': 1,
+            'hidden_size': 128,
+            'cell_type': 'LSTM',
+            'epochs': 2000,
+            'dropout': 0,
+        }
+        stdout, stderr, result = run_experiment(cfg, s2s_train, s2s_train)
+        self.assertAlmostEqual(result['train_loss'][-1], 0, places=3)
+        self.assertAlmostEqual(result['dev_loss'][-1], 0, places=3)
 
 if __name__ == '__main__':
     unittest.main()
