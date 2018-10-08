@@ -26,7 +26,7 @@ use_cuda = torch.cuda.is_available()
 
 class Result:
     __slots__ = ('train_loss', 'dev_loss', 'running_time', 'start_time',
-                 'node', 'gpu')
+                 'epochs_run', 'node', 'gpu')
 
     def __init__(self):
         self.train_loss = []
@@ -120,6 +120,7 @@ class Experiment:
         return self
 
     def __exit__(self, *args):
+        self.result.epochs_run = len(self.result.train_loss)
         self.config.save()
         self.result.end()
         self.result.save(self.config.experiment_dir)
