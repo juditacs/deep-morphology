@@ -113,6 +113,7 @@ class Sopa(nn.Module):
         input_len = to_cuda(torch.LongTensor(input_len))
         input_len.requires_grad = False
 
+        all_scores = []
         for i, tr_mtx in enumerate(transition_matrices):
             hiddens = self.transition_once(
                 hiddens, tr_mtx, zero_padding,
@@ -127,9 +128,10 @@ class Sopa(nn.Module):
                 scores[active_docs] = self.semiring.plus(
                     scores[active_docs], end_state_vals[active_docs]
                 )
+            all_scores.append(scores.clone())
 
         scores = self.semiring.to_float(scores)
-        return scores, all_hiddens
+        return torch.tanh(torch.stack(all_scores))
 
     def transition_once(self, hiddens, transition_matrix, zero_padding, restart_padding):
         eps_value = self.get_epsilon()

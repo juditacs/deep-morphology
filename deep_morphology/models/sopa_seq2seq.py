@@ -32,7 +32,6 @@ class SopaEncoder(nn.Module):
 
         self.embedding_dropout = nn.Dropout(config.dropout)
         self.embedding = nn.Embedding(input_size, config.embedding_size)
-        self.embedding.requires_grad = False
         nn.init.xavier_uniform_(self.embedding.weight)
 
         dropout = 0 if self.config.num_layers < 2 else self.config.dropout
@@ -109,12 +108,16 @@ class Decoder(nn.Module):
     def derive_attention_size(self):
         numpat = sum(self.config.patterns.values())
 
+        if self.config.use_lstm:
+            enc_size = self.config.hidden_size
+        else:
+            enc_size = self.config.embedding_size
         if self.config.attention_on == 'sopa':
             size_mtx = numpat
         elif self.config.attention_on == 'both':
-            size_mtx = self.config.hidden_size + numpat
+            size_mtx = enc_size + numpat
         elif self.config.attention_on == 'encoder_outputs':
-            size_mtx = self.config.hidden_size
+            size_mtx = enc_size
 
         size_vec = self.config.hidden_size
         return size_mtx, size_vec
@@ -129,11 +132,12 @@ class Decoder(nn.Module):
         if sopa_scores is not None:
             sopa_final_score = sopa_scores[-1]
 
+        embedded = embedded.view(1, embedded.size(-2), embedded.size(-1))
         if self.config.concat_sopa_to_decoder_input:
-            embedded = torch.cat((embedded, sopa_final_score), -1)
+            embedded = torch.cat((embedded, sopa_final_score.unsqueeze(0)), -1)
 
-        embedded = embedded.view(1, *embedded.size())
         attention_vec, lstm_hidden = self.cell(embedded, last_hidden)
+        attention_vec = attention_vec.view(1, attention_vec.size(-2), attention_vec.size(-1))
 
         if self.config.attention_on == 'sopa':
             attention_mtx = sopa_scores
@@ -141,9 +145,13 @@ class Decoder(nn.Module):
             attention_mtx = encoder_outputs
         elif self.config.attention_on == 'both':
             attention_mtx = torch.cat((encoder_outputs, sopa_scores), -1)
+        elif self.config.attention_on is None:
+            pass
         else:
             raise ValueError("Unknown attention option: {}".format(self.config.attention_on))
             
+        if self.config.attention_on is None:
+            return self.output_proj(attention_vec), lstm_hidden
         context = self.attention(attention_mtx, attention_vec)
 
         concat_input = torch.cat((attention_vec.squeeze(0), context.squeeze(1)), 1)
@@ -178,7 +186,7 @@ class SopaSeq2seq(BaseModel):
         self.PAD = dataset.vocabs.src['PAD']
         self.SOS = dataset.vocabs.tgt['SOS']
         self.output_size = output_size
-        self.criterion = nn.CrossEntropyLoss(ignore_index=self.PAD)
+        self.criterion = nn.CrossEntropyLoss(ignore_index=dataset.vocabs.tgt['PAD'])
 
         sumpattern = sum(self.config.patterns.values())
         if self.config.use_lstm:
@@ -205,11 +213,9 @@ class SopaSeq2seq(BaseModel):
         has_target = batch.tgt is not None
 
         X = self.to_cuda(torch.LongTensor(batch.src))
-        # X.requires_grad = False
         X = X.transpose(0, 1)
         if has_target:
             Y = self.to_cuda(torch.LongTensor(batch.tgt))
-            # Y.requires_grad = False
             Y = Y.transpose(0, 1)
 
         batch_size = X.size(1)
@@ -224,6 +230,9 @@ class SopaSeq2seq(BaseModel):
         all_decoder_outputs = self.to_cuda(torch.zeros((
             seqlen_tgt, batch_size, self.output_size)))
 
+        if not hasattr(self, 'all_sopa_scores'):
+            self.all_sopa_scores = []
+        self.all_sopa_scores.append(sopa_scores.data.cpu().numpy().transpose(1, 0, 2))
         for t in range(seqlen_tgt):
             decoder_output, decoder_hidden = self.decoder(
                 decoder_input, decoder_hidden, encoder_outputs, sopa_scores
