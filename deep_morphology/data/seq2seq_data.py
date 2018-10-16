@@ -14,7 +14,7 @@ from deep_morphology.data.base_data import BaseDataset, Vocab
 
 
 Seq2seqFields = recordclass('Seq2seqFields', ['src', 'tgt'])
-Seq2seqWithLenFields = recordclass('Seq2seqFields', ['src', 'tgt', 'src_len', 'tgt_len'])
+Seq2seqWithLenFields = recordclass('Seq2seqWithLenFields', ['src', 'src_len', 'tgt_len', 'tgt'])
 
 
 class Seq2seqDataset(BaseDataset):
@@ -46,7 +46,8 @@ class UnlabeledSeq2seqDataset(Seq2seqDataset):
 
     def extract_sample_from_line(self, line):
         src = line.split("\t")[0].split(" ")
-        return Seq2seqWithLenFields(src, None, len(src), None)
+        return Seq2seqWithLenFields(
+            src=src, src_len=len(src), tgt=None, tgt_len=None)
 
 
 class InflectionDataset(BaseDataset):
