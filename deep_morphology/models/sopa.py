@@ -59,6 +59,7 @@ class Sopa(nn.Module):
         self.patterns = patterns
         self.pattern_maxlen = max(self.patterns.keys())
         self.num_patterns = sum(self.patterns.values())
+        self.all_num_hidden = self.pattern_maxlen * self.num_patterns
 
         diag_size = 2 * self.num_patterns * self.pattern_maxlen
 
@@ -113,11 +114,37 @@ class Sopa(nn.Module):
         input_len = to_cuda(torch.LongTensor(input_len))
         input_len.requires_grad = False
 
+        # backtrace
+        L = input.size(1)
+        B = batch_size
+        P = self.pattern_maxlen
+        N = self.num_patterns
+        bw_scores = to_cuda(torch.zeros(
+            (L+1, B, 2, N, P), dtype=torch.float64
+        ))
+        start_token_idx = to_cuda(torch.zeros(
+            (L+1, B, 2, N, P), dtype=torch.int16
+        ))
+        end_token_idx = to_cuda(torch.zeros(
+            (B, N), dtype=torch.int16
+        ))
+        transition_type = to_cuda(torch.zeros(
+            (L, B, 2, N, P), dtype=torch.uint8
+        ))
+        # initialization
+        bw_scores[0] = 1
+        transition_type[:] = 2  # no field should remain 2
+        start_token_idx[:] = -100
+        end_token_idx[:] = -100
+        start_token_idx[0] = 0
+        start_token_idx[:, :, :, :, -1] = 0
+
         all_scores = []
         for i, tr_mtx in enumerate(transition_matrices):
             hiddens = self.transition_once(
                 hiddens, tr_mtx, zero_padding,
-                restart_padding)
+                restart_padding, bw_scores, start_token_idx,
+                transition_type, i)
             all_hiddens.append(hiddens)
 
             end_state_vals = torch.gather(
@@ -125,16 +152,66 @@ class Sopa(nn.Module):
                     batch_size, num_patterns)
             active_docs = torch.nonzero(torch.ge(input_len, i)).squeeze()
             if active_docs.size():
+                inactive_docs = torch.nonzero(torch.lt(input_len, i)).squeeze()
+                updated_docs = (scores > end_state_vals)
+                updated_docs[inactive_docs] = 0 
+                updated_docs = updated_docs.nonzero()
                 scores[active_docs] = self.semiring.plus(
                     scores[active_docs], end_state_vals[active_docs]
                 )
+                if updated_docs.numel() > 0:
+                    # start state included
+                    end_token_idx[updated_docs[:, 0], updated_docs[:, 1]] = i + 1
             all_scores.append(scores.clone())
 
         scores = self.semiring.to_float(scores)
+
+        # self.backward_pass(bw_scores, transition_type, start_token_idx, end_token_idx)
         return torch.tanh(torch.stack(all_scores))
 
-    def transition_once(self, hiddens, transition_matrix, zero_padding, restart_padding):
+    def backward_pass(self, scores, transition_type, start_token_idx, end_token_idx):
+
+        for bi in range(scores.size(1)):
+            for i in range(end_token_idx.size(1)):
+                end = end_token_idx[bi, i]
+                if end == -100:
+                    continue
+                start = start_token_idx[end, bi, 1, i, -1]
+                if start.item() < 0:
+                    continue
+                # print(i, start.item(), end.item())
+                trans = []
+                pi = 3
+                pattern_scores = []
+                for j in range(end, start-1, -1):
+                    if pi < 0:
+                        print("START", start.item(), "END", end.item(), "PI", pi, trans)
+                    # print(j, i, pi, transition_type.size())
+                    MP = transition_type[j, bi, 1, i, pi].item()
+                    # main path
+                    if MP == 1:
+                        trans.append("MP")
+                        pattern_scores.append(scores[j+1, bi, 1, i, pi].item())
+                        pi -= 1
+                    else:
+                        trans.append("SL")
+                        pattern_scores.append(scores[j+1, bi, 1, i, pi].item())
+                    EPS = transition_type[j, bi, 0, i, pi].item()
+                    if EPS:
+                        trans.append("EPS")
+                        pattern_scores.append(scores[j+1, bi, 0, i, pi].item())
+                        pi -= 1
+
+                    # print(MP)
+                print(bi, i, start.item(), end.item(), trans[::-1], pattern_scores[::-1])
+
+        #for tr in transition_type[-1, 0, :, 0, :]
+        #print(start)
+
+    def transition_once(self, hiddens, transition_matrix, zero_padding, restart_padding,
+                        scores, start_token_idx, transition_type, ti):
         eps_value = self.get_epsilon()
+
         after_epsilons = \
             self.semiring.plus(
                 hiddens,
@@ -144,18 +221,55 @@ class Sopa(nn.Module):
                          eps_value  # doesn't depend on token, just state
                      )), 2)
             )
+        # trace updates
+        is_epsilon = (
+                hiddens <
+                torch.cat((zero_padding,
+                     self.semiring.times(
+                         hiddens[:, :, :-1],
+                         eps_value  # doesn't depend on token, just state
+                     )), 2)
+            )
+        transition_type[ti, :, 0, :, :] = is_epsilon
+        scores[ti+1, :, 0, :, :] = after_epsilons
+        is_eps_idx = is_epsilon.nonzero()
+        start_token_idx[ti+1, :, 0, :, :] = start_token_idx[ti, :, 1, :, :].clone()
+        idx3 = torch.max(is_eps_idx[:, 2]-1, torch.zeros_like(is_eps_idx[:, 2]))
+        start_token_idx[ti+1, is_eps_idx[:, 0], 0, is_eps_idx[:, 1], is_eps_idx[:, 2]] = \
+            start_token_idx[ti, is_eps_idx[:, 0], 1, is_eps_idx[:, 1], idx3].clone()
+
         after_main_paths = \
             torch.cat((restart_padding,  # <- Adding the start state
                  self.semiring.times(
                      after_epsilons[:, :, :-1],
                      transition_matrix[:, :, -1, :-1])
                  ), 2)
+
         # self loop scale removed
         after_self_loops = self.semiring.times(
             after_epsilons,
             transition_matrix[:, :, 0, :]
         )
+
         # either happy or self-loop, not both
+        is_main = (after_main_paths > after_self_loops)
+        is_sl = (after_main_paths <= after_self_loops).nonzero()
+        transition_type[ti, :, 1, :, :] = is_main
+        is_main = is_main.nonzero()
+        idx3 = torch.max(is_main[:, 2]-1, torch.zeros_like(is_main[:, 2]))
+        scores[ti+1, :, 1, :, :] = self.semiring.plus(after_main_paths, after_self_loops)
+        # self loop
+        start_token_idx[ti+1, is_sl[:, 0], 1, is_sl[:, 1], is_sl[:, 2]] = \
+            start_token_idx[ti+1, is_sl[:, 0], 0, is_sl[:, 1], is_sl[:, 2]].clone()
+        # update if main loop
+        start_token_idx[ti+1, is_main[:, 0], 1, is_main[:, 1], is_main[:, 2]] = \
+            start_token_idx[ti+1, is_main[:, 0], 0, is_main[:, 1], idx3].clone()
+        # restart
+        start_token_idx[ti+1, is_main[:, 0], 1, is_main[:, 1], 0] = ti
+        # set both transition types to 0
+        transition_type[ti, is_main[:, 0], 1, is_main[:, 1], 0] = 0 
+        transition_type[ti, is_main[:, 0], 0, is_main[:, 1], 0] = 0 
+
         return self.semiring.plus(after_main_paths, after_self_loops)
 
     def get_transition_matrices(self, inputs):
