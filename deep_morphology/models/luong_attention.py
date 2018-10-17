@@ -8,7 +8,6 @@
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from deep_morphology.models.base import BaseModel
 
@@ -122,7 +121,7 @@ class LuongAttentionDecoder(nn.Module):
         rnn_output = rnn_output.squeeze(0)
         context = context.squeeze(1)
         concat_input = torch.cat((rnn_output, context), 1)
-        concat_output = F.tanh(self.concat(concat_input))
+        concat_output = torch.tanh(self.concat(concat_input))
         output = self.out(concat_output)
         return output, hidden, attn_weights
 
