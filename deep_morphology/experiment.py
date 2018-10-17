@@ -26,7 +26,7 @@ use_cuda = torch.cuda.is_available()
 
 class Result:
     __slots__ = ('train_loss', 'dev_loss', 'running_time', 'start_time',
-                 'epochs_run', 'node', 'gpu')
+                 'parameters', 'epochs_run', 'node', 'gpu')
 
     def __init__(self):
         self.train_loss = []
@@ -105,6 +105,9 @@ class Experiment:
     def init_model(self):
         model_class = getattr(models, self.config.model)
         self.model = model_class(self.config, self.train_data)
+        logging.info("Number of parameters: {}".format(
+            sum(p.nelement() for p in self.model.parameters())
+        ))
         if self.config.cpu_only is False and use_cuda:
             self.model = self.model.cuda()
 
@@ -112,6 +115,7 @@ class Experiment:
         self.result = Result()
         self.result.start()
         self.result.node = platform.node()
+        self.result.parameters = sum(p.nelement() for p in self.model.parameters())
         if use_cuda:
             self.result.gpu = torch.cuda.get_device_name(torch.cuda.current_device())
         else:
