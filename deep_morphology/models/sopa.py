@@ -42,10 +42,19 @@ MaxPlusSemiring = Semiring(
     to_float=lambda x: x
 )
 
+LogSpaceMaxTimesSemiring = Semiring(
+    zero=neg_infinity,
+    one=torch.zeros,
+    plus=torch.max,
+    times=torch.add,
+    from_float=lambda x: torch.log(torch.sigmoid(x)),
+    to_float=torch.exp,
+)
+
 
 class Sopa(nn.Module):
     def __init__(self, input_size, patterns, 
-                 semiring=MaxPlusSemiring, dropout=0):
+                 semiring="MaxPlusSemiring", dropout=0):
         super().__init__()
         self.input_size = input_size
         self.patterns = patterns
@@ -54,7 +63,10 @@ class Sopa(nn.Module):
         else:
             self.dropout = None
 
-        self.semiring = MaxPlusSemiring
+        if semiring.lower() == 'maxplussemiring':
+            self.semiring = MaxPlusSemiring
+        elif semiring.lower() == 'logspacemaxtimessemiring':
+            self.semiring = LogSpaceMaxTimesSemiring
         # dict of patterns
         self.patterns = patterns
         self.pattern_maxlen = max(self.patterns.keys())
@@ -161,12 +173,16 @@ class Sopa(nn.Module):
                 if updated_docs.numel() > 0:
                     # start state included
                     end_token_idx[updated_docs[:, 0], updated_docs[:, 1]] = i + 1
-            all_scores.append(scores.clone())
+            all_scores.append(self.semiring.to_float(scores.clone()))
 
-        scores = self.semiring.to_float(scores)
+        # scores = self.semiring.to_float(torch.stack(scores))
+
+        all_scores = torch.stack(all_scores)
+        if self.semiring == MaxPlusSemiring:
+            all_scores = torch.tanh(all_scores)
 
         # self.backward_pass(bw_scores, transition_type, start_token_idx, end_token_idx, batch_end_states)
-        return torch.tanh(torch.stack(all_scores))
+        return all_scores
 
     def backward_pass(self, scores, transition_type, start_token_idx, end_token_idx, end_states):
         #for plen, pnum in sorted(self.patterns.items()):

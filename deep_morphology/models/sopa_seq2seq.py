@@ -50,7 +50,8 @@ class SopaEncoder(nn.Module):
         else:
             sopa_input_size = self.config.embedding_size
         if self.config.use_sopa:
-            self.sopa = Sopa(sopa_input_size, patterns=self.config.patterns, dropout=dropout)
+            self.sopa = Sopa(sopa_input_size, patterns=self.config.patterns, 
+                             semiring=self.config.semiring, dropout=dropout)
 
     def forward(self, input, input_len):
 
