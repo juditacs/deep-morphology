@@ -1,0 +1,28 @@
+model: CNNSeq2seq
+dataset_class: GlobalPaddingInflectionDataset
+embedding_size: 32
+hidden_size: 512
+dropout: 0.2
+share_vocab: true
+
+epochs: 200
+batch_size: 128
+
+optimizer: Adam
+
+experiment_dir: exps/cnn_seq2seq
+
+conv_layers:
+    - type: Conv1d
+      out_channels: 10
+      kernel_size: 3
+      padding: 2
+    - type: MaxPool1d
+      kernel_size: 2
+    - type: Conv1d
+      out_channels: 10
+      kernel_size: 2
+      padding: 2
+    - type: MaxPool1d
+      kernel_size: 2
+
