@@ -147,7 +147,7 @@ from the parameter ranges file.
 
 The dataset class must define 3 class attributes:
 
-1. `unlabeled_data_class`: this is the name of the corresponding unlabeled dataset class. The name should be a string since the class does not exits yet.
+1. `unlabeled_data_class`: this is the name of the corresponding unlabeled dataset class. The name should be a string since the class is not defined yet.
 2. `data_recordclass`: he recordclass corresponding to this dataset class. This should be the type itself (not a string).
 3. `constants`: list of constants that the vocabularies should define. Note that these used by `load_or_create_vocab` which can be redefined if necessary (for example different fields of the dataset should use different constants).
 
