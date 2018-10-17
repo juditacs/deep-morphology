@@ -24,9 +24,22 @@ class Seq2seqDataset(BaseDataset):
     constants = ['PAD', 'UNK', 'SOS', 'EOS']
 
     def load_or_create_vocabs(self):
-        super().load_or_create_vocabs()
+        vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
+        vocabs = Seq2seqWithLenFields(None, None, None, None) 
+        vocab_fn = vocab_pre + 'src'
+        if os.path.exists(vocab_fn):
+            vocabs.src = Vocab(file=vocab_fn, frozen=True)
+        else:
+            vocabs.src = Vocab(constants=self.constants)
         if self.config.share_vocab:
-            self.vocabs.tgt = self.vocabs.src
+            vocabs.tgt = vocabs.src
+        else:
+            vocab_fn = vocab_pre + 'tgt'
+            if os.path.exists(vocab_fn):
+                vocabs.tgt = Vocab(file=vocab_fn, frozen=True)
+            else:
+                vocabs.tgt = Vocab(constants=self.constants)
+        self.vocabs = vocabs
 
     def extract_sample_from_line(self, line):
         src, tgt = line.split("\t")[:2]
