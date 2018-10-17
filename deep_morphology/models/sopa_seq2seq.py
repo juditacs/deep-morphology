@@ -230,9 +230,6 @@ class SopaSeq2seq(BaseModel):
         all_decoder_outputs = self.to_cuda(torch.zeros((
             seqlen_tgt, batch_size, self.output_size)))
 
-        if not hasattr(self, 'all_sopa_scores'):
-            self.all_sopa_scores = []
-        self.all_sopa_scores.append(sopa_scores.data.cpu().numpy().transpose(1, 0, 2))
         for t in range(seqlen_tgt):
             decoder_output, decoder_hidden = self.decoder(
                 decoder_input, decoder_hidden, encoder_outputs, sopa_scores
