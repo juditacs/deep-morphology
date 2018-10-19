@@ -89,6 +89,9 @@ class Sopa(nn.Module):
         self.end_states = torch.LongTensor(end_states).unsqueeze(1)
         self.end_states.requires_grad = False
 
+        # if True, the output includes all pattern spans
+        self.trace = False
+
     def get_epsilon(self):
         return to_cuda(self.semiring.times(
             self.epsilon_scale, self.semiring.from_float(self.epsilon)))
@@ -112,8 +115,6 @@ class Sopa(nn.Module):
         zero_padding = to_cuda(torch.FloatTensor(
             self.semiring.zero(batch_size, num_patterns, 1)))
         zero_padding.requires_grad = False
-        # self_loop_scale = self.semiring.from_float(self.self_loop_scale)
-        # self_loop_scale.requires_grad = False
 
         batch_end_states = to_cuda(self.end_states.expand(
             batch_size, num_patterns, 1))
@@ -175,13 +176,14 @@ class Sopa(nn.Module):
                     end_token_idx[updated_docs[:, 0], updated_docs[:, 1]] = i + 1
             all_scores.append(self.semiring.to_float(scores.clone()))
 
-        # scores = self.semiring.to_float(torch.stack(scores))
-
         all_scores = torch.stack(all_scores)
         if self.semiring == MaxPlusSemiring:
             all_scores = torch.tanh(all_scores)
 
-        self.backward_pass(self.semiring.to_float(bw_scores), transition_type, start_token_idx, end_token_idx, batch_end_states)
+        if self.trace:
+            self.backward_pass(
+                self.semiring.to_float(bw_scores), transition_type,
+                start_token_idx, end_token_idx, batch_end_states)
         return all_scores
 
     def backward_pass(self, scores, transition_type, start_token_idx, end_token_idx, end_states):
@@ -216,7 +218,7 @@ class Sopa(nn.Module):
                 offset += pnum
 
     def transition_once(self, hiddens, transition_matrix, zero_padding, restart_padding,
-                        scores, start_token_idx, transition_type, ti, trace=True):
+                        scores, start_token_idx, transition_type, ti):
         eps_value = self.get_epsilon()
 
         after_epsilons = \
@@ -229,7 +231,7 @@ class Sopa(nn.Module):
                      )), 2)
             )
         # trace updates
-        if trace:
+        if self.trace:
             is_epsilon = (
                     hiddens <
                     torch.cat((zero_padding,
@@ -263,7 +265,7 @@ class Sopa(nn.Module):
                 transition_matrix[:, :, 0, :]
         )
 
-        if trace:
+        if self.trace:
             # either happy or self-loop, not both
             is_main = (after_main_paths > after_self_loops)
             is_sl = (after_main_paths <= after_self_loops).nonzero()
