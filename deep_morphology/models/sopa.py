@@ -54,8 +54,7 @@ LogSpaceMaxTimesSemiring = Semiring(
 
 class Sopa(nn.Module):
     def __init__(self, input_size, patterns, 
-                 semiring="MaxPlusSemiring", dropout=0,
-                 bias_scale=1.0):
+                 semiring="MaxPlusSemiring", dropout=0):
         super().__init__()
         self.input_size = input_size
         self.patterns = patterns
@@ -68,8 +67,6 @@ class Sopa(nn.Module):
             self.semiring = MaxPlusSemiring
         elif semiring.lower() == 'logspacemaxtimessemiring':
             self.semiring = LogSpaceMaxTimesSemiring
-        # self.bias_scale = self.semiring.from_float(to_cuda(torch.FloatTensor(bias_scale)))
-        # self.bias_scale.requires_grad = False
         # dict of patterns
         self.patterns = patterns
         self.pattern_maxlen = max(self.patterns.keys())
