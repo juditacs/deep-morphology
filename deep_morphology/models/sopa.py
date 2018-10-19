@@ -162,7 +162,9 @@ class Sopa(nn.Module):
             end_state_vals = torch.gather(
                 hiddens, 2, batch_end_states).view(
                     batch_size, num_patterns)
-            active_docs = torch.nonzero(torch.ge(input_len, i)).squeeze()
+            active_docs = torch.nonzero(torch.ge(input_len, i))
+            if active_docs.dim() > 1:
+                active_docs = active_docs.squeeze(1)
             if active_docs.numel() > 0:
                 inactive_docs = torch.nonzero(torch.lt(input_len, i)).squeeze()
                 updated_docs = (scores < end_state_vals)
