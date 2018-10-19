@@ -46,7 +46,7 @@ class Seq2seqDataset(BaseDataset):
         src = src.split(" ")
         tgt = tgt.split(" ")
         return Seq2seqWithLenFields(
-            src=src, src_len=len(src), tgt=tgt, tgt_len=len(tgt))
+            src=src, src_len=len(src)+2, tgt=tgt, tgt_len=len(tgt)+2)
 
     def print_sample(self, sample, stream):
         stream.write("{}\t{}\n".format(
@@ -60,7 +60,7 @@ class UnlabeledSeq2seqDataset(Seq2seqDataset):
     def extract_sample_from_line(self, line):
         src = line.split("\t")[0].split(" ")
         return Seq2seqWithLenFields(
-            src=src, src_len=len(src), tgt=None, tgt_len=None)
+            src=src, src_len=len(src)+2, tgt=None, tgt_len=None)
 
 
 class InflectionDataset(BaseDataset):
