@@ -87,8 +87,6 @@ def parse_args():
                    "model is used.")
     p.add_argument("-t", "--test-file", type=str, default=None,
                    help="Test file location")
-    p.add_argument("--keep-spaces", action="store_true",
-                   help="Do not remove spaces from output")
     return p.parse_args()
 
 
