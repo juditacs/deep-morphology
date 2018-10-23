@@ -39,6 +39,9 @@ class BaseModel(nn.Module):
             if self.should_early_stop(epoch, result):
                 logging.info("Early stopping.")
                 break
+            if epoch == 0:
+                self.config.save()
+                self.result.save()
         if saved is False:
             self._save(epoch)
 
