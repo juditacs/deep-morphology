@@ -108,7 +108,7 @@ class Experiment:
         logging.info("Number of parameters: {}".format(
             sum(p.nelement() for p in self.model.parameters())
         ))
-        if self.config.cpu_only is False and use_cuda:
+        if use_cuda:
             self.model = self.model.cuda()
 
     def __enter__(self):

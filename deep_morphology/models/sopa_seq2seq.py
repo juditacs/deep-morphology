@@ -50,7 +50,7 @@ class SopaEncoder(nn.Module):
         else:
             sopa_input_size = self.config.embedding_size
         if self.config.use_sopa:
-            self.sopa = Sopa(sopa_input_size, patterns=self.config.patterns, 
+            self.sopa = Sopa(sopa_input_size, patterns=self.config.patterns,
                              semiring=self.config.semiring, dropout=dropout)
 
     def forward(self, input, input_len):
@@ -86,7 +86,7 @@ class Decoder(nn.Module):
             nn.init.xavier_uniform_(self.embedding.weight)
 
         hidden_size = self.config.hidden_size
-        lstm_input_size = self.config.embedding_size 
+        lstm_input_size = self.config.embedding_size
 
         if self.config.concat_sopa_to_decoder_input:
             lstm_input_size += sum(self.config.patterns.values())
@@ -150,7 +150,7 @@ class Decoder(nn.Module):
             pass
         else:
             raise ValueError("Unknown attention option: {}".format(self.config.attention_on))
-            
+
         if self.config.attention_on is None:
             return self.output_proj(attention_vec), lstm_hidden
         context = self.attention(attention_mtx, attention_vec)
@@ -160,22 +160,8 @@ class Decoder(nn.Module):
         output = self.output_proj(concat_output)
         return output, lstm_hidden
 
-    def to_cuda(self, tensor):
-        if self.config.cpu_only:
-            return tensor
-        if torch.cuda.is_available():
-            return tensor.cuda()
-        return tensor
-
 
 class SopaSeq2seq(BaseModel):
-
-    def to_cuda(self, tensor):
-        if self.config.cpu_only:
-            return tensor
-        if torch.cuda.is_available():
-            return tensor.cuda()
-        return tensor
 
     def __init__(self, config, dataset):
         super().__init__(config)
@@ -203,7 +189,7 @@ class SopaSeq2seq(BaseModel):
             self.hidden_w2 = nn.Linear(sumpattern+self.config.hidden_size, self.config.hidden_size)
 
     def compute_loss(self, target, output):
-        target = self.to_cuda(torch.LongTensor(target.tgt))
+        target = to_cuda(torch.LongTensor(target.tgt))
         batch_size, seqlen, dim = output.size()
         output = output.contiguous().view(seqlen * batch_size, dim)
         target = target.view(seqlen * batch_size)
@@ -213,10 +199,10 @@ class SopaSeq2seq(BaseModel):
     def forward(self, batch):
         has_target = batch.tgt is not None
 
-        X = self.to_cuda(torch.LongTensor(batch.src))
+        X = to_cuda(torch.LongTensor(batch.src))
         X = X.transpose(0, 1)
         if has_target:
-            Y = self.to_cuda(torch.LongTensor(batch.tgt))
+            Y = to_cuda(torch.LongTensor(batch.tgt))
             Y = Y.transpose(0, 1)
 
         batch_size = X.size(1)
@@ -226,9 +212,9 @@ class SopaSeq2seq(BaseModel):
 
         nl = self.config.num_layers
         decoder_hidden = self.init_decoder_hidden(batch_size, encoder_hidden, sopa_scores)
-        decoder_input = self.to_cuda(torch.LongTensor([self.SOS] * batch_size))
+        decoder_input = to_cuda(torch.LongTensor([self.SOS] * batch_size))
 
-        all_decoder_outputs = self.to_cuda(torch.zeros((
+        all_decoder_outputs = to_cuda(torch.zeros((
             seqlen_tgt, batch_size, self.output_size)))
 
         for t in range(seqlen_tgt):
@@ -255,7 +241,7 @@ class SopaSeq2seq(BaseModel):
             return (
                 self.hidden_w1(sopa_final_score),
                 self.hidden_w2(sopa_final_score),
-            ) 
+            )
         if self.config.decoder_hidden == 'both':
             sopa_final_score = sopa_scores[-1]
             concat_len = sopa_final_score.size(1)
@@ -268,7 +254,7 @@ class SopaSeq2seq(BaseModel):
             return (
                 self.hidden_w1(hidden0),
                 self.hidden_w2(hidden1),
-            ) 
+            )
         if self.config.decoder_hidden == 'zero':
             return None
             return (torch.randn(1, batch_size, self.config.hidden_size),
