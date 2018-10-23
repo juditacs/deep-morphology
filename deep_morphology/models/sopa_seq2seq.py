@@ -8,8 +8,6 @@
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
 
 from deep_morphology.models.base import BaseModel
 from deep_morphology.models.attention import LuongAttention
@@ -98,7 +96,7 @@ class Decoder(nn.Module):
             batch_first=False,
             dropout=self.config.dropout)
 
-        if self.config.attention_on != None:
+        if self.config.attention_on is not None:
             size_mtx, size_vec = self.derive_attention_size()
             self.attention = LuongAttention(encoder_size=size_mtx, decoder_size=size_vec,
                                             method=self.config.attention_variant)
@@ -126,9 +124,6 @@ class Decoder(nn.Module):
     def forward(self, input, last_hidden, encoder_outputs, sopa_scores):
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
-        batch_size = input.size(0)
-        # skip start symbol
-        # sopa_hiddens = torch.stack(sopa_hiddens[1:]).view(-1, batch_size, concat_len)
 
         if sopa_scores is not None:
             sopa_final_score = sopa_scores[-1]
@@ -210,7 +205,6 @@ class SopaSeq2seq(BaseModel):
         seqlen_tgt = Y.size(0) if has_target else seqlen_src * 4
         encoder_outputs, encoder_hidden, sopa_scores = self.encoder(X, batch.src_len)
 
-        nl = self.config.num_layers
         decoder_hidden = self.init_decoder_hidden(batch_size, encoder_hidden, sopa_scores)
         decoder_input = to_cuda(torch.LongTensor([self.SOS] * batch_size))
 
