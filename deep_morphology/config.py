@@ -27,7 +27,6 @@ class Config:
         'min_epochs': 0,
         'early_stopping_window': 5,
         'share_embedding': False,  # inflection
-        'cpu_only': False,
         'save_min_epoch': 0,
         'save_attention_weights': False,
     }
@@ -56,13 +55,15 @@ class Config:
         return cfg
 
     def __init__(self, **kwargs):
-        for param, val in kwargs.items():
-            setattr(self, param, val)
+        self._kwargs = kwargs
         self.__expand_variables()
         self.__derive_params()
         self.__validate_params()
 
     def __getattr__(self, attr):
+        if attr in self._kwargs:
+            setattr(self, attr, self._kwargs[attr])
+            return getattr(self, attr)
         if attr in self.defaults:
             setattr(self, attr, self.__class__.defaults[attr])
             return getattr(self, attr)
@@ -104,7 +105,7 @@ class Config:
         for k in dir(self):
             if k.startswith('__') and k.endswith('__'):
                 continue
-            if k in ('path_variables', 'defaults'):
+            if k in ('_kwargs', 'path_variables', 'defaults'):
                 continue
             if not hasattr(self, k):
                 continue
