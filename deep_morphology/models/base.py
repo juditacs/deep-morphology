@@ -41,7 +41,6 @@ class BaseModel(nn.Module):
                 break
             if epoch == 0:
                 self.config.save()
-                self.result.save()
         if saved is False:
             self._save(epoch)
 
