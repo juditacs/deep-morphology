@@ -121,7 +121,7 @@ class Decoder(nn.Module):
         size_vec = self.config.hidden_size
         return size_mtx, size_vec
 
-    def forward(self, input, last_hidden, encoder_outputs, sopa_scores):
+    def forward(self, input, last_hidden, encoder_outputs, encoder_lens, sopa_scores):
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
 
@@ -148,7 +148,7 @@ class Decoder(nn.Module):
 
         if self.config.attention_on is None:
             return self.output_proj(attention_vec), lstm_hidden
-        context = self.attention(attention_mtx, attention_vec)
+        context = self.attention(attention_mtx, attention_vec, encoder_lens)
 
         concat_input = torch.cat((attention_vec.squeeze(0), context.squeeze(1)), 1)
         concat_output = torch.tanh(self.concat(concat_input))
@@ -211,9 +211,10 @@ class SopaSeq2seq(BaseModel):
         all_decoder_outputs = to_cuda(torch.zeros((
             seqlen_tgt, batch_size, self.output_size)))
 
+        encoder_lens = to_cuda(torch.LongTensor(batch.src_len))
         for t in range(seqlen_tgt):
             decoder_output, decoder_hidden = self.decoder(
-                decoder_input, decoder_hidden, encoder_outputs, sopa_scores
+                decoder_input, decoder_hidden, encoder_outputs, encoder_lens, sopa_scores
             )
             all_decoder_outputs[t] = decoder_output
             if has_target:

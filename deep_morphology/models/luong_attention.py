@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 
 from deep_morphology.models.base import BaseModel
+from deep_morphology.models.attention import LuongAttention
 
 use_cuda = torch.cuda.is_available()
 
@@ -45,38 +46,6 @@ class EncoderRNN(nn.Module):
         return outputs, hidden
 
 
-class Attention(nn.Module):
-    def __init__(self, method, hidden_size):
-        super(self.__class__, self).__init__()
-        self.method = method
-        self.hidden_size = hidden_size
-        self.softmax = nn.Softmax(dim=-1)
-        if method == 'general':
-            self.attn = nn.Linear(hidden_size, hidden_size)
-        elif method == 'concat':
-            self.attn = nn.Linear(hidden_size*2, hidden_size)
-            self.v = nn.Parameter(torch.FloatTensor(hidden_size))
-
-    def forward(self, hidden, encoder_outputs):
-        energy = self.attn(encoder_outputs).transpose(0, 1)
-        e = energy.bmm(hidden.permute(1, 2, 0))
-        energies = e.squeeze(2)
-        return self.softmax(energies)
-
-    def score(self, hidden, encoder_output):
-        # FIXME not used
-        if self.method == 'dot':
-            return hidden.dot(encoder_output)
-        if self.method == 'general':
-            energy = self.attn(encoder_output)
-            return hidden.dot(energy)
-        elif self.method == 'concat':
-            energy = torch.cat((hidden, encoder_output), 0)
-            energy = self.attn(energy.unsqueeze(0))
-            energy = self.v.dot(energy)
-            return energy
-
-
 class LuongAttentionDecoder(nn.Module):
     def __init__(self, config, output_size):
         super(self.__class__, self).__init__()
@@ -91,7 +60,8 @@ class LuongAttentionDecoder(nn.Module):
         self.concat = nn.Linear(2*self.config.hidden_size,
                                 self.config.hidden_size)
         self.out = nn.Linear(self.config.hidden_size, self.output_size)
-        self.attn = Attention('general', self.config.hidden_size)
+        #self.attn = Attention('general', self.config.hidden_size)
+        self.attention = LuongAttention(self.config.hidden_size)
 
     def __init_cell(self):
         dropout = 0 if self.config.num_layers_tgt < 2 else self.config.dropout
@@ -110,20 +80,19 @@ class LuongAttentionDecoder(nn.Module):
                 dropout=dropout,
             )
 
-    def forward(self, input_seq, last_hidden, encoder_outputs):
+    def forward(self, input_seq, last_hidden, encoder_outputs, encoder_lens):
         batch_size = input_seq.size(0)
         embedded = self.embedding(input_seq)
         embedded = self.embedding_dropout(embedded)
         embedded = embedded.view(1, batch_size, embedded.size(-1))
         rnn_output, hidden = self.cell(embedded, last_hidden)
-        attn_weights = self.attn(rnn_output, encoder_outputs)
-        context = attn_weights.unsqueeze(1).bmm(encoder_outputs.transpose(0, 1))
+        context = self.attention(encoder_outputs, rnn_output, encoder_lens)
         rnn_output = rnn_output.squeeze(0)
         context = context.squeeze(1)
         concat_input = torch.cat((rnn_output, context), 1)
         concat_output = torch.tanh(self.concat(concat_input))
         output = self.out(concat_output)
-        return output, hidden, attn_weights
+        return output, hidden, context
 
 
 class LuongAttentionSeq2seq(BaseModel):
@@ -171,9 +140,10 @@ class LuongAttentionSeq2seq(BaseModel):
             all_attn_weights = to_cuda(torch.zeros((
                 seqlen_tgt, batch_size, seqlen_src-1)))
 
+        encoder_lens = to_cuda(torch.LongTensor(batch.src_len))
         for t in range(seqlen_tgt):
             decoder_output, decoder_hidden, attn_weights = self.decoder(
-                decoder_input, decoder_hidden, encoder_outputs
+                decoder_input, decoder_hidden, encoder_outputs, encoder_lens
             )
             all_decoder_outputs[t] = decoder_output
             if self.config.save_attention_weights:
