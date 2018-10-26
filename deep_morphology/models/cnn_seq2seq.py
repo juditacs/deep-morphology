@@ -52,7 +52,7 @@ class Conv1DEncoder(nn.Module):
                 stride = layer.get('stride', kernel_size)
                 dilation = layer.get('dilation', 1)
 
-            l_out = int((l_in + 2 * padding - dilation*(kernel_size-1) - 1) 
+            l_out = int((l_in + 2 * padding - dilation*(kernel_size-1) - 1)
                 / stride + 1)
             l_in = l_out
 
@@ -84,7 +84,7 @@ class CNNSeq2seq(BaseModel):
         )
         self.decoder_lstm = nn.LSTM(
             self.config.embedding_size, self.config.hidden_size,
-            num_layers=1, bidirectional=False, 
+            num_layers=1, bidirectional=False,
         )
         self.output_proj = nn.Linear(self.config.hidden_size, self.output_size)
         self.criterion = nn.CrossEntropyLoss(ignore_index=self.PAD)
