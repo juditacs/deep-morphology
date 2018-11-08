@@ -130,4 +130,3 @@ class CNNSeq2seq(BaseModel):
         target = target.view(seqlen * batch_size)
         loss = self.criterion(output, target)
         return loss
-
