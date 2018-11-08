@@ -11,6 +11,7 @@ import torch.nn as nn
 
 from deep_morphology.models.base import BaseModel
 from deep_morphology.models.attention import LuongAttention
+from deep_morphology.models.packed_lstm import AutoPackedLSTM
 
 use_cuda = torch.cuda.is_available()
 
@@ -30,17 +31,28 @@ class EncoderRNN(nn.Module):
         self.embedding = nn.Embedding(input_size, config.embedding_size_src)
         nn.init.xavier_uniform_(self.embedding.weight)
         dropout = 0 if self.config.num_layers_src < 2 else self.config.dropout
-        self.cell = nn.LSTM(
-            self.config.embedding_size_src, self.config.hidden_size,
-            num_layers=self.config.num_layers_src,
-            bidirectional=True,
-            dropout=dropout,
-        )
+        if self.config.use_packed_lstm:
+            self.cell = AutoPackedLSTM(
+                self.config.embedding_size_src, self.config.hidden_size,
+                num_layers=self.config.num_layers_src,
+                bidirectional=True,
+                dropout=dropout,
+            )
+        else:
+            self.cell = nn.LSTM(
+                self.config.embedding_size_src, self.config.hidden_size,
+                num_layers=self.config.num_layers_src,
+                bidirectional=True,
+                dropout=dropout,
+            )
 
-    def forward(self, input):
+    def forward(self, input, input_len):
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
-        outputs, hidden = self.cell(embedded)
+        if self.config.use_packed_lstm:
+            outputs, hidden = self.cell(embedded, input_len)
+        else:
+            outputs, hidden = self.cell(embedded)
         outputs = outputs[:, :, :self.config.hidden_size] + \
             outputs[:, :, self.config.hidden_size:]
         return outputs, hidden
@@ -80,13 +92,15 @@ class LuongAttentionDecoder(nn.Module):
                 dropout=dropout,
             )
 
-    def forward(self, input_seq, last_hidden, encoder_outputs, encoder_lens):
+    def forward(self, input_seq, last_hidden, encoder_outputs,
+                encoder_lens):
         batch_size = input_seq.size(0)
         embedded = self.embedding(input_seq)
         embedded = self.embedding_dropout(embedded)
         embedded = embedded.view(1, batch_size, embedded.size(-1))
         rnn_output, hidden = self.cell(embedded, last_hidden)
-        context = self.attention(encoder_outputs, rnn_output, encoder_lens)
+        context = self.attention(encoder_outputs, rnn_output,
+                                 encoder_lens)
         rnn_output = rnn_output.squeeze(0)
         context = context.squeeze(1)
         concat_input = torch.cat((rnn_output, context), 1)
@@ -128,7 +142,8 @@ class LuongAttentionSeq2seq(BaseModel):
         batch_size = X.size(1)
         seqlen_src = X.size(0)
         seqlen_tgt = Y.size(0) if has_target else seqlen_src * 4
-        encoder_outputs, encoder_hidden = self.encoder(X)
+        encoder_lens = to_cuda(torch.LongTensor(batch.src_len))
+        encoder_outputs, encoder_hidden = self.encoder(X, encoder_lens)
 
         decoder_hidden = self.init_decoder_hidden(encoder_hidden)
         decoder_input = to_cuda(torch.LongTensor([self.SOS] * batch_size))
@@ -140,7 +155,6 @@ class LuongAttentionSeq2seq(BaseModel):
             all_attn_weights = to_cuda(torch.zeros((
                 seqlen_tgt, batch_size, seqlen_src-1)))
 
-        encoder_lens = to_cuda(torch.LongTensor(batch.src_len))
         for t in range(seqlen_tgt):
             decoder_output, decoder_hidden, attn_weights = self.decoder(
                 decoder_input, decoder_hidden, encoder_outputs, encoder_lens
