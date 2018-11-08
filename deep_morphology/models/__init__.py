@@ -1,4 +1,5 @@
 from deep_morphology.models.base import BaseModel
+from deep_morphology.models.attention_cnn_seq2seq import AttentionCNNSeq2seq
 from deep_morphology.models.cnn_seq2seq import CNNSeq2seq
 from deep_morphology.models.hard_monotonic_attention import HardMonotonicAttentionSeq2seq
 from deep_morphology.models.luong_attention import LuongAttentionSeq2seq
