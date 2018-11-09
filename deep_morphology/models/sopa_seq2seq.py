@@ -163,7 +163,10 @@ class SopaSeq2seq(BaseModel):
         input_size = len(dataset.vocabs.src)
         output_size = len(dataset.vocabs.tgt)
         self.encoder = SopaEncoder(config, input_size)
-        self.decoder = Decoder(config, output_size)
+        if self.config.share_embedding:
+            self.decoder = Decoder(config, output_size, embedding=self.encoder.embedding)
+        else:
+            self.decoder = Decoder(config, output_size)
         self.config = config
         self.PAD = dataset.vocabs.src['PAD']
         self.SOS = dataset.vocabs.tgt['SOS']
