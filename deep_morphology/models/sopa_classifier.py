@@ -62,9 +62,11 @@ class MultiLayerSopaClassifier(BaseModel):
         input_size = len(dataset.vocabs.input)
         output_size = len(dataset.vocabs.label)
         if getattr(self.config, 'pretrained_embedding', False):
+            normalize = getattr(self.config, 'normalize_embedding', False)
             self.embedding = EmbeddingWrapper(
                 pretrained_embedding=self.config.pretrained_embedding,
-                dropout=self.config.dropout
+                dropout=self.config.dropout,
+                normalize_weights=normalize
             )
         else:
             self.embedding = EmbeddingWrapper(
@@ -75,7 +77,8 @@ class MultiLayerSopaClassifier(BaseModel):
         sopa = []
         for layer in self.config.sopa_layers:
             sopa.append(
-                Sopa(sopa_input_size, patterns=layer['patterns'], dropout=config.dropout)
+                Sopa(sopa_input_size, patterns=layer['patterns'], dropout=config.dropout,
+                     semiring=self.config.semiring)
             )
             sopa_input_size = sum(layer['patterns'].values())
         self.sopa = nn.ModuleList(sopa)

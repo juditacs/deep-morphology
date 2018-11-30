@@ -46,6 +46,7 @@ class EmbeddingWrapper(nn.Module):
                  dropout=0,
                  add_constants=['UNK', 'PAD'],
                  init_constants='zero',
+                 normalize_weights=False,
                  trainable=True):
         super().__init__()
         if pretrained_embedding:
@@ -57,6 +58,8 @@ class EmbeddingWrapper(nn.Module):
 
         if pretrained_embedding is not None:
             embedding, vocab = load_embedding(pretrained_embedding)
+            if normalize_weights:
+                embedding = embedding / np.sqrt(np.sum(embedding**2, axis=1))[:, None]
             if add_constants:
                 for symbol in add_constants:
                     if init_constants == 'zero':
