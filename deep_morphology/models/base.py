@@ -27,7 +27,8 @@ class BaseModel(nn.Module):
 
         for epoch in range(self.config.epochs):
             self.train(True)
-            train_loss = self.run_epoch(train_data, do_train=True)
+            train_loss = self.run_epoch(train_data, do_train=True,
+                                        result=result)
             result.train_loss.append(train_loss)
             self.train(False)
             dev_loss = self.run_epoch(dev_data, do_train=False)
@@ -55,9 +56,9 @@ class BaseModel(nn.Module):
                 return True
         return False
 
-    def run_epoch(self, data, do_train):
+    def run_epoch(self, data, do_train, result=None):
         epoch_loss = 0
-        for bi, batch in enumerate(data.batched_iter(self.config.batch_size)):
+        for step, batch in enumerate(data.batched_iter(self.config.batch_size)):
             output = self.forward(batch)
             for opt in self.optimizers:
                 opt.zero_grad()
@@ -67,7 +68,11 @@ class BaseModel(nn.Module):
                 for opt in self.optimizers:
                     opt.step()
             epoch_loss += loss.item()
-        return epoch_loss / len(data)
+            if result is not None:
+                result.steps.append(loss.item())
+            if (step + 1) % 100 == 0:
+                logging.info("Step {}, loss {}".format(step+1, loss.item()))
+        return epoch_loss / (step + 1)
 
     def save_if_best(self, train_loss, dev_loss, epoch):
         if epoch < self.config.save_min_epoch:
