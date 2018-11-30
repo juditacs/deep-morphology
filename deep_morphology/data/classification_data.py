@@ -12,7 +12,8 @@ import os
 from deep_morphology.data.base_data import BaseDataset, Vocab
 
 
-ClassificationFields = recordclass('ClassificationFields', ['input', 'input_len', 'label'])
+ClassificationFields = recordclass('ClassificationFields',
+                                   ['input', 'input_len', 'label'])
 
 
 class ClassificationDataset(BaseDataset):
@@ -29,10 +30,14 @@ class ClassificationDataset(BaseDataset):
     def load_or_create_vocabs(self):
         vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
         vocabs = ClassificationFields(None, None, None)
-        if os.path.exists(vocab_pre+'input'):
-            vocabs.input = Vocab(file=vocab_pre+'input', frozen=True)
+        if getattr(self.config, 'pretrained_embedding', False):
+            vocabs.input = Vocab(file=None, constants=None)
+            vocabs.input.load_word2vec_format(self.config.pretrained_embedding)
         else:
-            vocabs.input = Vocab(constants=self.constants)
+            if os.path.exists(vocab_pre+'input'):
+                vocabs.input = Vocab(file=vocab_pre+'input', frozen=True)
+            else:
+                vocabs.input = Vocab(constants=self.constants)
         if os.path.exists(vocab_pre+'label'):
             vocabs.label = Vocab(file=vocab_pre+'label', frozen=True)
         else:
