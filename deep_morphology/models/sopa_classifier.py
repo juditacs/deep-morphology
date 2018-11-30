@@ -80,20 +80,29 @@ class MultiLayerSopaClassifier(BaseModel):
             sopa_input_size = sum(layer['patterns'].values())
         self.sopa = nn.ModuleList(sopa)
 
+        # build MLP
+        sopa_output_size = sum(self.sopa[-1].patterns.values())
+        mlp_input_size = sopa_output_size
+        mlp = []
+        for layer in self.config.mlp_layers:
+            mlp.append(nn.Linear(mlp_input_size, layer))
+            mlp.append(getattr(nn, self.config.mlp_nonlinearity)())
+            mlp_input_size = layer
+        # output proj
+        mlp.append(nn.Linear(mlp_input_size, output_size))
+        self.mlp = nn.Sequential(*mlp)
         self.sopa_output_size = sum(self.sopa[-1].patterns.values())
-        self.out_proj = nn.Linear(self.sopa_output_size, output_size)
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, batch):
         input = to_cuda(torch.LongTensor(batch.input))
         input = input.transpose(0, 1)  # time_major
         embedded = self.embedding(input)
-        embedded = self.embedding_dropout(embedded)
         sopa_input = embedded
         for sopa_layer in self.sopa:
             sopa_output = sopa_layer(sopa_input, batch.input_len)
             sopa_input = sopa_output
-        labels = self.out_proj(sopa_output[-1])
+        labels = self.mlp(sopa_output[-1])
         return labels
 
     def compute_loss(self, target, output):
