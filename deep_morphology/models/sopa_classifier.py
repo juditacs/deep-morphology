@@ -11,6 +11,7 @@ import torch.nn as nn
 
 from deep_morphology.models import BaseModel
 from deep_morphology.models.sopa import Sopa
+from deep_morphology.models.embedding import EmbeddingWrapper
 
 
 use_cuda = torch.cuda.is_available()
@@ -30,7 +31,6 @@ class SopaClassifier(BaseModel):
         self.embedding_dropout = nn.Dropout(self.config.dropout)
         self.embedding = nn.Embedding(
             input_size, self.config.embedding_size)
-        self.embedding.weight.requires_grad = False
         nn.init.xavier_uniform_(self.embedding.weight)
         self.patterns = self.config.patterns
         self.sopa = Sopa(config.embedding_size, patterns=config.patterns, dropout=config.dropout)
@@ -61,12 +61,17 @@ class MultiLayerSopaClassifier(BaseModel):
         super().__init__(config)
         input_size = len(dataset.vocabs.input)
         output_size = len(dataset.vocabs.label)
-        self.embedding_dropout = nn.Dropout(self.config.dropout)
-        self.embedding = nn.Embedding(
-            input_size, self.config.embedding_size)
-        self.embedding.weight.requires_grad = False
-        nn.init.xavier_uniform_(self.embedding.weight)
-        sopa_input_size = config.embedding_size
+        if getattr(self.config, 'pretrained_embedding', False):
+            self.embedding = EmbeddingWrapper(
+                pretrained_embedding=self.config.pretrained_embedding,
+                dropout=self.config.dropout
+            )
+        else:
+            self.embedding = EmbeddingWrapper(
+                input_size=input_size,
+                embedding_size=self.config.embedding_size
+            )
+        sopa_input_size = self.embedding.size(1)
         sopa = []
         for layer in self.config.sopa_layers:
             sopa.append(
