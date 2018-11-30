@@ -26,7 +26,8 @@ class LuongAttention(nn.Module):
         self.method = method
         self.softmax = nn.Softmax(dim=-1)
 
-    def forward(self, encoder_outputs, decoder_output, encoder_lens):
+    def forward(self, encoder_outputs, decoder_output, encoder_lens,
+                return_weights=False):
         if self.method == 'general':
             energy = self.attn_weight(encoder_outputs)
         elif self.method == 'dot':
@@ -47,4 +48,6 @@ class LuongAttention(nn.Module):
         energy[mask] = float('-inf')
         attention = self.softmax(energy)
         context = attention.unsqueeze(1).bmm(encoder_outputs.transpose(0, 1))
+        if return_weights:
+            return context, attention
         return context
