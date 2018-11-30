@@ -5,7 +5,7 @@ from deep_morphology.models.hard_monotonic_attention import HardMonotonicAttenti
 from deep_morphology.models.luong_attention import LuongAttentionSeq2seq
 from deep_morphology.models.lstm_tagger import LSTMTagger
 from deep_morphology.models.sequence_classifier import SequenceClassifier
-from deep_morphology.models.sopa_classifier import SopaClassifier
+from deep_morphology.models.sopa_classifier import SopaClassifier, MultiLayerSopaClassifier
 from deep_morphology.models.sopa_seq2seq import SopaSeq2seq
 from deep_morphology.models.reinflection_seq2seq import ReinflectionSeq2seq
 from deep_morphology.models.test_packed_sequence import TestPackedSeq2seq
