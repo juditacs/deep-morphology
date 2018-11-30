@@ -103,7 +103,10 @@ class BaseModel(nn.Module):
     def init_optimizers(self):
         opt_type = getattr(optim, self.config.optimizer)
         kwargs = self.config.optimizer_kwargs
-        self.optimizers = [opt_type(self.parameters(), **kwargs)]
+        self.optimizers = [opt_type(
+            (p for p in self.parameters() if p.requires_grad)
+            , **kwargs)
+        ]
 
     def compute_loss(self):
         raise NotImplementedError("Subclass should implement compute_loss")
