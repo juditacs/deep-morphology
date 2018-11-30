@@ -109,8 +109,8 @@ class BaseModel(nn.Module):
         opt_type = getattr(optim, self.config.optimizer)
         kwargs = self.config.optimizer_kwargs
         self.optimizers = [opt_type(
-            (p for p in self.parameters() if p.requires_grad)
-            , **kwargs)
+            (p for p in self.parameters() if p.requires_grad),
+            **kwargs)
         ]
 
     def compute_loss(self):
