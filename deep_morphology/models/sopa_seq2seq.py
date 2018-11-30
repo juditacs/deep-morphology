@@ -5,6 +5,8 @@
 # Copyright © 2018 Judit Acs <judit@sch.bme.hu>
 #
 # Distributed under terms of the MIT license.
+import os
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -148,12 +150,15 @@ class Decoder(nn.Module):
 
         if self.config.attention_on is None:
             return self.output_proj(attention_vec), lstm_hidden
-        context = self.attention(attention_mtx, attention_vec, encoder_lens)
+        context, weights = self.attention(
+            attention_mtx, attention_vec, encoder_lens,
+            return_weights=True,
+        )
 
         concat_input = torch.cat((attention_vec.squeeze(0), context.squeeze(1)), 1)
         concat_output = torch.tanh(self.concat(concat_input))
         output = self.output_proj(concat_output)
-        return output, lstm_hidden
+        return output, lstm_hidden, weights
 
 
 class SopaSeq2seq(BaseModel):
@@ -214,18 +219,36 @@ class SopaSeq2seq(BaseModel):
         all_decoder_outputs = to_cuda(torch.zeros((
             seqlen_tgt, batch_size, self.output_size)))
 
+        # all_weights = to_cuda(torch.zeros((
+        #     seqlen_tgt, batch_size, seqlen_src
+        # )))
+
         encoder_lens = to_cuda(torch.LongTensor(batch.src_len))
         for t in range(seqlen_tgt):
-            decoder_output, decoder_hidden = self.decoder(
+            decoder_output, decoder_hidden, weights = self.decoder(
                 decoder_input, decoder_hidden, encoder_outputs, encoder_lens, sopa_scores
             )
+            # all_weights[t] = weights
             all_decoder_outputs[t] = decoder_output
             if has_target:
                 decoder_input = Y[t]
             else:
                 val, idx = decoder_output.max(-1)
                 decoder_input = idx
+        # self.save_weights(all_weights)
         return all_decoder_outputs.transpose(0, 1)
+
+    def save_weights(self, weights):
+        weight_dir = os.path.join(self.config.experiment_dir, "attn_weights")
+        if not os.path.exists(weight_dir):
+            os.makedirs(weight_dir)
+        i = 0
+        fn = os.path.join(weight_dir, "{0:04d}.npy".format(i))
+        while os.path.exists(fn):
+            i += 1
+            fn = os.path.join(weight_dir, "{0:04d}.npy".format(i))
+        with open(fn, 'wb') as f:
+            np.save(f, weights.cpu().data.numpy())
 
     def init_decoder_hidden(self, batch_size, encoder_hidden, sopa_scores):
         nl = self.config.num_layers
