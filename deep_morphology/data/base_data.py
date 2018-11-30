@@ -55,6 +55,26 @@ class Vocab:
             for symbol, id_ in sorted(self.vocab.items(), key=lambda x: x[1]):
                 f.write('{}\t{}\n'.format(symbol, id_))
 
+    def load_word2vec_format(self, fn, add_constants=['UNK', 'PAD']):
+        with open(fn) as f:
+            first = next(f).rstrip('\n').split(" ")
+            if len(first) == 2:
+                N = int(first[0])
+            else:
+                word = first[0]
+                N = None
+                self.vocab[word] = 0
+            for line in f:
+                fd = line.rstrip('\n').split(" ")
+                word = fd[0]
+                self.vocab[word] = len(self.vocab)
+            if N:
+                assert len(self.vocab) == N
+        if add_constants:
+            for symbol in add_constants:
+                self.vocab[symbol] = len(self.vocab)
+        self.frozen = True
+
 
 class BaseDataset:
 
