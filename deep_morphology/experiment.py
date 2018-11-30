@@ -41,7 +41,7 @@ class Result:
         self.running_time = (datetime.now() - self.start_time).total_seconds()
 
     def save(self, expdir):
-        d = {k: getattr(self, k) for k in self.__slots__}
+        d = {k: getattr(self, k, None) for k in self.__slots__}
         with open(os.path.join(expdir, 'result.yaml'), 'w') as f:
             yaml.dump(d, f, default_flow_style=False)
 
