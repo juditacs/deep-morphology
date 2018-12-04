@@ -27,16 +27,24 @@ class BaseModel(nn.Module):
 
         for epoch in range(self.config.epochs):
             self.train(True)
-            train_loss = self.run_epoch(train_data, do_train=True,
-                                        result=result)
+            train_loss, train_acc = self.run_epoch(train_data, do_train=True,
+                                                   result=result)
             result.train_loss.append(train_loss)
+            result.train_acc.append(train_acc)
             self.train(False)
-            dev_loss = self.run_epoch(dev_data, do_train=False)
+            dev_loss, dev_acc = self.run_epoch(dev_data, do_train=False)
             result.dev_loss.append(dev_loss)
+            result.dev_acc.append(dev_acc)
             s = self.save_if_best(train_loss, dev_loss, epoch)
             saved = saved or s
-            logging.info("Epoch {}, Train loss: {}, Dev loss: {}".format(
-                epoch+1, train_loss, dev_loss))
+            logging.info("Epoch {}, Train loss: {}, Train acc: {}, "
+                         "Dev loss: {}, Dev acc: {}".format(
+                             epoch+1,
+                             round(train_loss, 4),
+                             round(train_acc * 100, 2),
+                             round(dev_loss, 4),
+                             round(dev_acc * 100, 2),
+                         ))
             if self.should_early_stop(epoch, result):
                 logging.info("Early stopping.")
                 break
@@ -58,6 +66,7 @@ class BaseModel(nn.Module):
 
     def run_epoch(self, data, do_train, result=None):
         epoch_loss = 0
+        correct = all_guess = 0
         for step, batch in enumerate(data.batched_iter(self.config.batch_size)):
             output = self.forward(batch)
             for opt in self.optimizers:
@@ -67,12 +76,16 @@ class BaseModel(nn.Module):
                 loss.backward()
                 for opt in self.optimizers:
                     opt.step()
+            target = torch.LongTensor(batch[-1])
+            prediction = output.max(dim=-1)[1].cpu()
+            correct += torch.sum(torch.eq(prediction, target)).item()
+            all_guess += target.numel()
             epoch_loss += loss.item()
-            if result is not None:
+            if result is not None and do_train is True:
                 result.steps.append(loss.item())
             if (step + 1) % 100 == 0:
                 logging.info("Step {}, loss {}".format(step+1, loss.item()))
-        return epoch_loss / (step + 1)
+        return epoch_loss / (step + 1), correct / max(all_guess, 1)
 
     def save_if_best(self, train_loss, dev_loss, epoch):
         if epoch < self.config.save_min_epoch:

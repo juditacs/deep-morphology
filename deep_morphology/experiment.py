@@ -25,13 +25,15 @@ use_cuda = torch.cuda.is_available()
 
 
 class Result:
-    __slots__ = ('train_loss', 'dev_loss', 'running_time', 'start_time',
-                 'steps',
+    __slots__ = ('train_loss', 'dev_loss', 'train_acc', 'dev_acc',
+                 'running_time', 'start_time', 'steps',
                  'parameters', 'epochs_run', 'node', 'gpu')
 
     def __init__(self):
         self.train_loss = []
         self.dev_loss = []
+        self.train_acc = []
+        self.dev_acc = []
         self.steps = []
 
     def start(self):
