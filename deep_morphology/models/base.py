@@ -74,6 +74,8 @@ class BaseModel(nn.Module):
             loss = self.compute_loss(batch, output)
             if do_train:
                 loss.backward()
+                if getattr(self.config, 'clip', None):
+                    torch.nn.utils.clip_grad_norm_(self.parameters(), self.config.clip)
                 for opt in self.optimizers:
                     opt.step()
             target = torch.LongTensor(batch[-1])
