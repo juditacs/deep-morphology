@@ -66,7 +66,8 @@ class MultiLayerSopaClassifier(BaseModel):
             self.embedding = EmbeddingWrapper(
                 pretrained_embedding=self.config.pretrained_embedding,
                 dropout=self.config.dropout,
-                normalize_weights=normalize
+                normalize_weights=normalize,
+                trainable=self.config.train_embedding,
             )
         else:
             self.embedding = EmbeddingWrapper(
