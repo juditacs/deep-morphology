@@ -75,7 +75,7 @@ class EmbeddingWrapper(nn.Module):
             self.embedding = nn.Embedding(input_size, embedding_size)
             nn.init.xavier_uniform_(self.embedding.weight)
         self.embedding_dropout = nn.Dropout(dropout)
-        self.embedding.requires_grad = trainable
+        self.embedding.weight.requires_grad = trainable
 
     def forward(self, input):
         embedded = self.embedding(input)
