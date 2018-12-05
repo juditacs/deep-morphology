@@ -53,7 +53,7 @@ LogSpaceMaxTimesSemiring = Semiring(
 
 
 class Sopa(nn.Module):
-    def __init__(self, input_size, patterns, 
+    def __init__(self, input_size, patterns,
                  semiring="MaxPlusSemiring", dropout=0):
         super().__init__()
         self.input_size = input_size
@@ -166,7 +166,7 @@ class Sopa(nn.Module):
             if active_docs.numel() > 0:
                 inactive_docs = torch.nonzero(torch.le(input_len, i)).squeeze()
                 updated_docs = (scores < end_state_vals)
-                updated_docs[inactive_docs] = 0 
+                updated_docs[inactive_docs] = 0
                 updated_docs = updated_docs.nonzero()
                 scores[active_docs] = self.semiring.plus(
                     scores[active_docs], end_state_vals[active_docs]
@@ -249,7 +249,7 @@ class Sopa(nn.Module):
                 start_token_idx[ti, is_eps_idx[:, 0], 1, is_eps_idx[:, 1], idx3].clone()
 
             # start_token_idx[ti+1, is_eps_idx[:, 0], 0, is_eps_idx[:, 1], 0] = ti + 1
-            transition_type[ti, is_eps_idx[:, 0], 0, is_eps_idx[:, 1], 0] = 0 
+            transition_type[ti, is_eps_idx[:, 0], 0, is_eps_idx[:, 1], 0] = 0
 
 
         after_main_paths = \
@@ -282,8 +282,8 @@ class Sopa(nn.Module):
             # restart
             start_token_idx[ti+1, is_main[:, 0], 1, is_main[:, 1], 0] = ti + 1
             # set both transition types to 0
-            transition_type[ti, is_main[:, 0], 1, is_main[:, 1], 0] = 0 
-            transition_type[ti, is_main[:, 0], 0, is_main[:, 1], 0] = 0 
+            transition_type[ti, is_main[:, 0], 1, is_main[:, 1], 0] = 0
+            transition_type[ti, is_main[:, 0], 0, is_main[:, 1], 0] = 0
 
         return self.semiring.plus(after_main_paths, after_self_loops)
 
@@ -291,7 +291,7 @@ class Sopa(nn.Module):
         b = inputs.size(0)
         l = inputs.size(1)
         scores = self.semiring.from_float(
-            torch.mm(self.diags, inputs.contiguous().view(b*l, self.input_size).t()) 
+            torch.mm(self.diags, inputs.contiguous().view(b*l, self.input_size).t())
             + self.bias).t()
         if self.dropout:
             scores = self.dropout(scores)
