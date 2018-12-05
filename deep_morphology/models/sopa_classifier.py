@@ -26,8 +26,8 @@ def to_cuda(var):
 class SopaClassifier(BaseModel):
     def __init__(self, config, dataset):
         super().__init__(config)
-        input_size = len(dataset.vocabs.input)
-        output_size = len(dataset.vocabs.label)
+        input_size = len(dataset.vocabs.src)
+        output_size = len(dataset.vocabs.tgt)
         self.embedding_dropout = nn.Dropout(self.config.dropout)
         self.embedding = nn.Embedding(
             input_size, self.config.embedding_size)
@@ -40,18 +40,18 @@ class SopaClassifier(BaseModel):
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, batch):
-        input = to_cuda(torch.LongTensor(batch.input))
+        input = to_cuda(torch.LongTensor(batch.src))
         input = input.transpose(0, 1)  # time_major
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
-        scores, sopa_hiddens = self.sopa(embedded, batch.input_len)
+        scores, sopa_hiddens = self.sopa(embedded, batch.src_len)
         # last_hidden = sopa_hiddens[-1].view(len(batch[0]), self.sopa_output_size)
         # print(scores.size())
         labels = self.out_proj(scores)
         return labels
 
     def compute_loss(self, target, output):
-        target = to_cuda(torch.LongTensor(target.label)).view(-1)
+        target = to_cuda(torch.LongTensor(target.tgt)).view(-1)
         loss = self.criterion(output, target)
         return loss
 
@@ -59,8 +59,8 @@ class SopaClassifier(BaseModel):
 class MultiLayerSopaClassifier(BaseModel):
     def __init__(self, config, dataset):
         super().__init__(config)
-        input_size = len(dataset.vocabs.input)
-        output_size = len(dataset.vocabs.label)
+        input_size = len(dataset.vocabs.src)
+        output_size = len(dataset.vocabs.tgt)
         if getattr(self.config, 'pretrained_embedding', False):
             normalize = getattr(self.config, 'normalize_embedding', False)
             self.embedding = EmbeddingWrapper(
@@ -99,17 +99,17 @@ class MultiLayerSopaClassifier(BaseModel):
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, batch):
-        input = to_cuda(torch.LongTensor(batch.input))
+        input = to_cuda(torch.LongTensor(batch.src))
         input = input.transpose(0, 1)  # time_major
         embedded = self.embedding(input)
         sopa_input = embedded
         for sopa_layer in self.sopa:
-            sopa_output = sopa_layer(sopa_input, batch.input_len)
+            sopa_output = sopa_layer(sopa_input, batch.src_len)
             sopa_input = sopa_output
         labels = self.mlp(sopa_output[-1])
         return labels
 
     def compute_loss(self, target, output):
-        target = to_cuda(torch.LongTensor(target.label)).view(-1)
+        target = to_cuda(torch.LongTensor(target.tgt)).view(-1)
         loss = self.criterion(output, target)
         return loss
