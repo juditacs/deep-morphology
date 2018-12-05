@@ -9,6 +9,7 @@
 import os
 import gzip
 from sys import stdout
+import numpy as np
 
 
 class Vocab:
@@ -142,6 +143,24 @@ class BaseDataset:
                         idx.append(vocab['EOS'])
                     mtx[i].append(idx)
         self.mtx = self.create_recordclass(*mtx)
+
+        if not self.is_unlabeled:
+            if self.config.sort_data_by_length:
+                if hasattr(self.mtx, 'src_len'):
+                    order = np.argsort(-np.array(self.mtx.src_len))
+                else:
+                    order = np.argsort([-len(m) for m in self.mtx.src])
+                ordered = []
+                for m in self.mtx:
+                    if m is None or m[0] is None:
+                        ordered.append(None)
+                    else:
+                        ordered.append([m[idx] for idx in order])
+                self.mtx = self.create_recordclass(*ordered)
+
+    @property
+    def is_unlabeled(self):
+        return hasattr(self, 'unlabeled_data_class')
 
     def create_recordclass(self, *data):
         return self.__class__.data_recordclass(*data)
