@@ -13,7 +13,7 @@ from deep_morphology.data.base_data import BaseDataset, Vocab
 
 
 ClassificationFields = recordclass('ClassificationFields',
-                                   ['input', 'input_len', 'label'])
+                                   ['src', 'src_len', 'tgt'])
 
 
 class ClassificationDataset(BaseDataset):
@@ -23,34 +23,34 @@ class ClassificationDataset(BaseDataset):
     constants = ['PAD', 'UNK']
 
     def extract_sample_from_line(self, line):
-        src, label = line.split("\t")[:2]
+        src, tgt = line.split("\t")[:2]
         src = src.split(" ")
-        return ClassificationFields(src, len(src), label)
+        return ClassificationFields(src, len(src), tgt)
 
     def load_or_create_vocabs(self):
         vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
         vocabs = ClassificationFields(None, None, None)
         if getattr(self.config, 'pretrained_embedding', False):
-            vocabs.input = Vocab(file=None, constants=None)
-            vocabs.input.load_word2vec_format(self.config.pretrained_embedding)
+            vocabs.src = Vocab(file=None, constants=None)
+            vocabs.src.load_word2vec_format(self.config.pretrained_embedding)
         else:
-            if os.path.exists(vocab_pre+'input'):
-                vocabs.input = Vocab(file=vocab_pre+'input', frozen=True)
+            if os.path.exists(vocab_pre+'src'):
+                vocabs.src = Vocab(file=vocab_pre+'src', frozen=True)
             else:
-                vocabs.input = Vocab(constants=self.constants)
-        if os.path.exists(vocab_pre+'label'):
-            vocabs.label = Vocab(file=vocab_pre+'label', frozen=True)
+                vocabs.src = Vocab(constants=self.constants)
+        if os.path.exists(vocab_pre+'tgt'):
+            vocabs.tgt = Vocab(file=vocab_pre+'tgt', frozen=True)
         else:
-            vocabs.label = Vocab()
+            vocabs.tgt = Vocab()
         self.vocabs = vocabs
 
     def decode(self, model_output):
         for i, sample in enumerate(self.raw):
             output = model_output[i].argmax()
-            sample.label = self.vocabs.label.inv_lookup(output)
+            sample.tgt = self.vocabs.tgt.inv_lookup(output)
 
     def print_sample(self, sample, stream):
-        stream.write("{}\t{}\n".format(" ".join(sample.input), sample.label))
+        stream.write("{}\t{}\n".format(" ".join(sample.src), sample.tgt))
 
 
 class UnlabeledClassificationDataset(ClassificationDataset):
@@ -66,9 +66,9 @@ class NoSpaceClassificationDataset(ClassificationDataset):
     unlabeled_data_class = 'UnlabeledNoSpaceClassificationDataset'
 
     def extract_sample_from_line(self, line):
-        src, label = line.split("\t")[:2]
+        src, tgt = line.split("\t")[:2]
         src = list(src)
-        return ClassificationFields(src, len(src), label)
+        return ClassificationFields(src, len(src), tgt)
 
 
 class UnlabeledNoSpaceClassificationDataset(UnlabeledClassificationDataset):
@@ -77,4 +77,4 @@ class UnlabeledNoSpaceClassificationDataset(UnlabeledClassificationDataset):
         return ClassificationFields(list(src), len(src), None)
 
     def print_sample(self, sample, stream):
-        stream.write("{}\t{}\n".format("".join(sample.input), sample.label))
+        stream.write("{}\t{}\n".format("".join(sample.src), sample.tgt))
