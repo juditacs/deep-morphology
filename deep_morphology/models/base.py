@@ -14,6 +14,15 @@ import torch.nn as nn
 from torch import optim
 
 
+use_cuda = torch.cuda.is_available()
+
+
+def to_cuda(var):
+    if use_cuda:
+        return var.cuda()
+    return var
+
+
 class BaseModel(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -55,9 +64,12 @@ class BaseModel(nn.Module):
             self._save(epoch)
 
     def should_early_stop(self, epoch, result):
+        """Returns True if early stopping condition is reached"""
         if epoch < self.config.min_epochs - 1:
             return False
         window = self.config.early_stopping_window
+        if len(result.dev_acc) > 0 and result.dev_acc[-1] == 1:
+            return True
         if len(result.dev_loss) > 2 * window:
             if sum(result.dev_loss[-2*window:-window]) < \
                     sum(result.dev_loss[-window:]):
@@ -66,7 +78,7 @@ class BaseModel(nn.Module):
 
     def run_epoch(self, data, do_train, result=None):
         epoch_loss = 0
-        correct = all_guess = 0
+        all_correct = all_guess = 0
         tgt_id = data.tgt_field_idx
         for step, batch in enumerate(data.batched_iter(self.config.batch_size)):
             output = self.forward(batch)
@@ -76,19 +88,30 @@ class BaseModel(nn.Module):
             if do_train:
                 loss.backward()
                 if getattr(self.config, 'clip', None):
-                    torch.nn.utils.clip_grad_norm_(self.parameters(), self.config.clip)
+                    torch.nn.utils.clip_grad_norm_(
+                        self.parameters(), self.config.clip)
                 for opt in self.optimizers:
                     opt.step()
             target = torch.LongTensor(batch[tgt_id])
             prediction = output.max(dim=-1)[1].cpu()
-            correct += torch.sum(torch.eq(prediction, target)).item()
-            all_guess += target.numel()
+            correct = torch.eq(prediction, target)
+            if hasattr(batch, 'tgt_len'):
+                doc_lens = to_cuda(torch.LongTensor(batch.tgt_len))
+                tgt_size = target.size()
+                m = torch.arange(tgt_size[1]).unsqueeze(0).expand(tgt_size)
+                mask = doc_lens.unsqueeze(1).expand(tgt_size) <= to_cuda(m.long())
+                correct[mask] = 0
+                numel = doc_lens.sum().item()
+            else:
+                numel = target.numel()
+            all_correct += correct.sum().item()
+            all_guess += numel
             epoch_loss += loss.item()
             if result is not None and do_train is True:
                 result.steps.append(loss.item())
             if (step + 1) % 100 == 0:
                 logging.info("Step {}, loss {}".format(step+1, loss.item()))
-        return epoch_loss / (step + 1), correct / max(all_guess, 1)
+        return epoch_loss / (step + 1), all_correct / max(all_guess, 1)
 
     def save_if_best(self, train_loss, dev_loss, epoch):
         if epoch < self.config.save_min_epoch:
