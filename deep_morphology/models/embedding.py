@@ -44,7 +44,7 @@ class EmbeddingWrapper(nn.Module):
                  embedding_size=None,
                  pretrained_embedding=None,
                  dropout=0,
-                 add_constants=['UNK', 'PAD'],
+                 add_constants=['UNK', 'SOS', 'EOS', 'PAD'],
                  init_constants='zero',
                  normalize_weights=False,
                  trainable=True):
@@ -61,13 +61,14 @@ class EmbeddingWrapper(nn.Module):
             if normalize_weights:
                 embedding = embedding / np.sqrt(np.sum(embedding**2, axis=1))[:, None]
             if add_constants:
+                consts = []
                 for symbol in add_constants:
                     if init_constants == 'zero':
                         vec = np.zeros(embedding.shape[1])
                     elif init_constants == 'random':
                         vec = np.random.random(embedding.shape[1])
-                    embedding = np.vstack((embedding, vec))
-                    vocab.append(symbol)
+                    consts.append(vec)
+                embedding = np.vstack((np.array(consts), embedding))
             self.embedding = nn.Embedding(
                 embedding.shape[0], embedding.shape[1])
             self.embedding.weight = nn.Parameter(torch.from_numpy(embedding).float())
