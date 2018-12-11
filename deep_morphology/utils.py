@@ -67,3 +67,13 @@ def check_and_get_commit_hash(debug):
         "cd {}; git log --pretty=format:'%H' -n 1".format(
             src_path))
     return commit_hash
+
+
+def find_last_model(experiment_dir):
+    model_pre = os.path.join(experiment_dir, 'model')
+    if os.path.exists(model_pre):
+        return model_pre
+    saves = filter(lambda f: f.startswith(
+        'model.epoch_'), os.listdir(experiment_dir))
+    last_epoch = max(saves, key=lambda f: int(f.split("_")[-1]))
+    return os.path.join(experiment_dir, last_epoch)
