@@ -15,22 +15,32 @@ import numpy as np
 class Vocab:
     def __init__(self, file=None, frozen=False, constants=None):
         self.vocab = {}
+        self.constants = {}
         if file is not None:
             with open(file) as f:
                 for line in f:
-                    symbol, id_ = line.rstrip("\n").split("\t")
-                    self.vocab[symbol] = int(id_)
+                    fd = line.rstrip("\n").split("\t")
+                    if len(fd) == 3:
+                        symbol, id_, const = fd
+                        self.constants[const] = int(symbol)
+                        self.vocab[self.constants[const]] = int(id_)
+                        setattr(self, const, int(id_))
+                    else:
+                        symbol, id_ = fd
+                        self.vocab[symbol] = int(id_)
         else:
             if constants is not None:
                 for const in constants:
-                    self.vocab[const] = len(self.vocab)
+                    setattr(self, const, len(self.constants))
+                    self.constants[const] = len(self.constants)
+                    self.vocab[self.constants[const]] = len(self.vocab)
         self.frozen = frozen
         self.__inv_vocab = None
 
     def __getitem__(self, key):
         if self.frozen:
-            if 'UNK' in self.vocab:
-                return self.vocab.get(key, self.vocab['UNK'])
+            if 'UNK' in self.constants:
+                return self.vocab.get(key, self.UNK)
             return self.vocab[key]
         return self.vocab.setdefault(key, len(self.vocab))
 
@@ -49,14 +59,20 @@ class Vocab:
     def inv_lookup(self, key):
         if self.__inv_vocab is None:
             self.__inv_vocab = {i: s for s, i in self.vocab.items()}
+            for const, idx in self.constants.items():
+                self.__inv_vocab[idx] = const
         return self.__inv_vocab.get(key, 'UNK')
 
     def save(self, fn):
         with open(fn, 'w') as f:
+            inv_const = {i: v for v, i in self.constants.items()}
             for symbol, id_ in sorted(self.vocab.items(), key=lambda x: x[1]):
-                f.write('{}\t{}\n'.format(symbol, id_))
+                if symbol in inv_const:
+                    f.write('{}\t{}\t{}\n'.format(symbol, id_, inv_const[symbol]))
+                else:
+                    f.write('{}\t{}\n'.format(symbol, id_))
 
-    def load_word2vec_format(self, fn, add_constants=['UNK', 'PAD']):
+    def load_word2vec_format(self, fn):
         with open(fn) as f:
             first = next(f).rstrip('\n').split(" ")
             if len(first) == 2:
@@ -92,7 +108,7 @@ class BaseDataset:
         vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
         vocabs = []
         for field in self.data_recordclass._fields:
-            vocab_fn = vocab_pre + field
+            vocab_fn = getattr(self.config, 'vocab_{}'.format(field), vocab_pre+field)
             if os.path.exists(vocab_fn):
                 vocabs.append(Vocab(file=vocab_fn, frozen=True))
             else:
@@ -137,31 +153,34 @@ class BaseDataset:
                 else:
                     vocab = self.vocabs[i]
                     idx = []
-                    if 'SOS' in vocab:
-                        idx.append(vocab['SOS'])
+                    if 'SOS' in vocab.constants:
+                        idx.append(vocab.SOS)
                     idx.extend([vocab[s] for s in part])
-                    if 'EOS' in vocab:
-                        idx.append(vocab['EOS'])
+                    if 'EOS' in vocab.constants:
+                        idx.append(vocab.EOS)
                     mtx[i].append(idx)
         self.mtx = self.create_recordclass(*mtx)
 
         if not self.is_unlabeled:
             if self.config.sort_data_by_length:
-                if hasattr(self.mtx, 'src_len'):
-                    order = np.argsort(-np.array(self.mtx.src_len))
-                else:
-                    order = np.argsort([-len(m) for m in self.mtx.src])
-                ordered = []
-                for m in self.mtx:
-                    if m is None or m[0] is None:
-                        ordered.append(None)
-                    else:
-                        ordered.append([m[idx] for idx in order])
-                self.mtx = self.create_recordclass(*ordered)
+                self.sort_data_by_length()
+
+    def sort_data_by_length(self):
+        if hasattr(self.mtx, 'src_len'):
+            order = np.argsort(-np.array(self.mtx.src_len))
+        else:
+            order = np.argsort([-len(m) for m in self.mtx.src])
+        ordered = []
+        for m in self.mtx:
+            if m is None or m[0] is None:
+                ordered.append(None)
+            else:
+                ordered.append([m[idx] for idx in order])
+        self.mtx = self.create_recordclass(*ordered)
 
     @property
     def is_unlabeled(self):
-        return hasattr(self, 'unlabeled_data_class')
+        return self.raw[0].tgt is None
 
     def create_recordclass(self, *data):
         return self.__class__.data_recordclass(*data)
@@ -191,14 +210,12 @@ class BaseDataset:
 
     def save_vocabs(self):
         for vocab_name in self.vocabs._fields:
-            if getattr(self.vocabs, vocab_name) is None:
+            vocab = getattr(self.vocabs, vocab_name)
+            if vocab is None:
                 continue
             path = os.path.join(
                 self.config.experiment_dir, 'vocab_{}'.format(vocab_name))
-            with open(path, 'w') as f:
-                for sym, idx in sorted(
-                    getattr(self.vocabs, vocab_name).vocab.items(),
-                    key=lambda x: x[1]): f.write("{}\t{}\n".format(sym, idx))
+            vocab.save(path)
 
     def batched_iter(self, batch_size):
         for start in range(0, len(self), batch_size):
@@ -210,7 +227,7 @@ class BaseDataset:
                 elif isinstance(mtx[0], int):
                     batch.append(mtx[start:end])
                 else:
-                    PAD = self.vocabs[i]['PAD']
+                    PAD = self.vocabs[i].PAD
                     this_batch = mtx[start:end]
                     maxlen = max(len(d) for d in this_batch)
                     padded = [
