@@ -7,6 +7,7 @@
 
 import torch
 import torch.nn as nn
+import logging
 
 from deep_morphology.models.base import BaseModel
 from deep_morphology.models.attention import LuongAttention
@@ -78,10 +79,7 @@ class AttentionDecoder(nn.Module):
         super().__init__()
         self.output_size = output_size
         if embedding is None:
-            self.embedding_dropout = nn.Dropout(
-                embedding_dropout)
-            self.embedding = nn.Embedding(input_size, embedding_size)
-            nn.init.xavier_uniform_(self.embedding.weight)
+            self.embedding = EmbeddingWrapper(input_size, embedding_size, dropout=embedding_dropout)
         else:
             self.embedding = embedding
         if embedding_dropout is not None:
@@ -111,7 +109,6 @@ class AttentionDecoder(nn.Module):
                 encoder_lens):
         batch_size = input.size(-1)
         embedded = self.embedding(input)
-        embedded = self.embedding_dropout(embedded)
         embedded = embedded.view(1, batch_size, -1)
 
         lstm_out, lstm_hidden = self.cell(
