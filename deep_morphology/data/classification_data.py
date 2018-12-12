@@ -20,26 +20,29 @@ class ClassificationDataset(BaseDataset):
 
     unlabeled_data_class = 'UnlabeledClassificationDataset'
     data_recordclass = ClassificationFields
-    constants = ['PAD', 'UNK']
+    constants = ['UNK', 'SOS', 'EOS', 'PAD']
 
     def extract_sample_from_line(self, line):
         src, tgt = line.split("\t")[:2]
         src = src.split(" ")
-        return ClassificationFields(src, len(src), tgt)
+        return ClassificationFields(src, len(src)+2, tgt)
 
     def load_or_create_vocabs(self):
         vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
         vocabs = ClassificationFields(None, None, None)
-        if getattr(self.config, 'pretrained_embedding', False):
-            vocabs.src = Vocab(file=None, constants=None)
+        existing = getattr(self.config, 'vocab_src',
+                           os.path.join(self.config.experiment_dir, 'vocab_'))
+        if os.path.exists(existing):
+            vocabs.src = Vocab(file=existing, frozen=True)
+        elif getattr(self.config, 'pretrained_embedding', False):
+            vocabs.src = Vocab(file=None, constants=['UNK', 'SOS', 'EOS', 'PAD'])
             vocabs.src.load_word2vec_format(self.config.pretrained_embedding)
         else:
-            if os.path.exists(vocab_pre+'src'):
-                vocabs.src = Vocab(file=vocab_pre+'src', frozen=True)
-            else:
-                vocabs.src = Vocab(constants=self.constants)
-        if os.path.exists(vocab_pre+'tgt'):
-            vocabs.tgt = Vocab(file=vocab_pre+'tgt', frozen=True)
+            vocabs.src = Vocab(constants=self.constants)
+        existing = getattr(self.config, 'vocab_tgt',
+                           os.path.join(self.config.experiment_dir, 'vocab_'))
+        if os.path.exists(existing):
+            vocabs.tgt = Vocab(file=existing, frozen=True)
         else:
             vocabs.tgt = Vocab()
         self.vocabs = vocabs
