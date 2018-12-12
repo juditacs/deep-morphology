@@ -30,6 +30,7 @@ class Config:
         'share_embedding': False,  # inflection
         'save_min_epoch': 0,
         'save_attention_weights': False,
+        'shuffle_batches': False,
         'sort_data_by_length': False,
     }
     # path variables support environment variable

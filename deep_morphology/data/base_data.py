@@ -218,7 +218,10 @@ class BaseDataset:
             vocab.save(path)
 
     def batched_iter(self, batch_size):
-        for start in range(0, len(self), batch_size):
+        starts = list(range(0, len(self), batch_size))
+        if self.config.shuffle_batches:
+            np.random.shuffle(starts)
+        for start in starts:
             end = start + batch_size
             batch = []
             for i, mtx in enumerate(self.mtx):
