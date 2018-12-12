@@ -26,6 +26,7 @@ class Config:
         'attention_variant': 'general',
         'min_epochs': 0,
         'early_stopping_window': 5,
+        'early_stopping_monitor': 'both',
         'share_embedding': False,  # inflection
         'save_min_epoch': 0,
         'save_attention_weights': False,
