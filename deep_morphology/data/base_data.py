@@ -64,24 +64,25 @@ class Vocab:
             else:
                 word = first[0]
                 N = None
-                self.vocab[word] = 0
+                self.vocab[word] = len(self.vocab)
             for line in f:
                 fd = line.rstrip('\n').split(" ")
                 word = fd[0]
                 self.vocab[word] = len(self.vocab)
-            if N:
-                assert len(self.vocab) == N
-        if add_constants:
-            for symbol in add_constants:
-                self.vocab[symbol] = len(self.vocab)
         self.frozen = True
 
 
 class BaseDataset:
 
-    def __init__(self, config, stream_or_file):
+    def __init__(self, config, stream_or_file, share_vocabs_with=None):
         self.config = config
-        self.load_or_create_vocabs()
+        if share_vocabs_with is None:
+            self.load_or_create_vocabs()
+        else:
+            self.vocabs = share_vocabs_with.vocabs
+            for vocab in self.vocabs:
+                if vocab:
+                    vocab.frozen = True
         self.load_stream_or_file(stream_or_file)
         self.to_idx()
         # index of target field, usually the last one

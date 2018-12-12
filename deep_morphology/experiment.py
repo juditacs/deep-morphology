@@ -101,10 +101,8 @@ class Experiment:
 
     def __load_train_dev_data(self, train_fn, dev_fn):
         self.train_data = self.data_class(self.config, train_fn)
-        # saving vocabs so that dev_data can find the existing vocabs and load
-        # them
         self.train_data.save_vocabs()
-        self.dev_data = self.data_class(self.config, dev_fn)
+        self.dev_data = self.data_class(self.config, dev_fn, share_vocabs_with=self.train_data)
 
     def init_model(self):
         model_class = getattr(models, self.config.model)
