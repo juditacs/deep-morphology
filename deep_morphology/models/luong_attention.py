@@ -26,6 +26,7 @@ class EncoderRNN(nn.Module):
     def __init__(self, config, input_size):
         super(self.__class__, self).__init__()
         self.config = config
+        self.output_size = self.config.hidden_size
 
         self.embedding_dropout = nn.Dropout(config.dropout)
         self.embedding = nn.Embedding(input_size, config.embedding_size_src)
@@ -117,8 +118,8 @@ class LuongAttentionSeq2seq(BaseModel):
         self.encoder = EncoderRNN(config, input_size)
         self.decoder = LuongAttentionDecoder(config, output_size)
         self.config = config
-        self.PAD = dataset.vocabs.src['PAD']
-        self.SOS = dataset.vocabs.tgt['SOS']
+        self.PAD = dataset.vocabs.src.PAD
+        self.SOS = dataset.vocabs.tgt.SOS
         self.output_size = output_size
         self.criterion = nn.CrossEntropyLoss(ignore_index=self.PAD)
 
