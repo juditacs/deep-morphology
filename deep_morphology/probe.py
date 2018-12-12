@@ -7,15 +7,12 @@
 
 from argparse import ArgumentParser
 import os
-import yaml
 import logging
-from datetime import datetime
 import platform
 import numpy as np
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
 
 from deep_morphology.config import Config, InferenceConfig
 from deep_morphology import data as data_module
@@ -27,6 +24,7 @@ from deep_morphology.models.base import BaseModel
 from deep_morphology.experiment import Result
 
 use_cuda = torch.cuda.is_available()
+
 
 def to_cuda(var):
     if use_cuda:
@@ -50,36 +48,51 @@ def parse_args():
 class Prober(BaseModel):
     def __init__(self, config, encoder, train_data, dev_data):
         super().__init__(config)
+        # TODO make sure it's a deep-morphology experiment dir
         self.config = Config.from_yaml(config)
-        self.config.train_file = train_data
-        self.config.dev_file = dev_data
+        self.config.train_data = train_data
+        self.config.dev_data = dev_data
+        enc_cfg = InferenceConfig.from_yaml(
+            os.path.join(encoder, "config.yaml"))
+        self.update_config(enc_cfg)
         self.data_class = getattr(data_module, self.config.dataset_class)
         self.train_data = self.data_class(self.config, train_data)
         self.dev_data = self.data_class(self.config, dev_data)
-        if isinstance(encoder, str):
-            enc_cfg = InferenceConfig.from_yaml(os.path.join(encoder, "config.yaml"))
-            model_class = getattr(model_module, enc_cfg.model)
-            self.encoder = model_class(enc_cfg, self.dev_data)
-            model_file = find_last_model(encoder)
-            self.encoder.load_state_dict(torch.load(model_file))
-            self.encoder = self.encoder.encoder
-        else:
-            raise ValueError("Other encoders are not supported")
-        enc_size = 2 * self.encoder.hidden_size
+        self.encoder = self.load_encoder(enc_cfg)
         self.relabel_target()
         self.train_data.save_vocabs()
-        self.mlp = MLP(
+
+        self.mlp = self.create_classifier()
+
+        # fix encoder
+        self.criterion = nn.CrossEntropyLoss()
+        self.result = Result()
+
+    def create_classifier(self):
+        enc_size = 2 * self.encoder.hidden_size
+        return MLP(
             input_size=enc_size,
             layers=self.config.mlp_layers,
             nonlinearity=self.config.mlp_nonlinearity,
             output_size=len(self.train_data.vocabs.tgt),
         )
-        # fix encoder
+
+    def load_encoder(self, enc_cfg):
+        model_class = getattr(model_module, enc_cfg.model)
+        self.encoder = model_class(enc_cfg, self.dev_data)
+        model_file = find_last_model(enc_cfg.experiment_dir)
+        self.encoder.load_state_dict(torch.load(model_file))
         if getattr(self.config, 'train_encoder', False) is False:
             for param in self.encoder.parameters():
                 param.requires_grad = False
-        self.criterion = nn.CrossEntropyLoss()
-        self.result = Result()
+        return self.encoder.encoder
+
+    def update_config(self, encoder_cfg):
+        enc_dir = encoder_cfg.experiment_dir
+        self.config.encoder_dir = enc_dir
+        for fn in os.scandir(enc_dir):
+            if fn.name.startswith("vocab"):
+                setattr(self.config, fn.name, fn.path)
 
     def relabel_target(self):
         vocab = Vocab(frozen=False, constants=[])
@@ -135,9 +148,11 @@ class Prober(BaseModel):
         self.result.end()
         self.result.save(self.config.experiment_dir)
 
+
 def main():
     args = parse_args()
-    with Prober(args.config, args.encoder, args.train_file, args.dev_file) as prober:
+    with Prober(args.config, args.encoder,
+                args.train_file, args.dev_file) as prober:
         prober = to_cuda(prober)
         prober.run_train()
 
