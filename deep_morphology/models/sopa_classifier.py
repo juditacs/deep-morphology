@@ -45,8 +45,6 @@ class SopaClassifier(BaseModel):
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
         scores, sopa_hiddens = self.sopa(embedded, batch.src_len)
-        # last_hidden = sopa_hiddens[-1].view(len(batch[0]), self.sopa_output_size)
-        # print(scores.size())
         labels = self.out_proj(scores)
         return labels
 
