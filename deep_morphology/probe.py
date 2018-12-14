@@ -50,8 +50,8 @@ class Prober(BaseModel):
         super().__init__(config)
         # TODO make sure it's a deep-morphology experiment dir
         self.config = Config.from_yaml(config)
-        self.config.train_data = train_data
-        self.config.dev_data = dev_data
+        self.config.train_file = train_data
+        self.config.dev_file = dev_data
         enc_cfg = InferenceConfig.from_yaml(
             os.path.join(encoder, "config.yaml"))
         self.update_config(enc_cfg)
