@@ -26,7 +26,7 @@ use_cuda = torch.cuda.is_available()
 
 class Result:
     __slots__ = ('train_loss', 'dev_loss', 'train_acc', 'dev_acc',
-                 'running_time', 'start_time', 'steps',
+                 'running_time', 'start_time',
                  'parameters', 'epochs_run', 'node', 'gpu')
 
     def __init__(self):
@@ -34,7 +34,6 @@ class Result:
         self.dev_loss = []
         self.train_acc = []
         self.dev_acc = []
-        self.steps = []
 
     def start(self):
         self.start_time = datetime.now()

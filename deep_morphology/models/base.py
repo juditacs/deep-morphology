@@ -112,10 +112,6 @@ class BaseModel(nn.Module):
             all_correct += correct.sum().item()
             all_guess += numel
             epoch_loss += loss.item()
-            if result is not None and do_train is True:
-                result.steps.append(loss.item())
-            if (step + 1) % 100 == 0:
-                logging.info("Step {}, loss {}".format(step+1, loss.item()))
         return epoch_loss / (step + 1), all_correct / max(all_guess, 1)
 
     def save_if_best(self, train_loss, dev_loss, epoch):
