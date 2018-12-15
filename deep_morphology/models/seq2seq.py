@@ -42,7 +42,7 @@ class LSTMEncoder(nn.Module):
         else:
             self.embedding = embedding
         if embedding_dropout is not None:
-            self.embedding = nn.Embedding(output_size, embedding_size)
+            self.embedding = nn.Embedding(input_size, embedding_size)
 
         embedding_size = self.embedding.weight.size(1)
         if lstm_cell is None:
