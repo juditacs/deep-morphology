@@ -218,6 +218,25 @@ class Seq2seq(BaseModel):
         return compute_sequence_loss(target, output, self.criterion)
 
 
+class AttentionOnlySeq2seq(Seq2seq):
+
+    def __init__(self, config, dataset):
+        super().__init__(config, dataset)
+        if hasattr(self, 'hidden_proj1'):
+            delattr(self, 'hidden_proj1')
+        if hasattr(self, 'hidden_proj2'):
+            delattr(self, 'hidden_proj2')
+
+    def init_decoder_hidden(self, encoder_hidden):
+        batch_size = encoder_hidden[0].size(1)
+        num_layers = self.config.num_layers_tgt
+        tgt_size = self.hidden_size_tgt
+        return (
+            to_cuda(torch.zeros(num_layers, batch_size, tgt_size)),
+            to_cuda(torch.zeros(num_layers, batch_size, tgt_size)),
+        )
+
+
 def compute_sequence_loss(target, output, criterion):
     try:
         target = target.tgt
