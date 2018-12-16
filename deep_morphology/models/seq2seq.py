@@ -65,6 +65,51 @@ class LSTMEncoder(nn.Module):
         return outputs, hidden
 
 
+class LSTMDecoder(nn.Module):
+    def __init__(self,
+                 input_size,
+                 output_size,
+                 lstm_hidden_size=None,
+                 lstm_cell=None,
+                 lstm_num_layers=1,
+                 lstm_dropout=0,
+                 embedding=None,
+                 embedding_size=None,
+                 embedding_dropout=None):
+        super().__init__()
+        self.output_size = output_size
+        if embedding is None:
+            self.embedding = EmbeddingWrapper(input_size, embedding_size, dropout=embedding_dropout)
+        else:
+            self.embedding = embedding
+        if embedding_dropout is not None:
+            self.embedding = nn.Embedding(
+                output_size, embedding_size)
+
+        embedding_size = self.embedding.weight.size(1)
+        if lstm_cell is None:
+            dropout = 0 if lstm_num_layers == 1 else lstm_dropout
+            self.cell = nn.LSTM(
+                embedding_size, lstm_hidden_size,
+                num_layers=lstm_num_layers,
+                dropout=dropout,
+                batch_first=False,
+                bidirectional=False,
+            )
+        else:
+            self.cell = lstm_cell
+        self.output_proj = nn.Linear(lstm_hidden_size, output_size)
+
+    def forward(self, input, last_hidden):
+        batch_size = input.size(-1)
+        embedded = self.embedding(input)
+        embedded = embedded.view(1, batch_size, -1)
+
+        lstm_out, lstm_hidden = self.cell(embedded, last_hidden)
+        output = self.output_proj(lstm_out)
+        return output, lstm_hidden
+
+
 class AttentionDecoder(nn.Module):
     def __init__(self,
                  input_size,
@@ -99,14 +144,11 @@ class AttentionDecoder(nn.Module):
         else:
             self.cell = lstm_cell
         hidden_size = self.cell.hidden_size
-        self.concat = nn.Linear(
-            2 * hidden_size, hidden_size)
-        self.attention = LuongAttention(hidden_size)
-        self.output_proj = nn.Linear(
-            hidden_size, output_size)
+        self.concat = nn.Linear(3 * hidden_size, hidden_size)
+        self.attention = LuongAttention(2 * hidden_size, hidden_size)
+        self.output_proj = nn.Linear(hidden_size, output_size)
 
-    def forward(self, input, last_hidden, encoder_outputs,
-                encoder_lens):
+    def forward(self, input, last_hidden, encoder_outputs, encoder_lens):
         batch_size = input.size(-1)
         embedded = self.embedding(input)
         embedded = embedded.view(1, batch_size, -1)
@@ -129,16 +171,7 @@ class Seq2seq(BaseModel):
         input_size = len(dataset.vocabs.src)
         output_size = len(dataset.vocabs.tgt)
 
-        if hasattr(self.config, 'hidden_size'):
-            if hasattr(self.config, 'hidden_size_src') or \
-                    hasattr(self.config, 'hidden_size_tgt'):
-                logging.warning("Common hidden size defined, hidden_size_src "
-                                "and hidden_size_tgt will be ignored")
-            self.hidden_size_src = config.hidden_size
-            self.hidden_size_tgt = 2 * config.hidden_size
-        else:
-            self.hidden_size_src = config.hidden_size_src
-            self.hidden_size_tgt = config.hidden_size_tgt
+        self.create_shared_params()
         self.encoder = LSTMEncoder(
             input_size, output_size,
             lstm_hidden_size=self.hidden_size_src,
@@ -174,6 +207,25 @@ class Seq2seq(BaseModel):
                 self.hidden_size_src, self.hidden_size_tgt)
             self.hidden_proj2 = nn.Linear(
                 self.hidden_size_src, self.hidden_size_tgt)
+
+    def create_shared_params(self):
+        for param in ('hidden_size', 'num_layers', 'embedding_size'):
+            param_src = param + '_src'
+            param_tgt = param + '_tgt'
+            if hasattr(self.config, param):
+                if hasattr(self.config, param_src) or hasattr(self.config, param_tgt):
+                    logging.warning("{} and {} are ignored because {} is defined".format(
+                        param_src, param_tgt, param))
+                value = getattr(self.config, param)
+                setattr(self, param_src, value)
+                setattr(self, param_tgt, value)
+                setattr(self, param, value)
+                setattr(self.config, param_src, value)
+                setattr(self.config, param_tgt, value)
+                setattr(self.config, param, value)
+            else:
+                setattr(self, param_src, getattr(self.config, param_src))
+                setattr(self, param_tgt, getattr(self.config, param_tgt))
 
     def forward(self, batch):
         has_target = batch.tgt is not None and batch.tgt[0] is not None
@@ -235,6 +287,59 @@ class AttentionOnlySeq2seq(Seq2seq):
             to_cuda(torch.zeros(num_layers, batch_size, tgt_size)),
             to_cuda(torch.zeros(num_layers, batch_size, tgt_size)),
         )
+
+
+class VanillaSeq2seq(Seq2seq):
+    def __init__(self, config, dataset):
+        super().__init__(config, dataset)
+        input_size = len(dataset.vocabs.src)
+        output_size = len(dataset.vocabs.tgt)
+
+        if self.config.share_embedding:
+            self.decoder = LSTMDecoder(
+                output_size, output_size,
+                lstm_hidden_size=self.hidden_size_tgt,
+                lstm_num_layers=self.config.num_layers_tgt,
+                lstm_dropout=self.config.dropout,
+                embedding=self.encoder.embedding,
+            )
+        else:
+            self.decoder = LSTMDecoder(
+                output_size, output_size,
+                lstm_hidden_size=self.hidden_size_tgt,
+                lstm_num_layers=self.config.num_layers_tgt,
+                lstm_dropout=self.config.dropout,
+                embedding_size=self.config.embedding_size_tgt,
+                embedding_dropout=self.config.dropout,
+            )
+
+    def forward(self, batch):
+        has_target = batch.tgt is not None and batch.tgt[0] is not None
+        X = to_cuda(torch.LongTensor(batch.src)).transpose(0, 1)  # time major
+        seqlen_src, batch_size = X.size()
+        if has_target:
+            Y = to_cuda(torch.LongTensor(batch.tgt)).transpose(0, 1)
+            seqlen_tgt = Y.size(0)
+        else:
+            seqlen_tgt = seqlen_src * 4
+        all_decoder_outputs = to_cuda(
+            torch.zeros(seqlen_tgt, batch_size, self.output_size)
+        )
+        encoder_lens = to_cuda(torch.LongTensor(batch.src_len))
+        encoder_lens.requires_grad = False
+        encoder_outputs, encoder_hidden = self.encoder(X, encoder_lens)
+        decoder_input = to_cuda(torch.LongTensor([self.SOS] * batch_size))
+        decoder_hidden = self.init_decoder_hidden(encoder_hidden)
+        for t in range(seqlen_tgt):
+            decoder_output, decoder_hidden = self.decoder(
+                decoder_input, decoder_hidden
+            )
+            all_decoder_outputs[t] = decoder_output
+            if has_target:
+                decoder_input = Y[t]
+            else:
+                val, idx = decoder_output.max(-1)
+        return all_decoder_outputs.transpose(0, 1)
 
 
 def compute_sequence_loss(target, output, criterion):
