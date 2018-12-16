@@ -36,19 +36,20 @@ class LSTMEncoder(nn.Module):
                  embedding_dropout=None):
         super().__init__()
         self.output_size = output_size
-        self.hidden_size = lstm_hidden_size
         if embedding is None:
-            self.embedding = EmbeddingWrapper(input_size, embedding_size, dropout=embedding_dropout)
+            self.embedding = EmbeddingWrapper(
+                input_size, embedding_size, dropout=embedding_dropout)
         else:
             self.embedding = embedding
         if embedding_dropout is not None:
             self.embedding = nn.Embedding(input_size, embedding_size)
 
         embedding_size = self.embedding.weight.size(1)
+        self.hidden_size = lstm_hidden_size // 2
         if lstm_cell is None:
             dropout = 0 if lstm_num_layers == 1 else lstm_dropout
             self.cell = AutoPackedLSTM(
-                embedding_size, lstm_hidden_size,
+                embedding_size, self.hidden_size,
                 num_layers=lstm_num_layers,
                 dropout=dropout,
                 batch_first=False,
@@ -59,10 +60,10 @@ class LSTMEncoder(nn.Module):
 
     def forward(self, input, input_len):
         embedded = self.embedding(input)
-        outputs, hidden = self.cell(embedded, input_len)
-        outputs = torch.cat((outputs[:, :, :self.hidden_size],
-                             outputs[:, :, self.hidden_size:]), 2)
-        return outputs, hidden
+        outputs, (h, c) = self.cell(embedded, input_len)
+        h = torch.cat((h[:1], h[1:]), 2)
+        c = torch.cat((c[:1], c[1:]), 2)
+        return outputs, (h, c)
 
 
 class LSTMDecoder(nn.Module):
@@ -292,7 +293,6 @@ class AttentionOnlySeq2seq(Seq2seq):
 class VanillaSeq2seq(Seq2seq):
     def __init__(self, config, dataset):
         super().__init__(config, dataset)
-        input_size = len(dataset.vocabs.src)
         output_size = len(dataset.vocabs.tgt)
 
         if self.config.share_embedding:
