@@ -110,6 +110,8 @@ class Config:
                 continue
             if k in ('_kwargs', 'path_variables', 'defaults'):
                 continue
+            if k == 'experiment_dir':
+                continue
             if not hasattr(self, k):
                 continue
             if hasattr(getattr(self, k, None), '__call__'):
@@ -124,6 +126,17 @@ class Config:
 
 
 class InferenceConfig(Config):
+
+    @classmethod
+    def from_yaml(cls, filename, override_params=None):
+        with open(filename) as f:
+            params = yaml.load(f)
+        if override_params:
+            params.update(override_params)
+        if 'experiment_dir' not in params:
+            params['experiment_dir'] = os.path.dirname(filename)
+        return cls(**params)
+
     def __init__(self, **kwargs):
         kwargs['generate_empty_subdir'] = False
         super(self.__class__, self).__init__(**kwargs)
