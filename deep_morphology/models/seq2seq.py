@@ -115,6 +115,7 @@ class AttentionDecoder(nn.Module):
     def __init__(self,
                  input_size,
                  output_size,
+                 encoder_hidden_size,
                  lstm_hidden_size=None,
                  lstm_cell=None,
                  lstm_num_layers=1,
@@ -145,8 +146,8 @@ class AttentionDecoder(nn.Module):
         else:
             self.cell = lstm_cell
         hidden_size = self.cell.hidden_size
-        self.concat = nn.Linear(3 * hidden_size, hidden_size)
-        self.attention = LuongAttention(2 * hidden_size, hidden_size)
+        self.concat = nn.Linear(encoder_hidden_size + hidden_size, hidden_size)
+        self.attention = LuongAttention(encoder_hidden_size, hidden_size)
         self.output_proj = nn.Linear(hidden_size, output_size)
 
     def forward(self, input, last_hidden, encoder_outputs, encoder_lens):
@@ -184,6 +185,7 @@ class Seq2seq(BaseModel):
         if self.config.share_embedding:
             self.decoder = AttentionDecoder(
                 output_size, output_size,
+                self.hidden_size_src,
                 lstm_hidden_size=self.hidden_size_tgt,
                 lstm_num_layers=self.config.num_layers_tgt,
                 lstm_dropout=self.config.dropout,
@@ -192,6 +194,7 @@ class Seq2seq(BaseModel):
         else:
             self.decoder = AttentionDecoder(
                 output_size, output_size,
+                self.hidden_size_src,
                 lstm_hidden_size=self.hidden_size_tgt,
                 lstm_num_layers=self.config.num_layers_tgt,
                 lstm_dropout=self.config.dropout,
