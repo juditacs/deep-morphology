@@ -28,7 +28,6 @@ class ClassificationDataset(BaseDataset):
         return ClassificationFields(src, len(src)+2, tgt)
 
     def load_or_create_vocabs(self):
-        vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
         vocabs = ClassificationFields(None, None, None)
         existing = getattr(self.config, 'vocab_src',
                            os.path.join(self.config.experiment_dir, 'vocab_'))
@@ -71,7 +70,7 @@ class NoSpaceClassificationDataset(ClassificationDataset):
     def extract_sample_from_line(self, line):
         src, tgt = line.split("\t")[:2]
         src = list(src)
-        return ClassificationFields(src, len(src), tgt)
+        return ClassificationFields(src, len(src)+2, tgt)
 
 
 class UnlabeledNoSpaceClassificationDataset(UnlabeledClassificationDataset):
