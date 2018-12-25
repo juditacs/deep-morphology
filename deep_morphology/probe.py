@@ -126,7 +126,50 @@ class Prober(BaseModel):
         return mlp_out
 
     def run_train(self):
-        return super().run_train(self.train_data, self.result, self.dev_data)
+        train_data = self.train_data
+        dev_data = self.dev_data
+        result = self.result
+
+        self.init_optimizers()
+
+        saved = False
+
+        for epoch in range(self.config.epochs):
+            self.fix_encoder_if_necessary(epoch)
+            self.train(True)
+            train_loss, train_acc = self.run_epoch(train_data, do_train=True,
+                                                   result=result)
+            result.train_loss.append(train_loss)
+            result.train_acc.append(train_acc)
+            self.train(False)
+            dev_loss, dev_acc = self.run_epoch(dev_data, do_train=False)
+            result.dev_loss.append(dev_loss)
+            result.dev_acc.append(dev_acc)
+            s = self.save_if_best(train_loss, dev_loss, epoch)
+            saved = saved or s
+            logging.info("Epoch {}, Train loss: {}, Train acc: {}, "
+                         "Dev loss: {}, Dev acc: {}".format(
+                             epoch+1,
+                             round(train_loss, 4),
+                             round(train_acc * 100, 2),
+                             round(dev_loss, 4),
+                             round(dev_acc * 100, 2),
+                         ))
+            if self.should_early_stop(epoch, result):
+                logging.info("Early stopping.")
+                break
+            if epoch == 0:
+                self.config.save()
+            result.save(self.config.experiment_dir)
+        if saved is False:
+            self._save(epoch)
+
+    def fix_encoder_if_necessary(self, epoch):
+        if isinstance(self.config.train_encoder, bool):
+            return
+        if epoch == self.config.train_encoder:
+            for param in self.encoder.parameters():
+                param.requires_grad = False
 
     def __enter__(self):
         self.result = Result()
