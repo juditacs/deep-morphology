@@ -119,10 +119,13 @@ class Prober(BaseModel):
     def forward(self, batch):
         X = to_cuda(torch.LongTensor(batch.src)).transpose(0, 1)
         output, hidden = self.encoder(X, batch.src_len)
-        idx = to_cuda(torch.LongTensor(
-            [b-1 for b in batch.src_len]))
-        brange = to_cuda(torch.LongTensor(np.arange(len(batch.src))))
-        mlp_out = self.mlp(output[idx, brange])
+        if getattr(self.config, 'use_lstm_state', False):
+            mlp_out = self.mlp(hidden[0][0])
+        else:
+            idx = to_cuda(torch.LongTensor(
+                [b-1 for b in batch.src_len]))
+            brange = to_cuda(torch.LongTensor(np.arange(len(batch.src))))
+            mlp_out = self.mlp(output[idx, brange])
         return mlp_out
 
     def run_train(self):
