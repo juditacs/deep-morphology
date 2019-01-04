@@ -68,24 +68,49 @@ class Vocab:
             inv_const = {i: v for v, i in self.constants.items()}
             for symbol, id_ in sorted(self.vocab.items(), key=lambda x: x[1]):
                 if symbol in inv_const:
-                    f.write('{}\t{}\t{}\n'.format(symbol, id_, inv_const[symbol]))
+                    f.write('{}\t{}\t{}\n'.format(
+                        symbol, id_, inv_const[symbol]))
                 else:
                     f.write('{}\t{}\n'.format(symbol, id_))
 
     def load_word2vec_format(self, fn):
         with open(fn) as f:
             first = next(f).rstrip('\n').split(" ")
-            if len(first) == 2:
-                N = int(first[0])
-            else:
+            if len(first) != 2:
                 word = first[0]
-                N = None
                 self.vocab[word] = len(self.vocab)
             for line in f:
                 fd = line.rstrip('\n').split(" ")
                 word = fd[0]
                 self.vocab[word] = len(self.vocab)
         self.frozen = True
+
+    def post_load_embedding(self, fn):
+        # constants such as UNK are not accounted for
+        assert not self.constants
+        if fn.endswith('.gz'):
+            stream = gzip.open(fn, 'rt')
+        else:
+            stream = open(fn, 'rt')
+        embedding = []
+        emb_vocab = {}
+        first = next(stream)
+        fd = first.split(" ")
+        if len(fd) > 2:
+            word = fd[0]
+            if word in self.vocab:
+                embedding.append(list(map(float(fd[1:]))))
+                emb_vocab[word] = len(emb_vocab)
+        for line in stream:
+            word = fd[0]
+            if word in self.vocab:
+                embedding.append(list(map(float(fd[1:]))))
+                emb_vocab[word] = len(emb_vocab)
+        stream.close()
+        self.vocab = emb_vocab
+        self.embedding = embedding
+        self.frozen = True
+        return embedding
 
 
 class BaseDataset:

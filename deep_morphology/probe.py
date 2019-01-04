@@ -37,6 +37,7 @@ def parse_args():
     p.add_argument("-c", "--config", type=str,
                    help="YAML config file location")
     p.add_argument("--encoder", type=str, default=None)
+    p.add_argument("--embedding", type=str, default=None)
     p.add_argument("--train-file", type=str, default=None)
     p.add_argument("--dev-file", type=str, default=None)
     p.add_argument("--debug", action="store_true",
@@ -45,23 +46,31 @@ def parse_args():
     return p.parse_args()
 
 
+class EmbeddingWrapper(nn.Module):
+    def __init__(self, embedding_fn):
+        super().__init__(config)
+
 class Prober(BaseModel):
-    def __init__(self, config, encoder, train_data, dev_data):
+    def __init__(self, config, train_data, dev_data, encoder=None, embedding=None):
         super().__init__(config)
         # TODO make sure it's a deep-morphology experiment dir
         self.config = Config.from_yaml(config)
         self.config.train_file = train_data
         self.config.dev_file = dev_data
-        enc_cfg = InferenceConfig.from_yaml(
-            os.path.join(encoder, "config.yaml"))
-        self.update_config(enc_cfg)
-        self.data_class = getattr(data_module, self.config.dataset_class)
-        self.train_data = self.data_class(self.config, train_data)
-        self.dev_data = self.data_class(self.config, dev_data)
-        self.encoder = self.load_encoder(enc_cfg)
-        self.relabel_target()
-        self.train_data.save_vocabs()
-
+        if encoder is not None:
+            enc_cfg = InferenceConfig.from_yaml(
+                os.path.join(encoder, "config.yaml"))
+            self.update_config(enc_cfg)
+            self.data_class = getattr(data_module, self.config.dataset_class)
+            self.train_data = self.data_class(self.config, train_data)
+            self.dev_data = self.data_class(self.config, dev_data)
+            self.encoder = self.load_encoder(enc_cfg)
+            self.relabel_target()
+            self.train_data.save_vocabs()
+            self._probes_embedding = False
+        elif embedding is not None:
+            self.encoder = EmbeddingWrapper(train_data, embedding)
+            self._probes_embedding = True
         self.mlp = self.create_classifier()
 
         # fix encoder
@@ -120,7 +129,7 @@ class Prober(BaseModel):
         X = to_cuda(torch.LongTensor(batch.src)).transpose(0, 1)
         output, hidden = self.encoder(X, batch.src_len)
         if getattr(self.config, 'use_lstm_state', False):
-            mlp_out = self.mlp(hidden[0][0])
+            mlp_out = self.mlp(hidden[1][-1])
         else:
             idx = to_cuda(torch.LongTensor(
                 [b-1 for b in batch.src_len]))
@@ -197,8 +206,13 @@ class Prober(BaseModel):
 
 def main():
     args = parse_args()
-    with Prober(args.config, args.encoder,
-                args.train_file, args.dev_file) as prober:
+    if args.embedding:
+        assert args.encoder is None
+    else:
+        assert args.embedding is None
+    with Prober(args.config, encoder=args.encoder,
+                train_data=args.train_file, dev_data=args.dev_file,
+                embedding=args.embedding) as prober:
         prober = to_cuda(prober)
         prober.run_train()
 
