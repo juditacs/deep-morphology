@@ -61,6 +61,25 @@ class UnlabeledSeq2seqDataset(Seq2seqDataset):
             src=src, src_len=len(src)+2, tgt=None, tgt_len=None)
 
 
+class NoSpaceSeq2seqDataset(Seq2seqDataset):
+
+    unlabeled_data_class = 'UnlabeledNoSpaceSeq2seqDataset'
+
+    def extract_sample_from_line(self, line):
+        src, tgt = line.rstrip("\n").split("\t")[:2]
+        src = list(src)
+        tgt = list(tgt)
+        return Seq2seqWithLenFields(src, len(src)+2, tgt, len(tgt+2))
+
+
+class UnlabeledNoSpaceSeq2seqDataset(UnlabeledSeq2seqDataset):
+
+    def extract_sample_from_line(self, line):
+        src = line.rstrip("\n").split("\t")[0]
+        src = list(src)
+        return Seq2seqWithLenFields(src, len(src)+2, None, None)
+
+
 class InflectionDataset(BaseDataset):
 
     unlabeled_data_class = 'UnlabeledInflectionDataset'

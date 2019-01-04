@@ -8,3 +8,4 @@ from deep_morphology.data.tagging_data import TaggingDataset, UnlabeledTaggingDa
 from deep_morphology.data.classification_data import ClassificationDataset, UnlabeledClassificationDataset
 from deep_morphology.data.classification_data import NoSpaceClassificationDataset, UnlabeledNoSpaceClassificationDataset
 from deep_morphology.data.seq2seq_data import GlobalPaddingSeq2seqDataset, UnlabeledGlobalPaddingSeq2seqDataset
+from deep_morphology.data.seq2seq_data import NoSpaceSeq2seqDataset, UnlabeledNoSpaceSeq2seqDataset
