@@ -69,7 +69,7 @@ class NoSpaceSeq2seqDataset(Seq2seqDataset):
         src, tgt = line.rstrip("\n").split("\t")[:2]
         src = list(src)
         tgt = list(tgt)
-        return Seq2seqWithLenFields(src, len(src)+2, tgt, len(tgt+2))
+        return Seq2seqWithLenFields(src, len(src)+2, tgt, len(tgt)+2)
 
 
 class UnlabeledNoSpaceSeq2seqDataset(UnlabeledSeq2seqDataset):
