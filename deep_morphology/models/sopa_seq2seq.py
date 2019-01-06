@@ -100,8 +100,7 @@ class Decoder(nn.Module):
 
         if self.config.attention_on is not None:
             size_mtx, size_vec = self.derive_attention_size()
-            self.attention = LuongAttention(encoder_size=size_mtx, decoder_size=size_vec,
-                                            method=self.config.attention_variant)
+            self.attention = LuongAttention(encoder_size=size_mtx, decoder_size=size_vec)
             self.concat = nn.Linear(size_mtx + size_vec, hidden_size)
         self.output_proj = nn.Linear(hidden_size, output_size)
         self.softmax = nn.Softmax(dim=-1)
