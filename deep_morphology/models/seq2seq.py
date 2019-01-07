@@ -46,6 +46,7 @@ class LSTMEncoder(nn.Module):
 
         embedding_size = self.embedding.weight.size(1)
         self.hidden_size = lstm_hidden_size // 2
+        self.num_layers = lstm_num_layers
         if lstm_cell is None:
             dropout = 0 if lstm_num_layers == 1 else lstm_dropout
             self.cell = AutoPackedLSTM(
@@ -61,8 +62,9 @@ class LSTMEncoder(nn.Module):
     def forward(self, input, input_len):
         embedded = self.embedding(input)
         outputs, (h, c) = self.cell(embedded, input_len)
-        h = torch.cat((h[:1], h[1:]), 2)
-        c = torch.cat((c[:1], c[1:]), 2)
+        nl = self.num_layers
+        h = torch.cat((h[:nl], h[nl:]), 2)
+        c = torch.cat((c[:nl], c[nl:]), 2)
         return outputs, (h, c)
 
 
