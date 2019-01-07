@@ -344,6 +344,7 @@ class VanillaSeq2seq(Seq2seq):
                 decoder_input = Y[t]
             else:
                 val, idx = decoder_output.max(-1)
+                decoder_input = idx
         return all_decoder_outputs.transpose(0, 1)
 
 
