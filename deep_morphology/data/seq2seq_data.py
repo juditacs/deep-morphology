@@ -12,7 +12,8 @@ from deep_morphology.data.base_data import BaseDataset, Vocab
 
 
 Seq2seqFields = recordclass('Seq2seqFields', ['src', 'tgt'])
-Seq2seqWithLenFields = recordclass('Seq2seqWithLenFields', ['src', 'src_len', 'tgt_len', 'tgt'])
+Seq2seqWithLenFields = recordclass('Seq2seqWithLenFields',
+                                   ['src', 'src_len', 'tgt_len', 'tgt'])
 
 
 class Seq2seqDataset(BaseDataset):
@@ -64,12 +65,14 @@ class UnlabeledSeq2seqDataset(Seq2seqDataset):
 class NoSpaceSeq2seqDataset(Seq2seqDataset):
 
     unlabeled_data_class = 'UnlabeledNoSpaceSeq2seqDataset'
+    data_recordclass = Seq2seqWithLenFields
+    constants = ['PAD', 'UNK', 'SOS', 'EOS']
 
     def extract_sample_from_line(self, line):
         src, tgt = line.rstrip("\n").split("\t")[:2]
         src = list(src)
         tgt = list(tgt)
-        return Seq2seqWithLenFields(src, len(src)+2, tgt, len(tgt)+2)
+        return Seq2seqWithLenFields(src, len(src)+2, len(tgt)+2, tgt)
 
 
 class UnlabeledNoSpaceSeq2seqDataset(UnlabeledSeq2seqDataset):
