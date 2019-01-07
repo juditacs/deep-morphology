@@ -8,6 +8,7 @@
 import torch
 import torch.nn as nn
 import logging
+import numpy as np
 
 from deep_morphology.models.base import BaseModel
 from deep_morphology.models.attention import LuongAttention
@@ -242,9 +243,24 @@ class Seq2seq(BaseModel):
             seqlen_tgt = Y.size(0)
         else:
             seqlen_tgt = seqlen_src * 4
+
+        tf_mode = getattr(self.config, 'teacher_forcing_mode', 'always')
+        tf_prob = getattr(self.config, 'teacher_forcing_prob', 0.5)
+        assert tf_mode in ('always', 'batch', 'sample', 'symbol')
+        if has_target is False:
+            do_tf = False
+        elif tf_mode == 'batch':
+            do_tf = np.random.random() < tf_prob
+        elif tf_mode == 'always':
+            do_tf = True
+        elif tf_mode == 'sample':
+            do_tf = np.random.random(batch_size) < tf_prob
+        elif tf_mode == 'symbol':
+            do_tf = np.random.random((seqlen_tgt, batch_size)) < tf_prob
         all_decoder_outputs = to_cuda(
             torch.zeros(seqlen_tgt, batch_size, self.output_size)
         )
+
         encoder_lens = to_cuda(torch.LongTensor(batch.src_len))
         encoder_lens.requires_grad = False
         encoder_outputs, encoder_hidden = self.encoder(X, encoder_lens)
@@ -255,11 +271,26 @@ class Seq2seq(BaseModel):
                 decoder_input, decoder_hidden, encoder_outputs, encoder_lens
             )
             all_decoder_outputs[t] = decoder_output
-            if has_target:
+            if do_tf is True:
                 decoder_input = Y[t]
-            else:
+            elif do_tf is False:
                 val, idx = decoder_output.max(-1)
                 decoder_input = idx
+            elif tf_mode == 'sample':
+                val, idx = decoder_output.max(-1)
+                decoder_input = idx
+                decoder_input[do_tf] = Y[t, do_tf]
+            elif tf_mode == 'symbol':
+                val, idx = decoder_output.max(-1)
+                decoder_input = idx
+                decoder_input[do_tf[t]] = Y[t, do_tf]
+            else:
+                raise ValueError("Teacher forcing issue")
+            #if has_target:
+            #    decoder_input = Y[t]
+            #else:
+            #    val, idx = decoder_output.max(-1)
+            #    decoder_input = idx
         return all_decoder_outputs.transpose(0, 1)
 
     def init_decoder_hidden(self, encoder_hidden):
@@ -322,11 +353,14 @@ class VanillaSeq2seq(Seq2seq):
         has_target = batch.tgt is not None and batch.tgt[0] is not None
         X = to_cuda(torch.LongTensor(batch.src)).transpose(0, 1)  # time major
         seqlen_src, batch_size = X.size()
+
         if has_target:
             Y = to_cuda(torch.LongTensor(batch.tgt)).transpose(0, 1)
             seqlen_tgt = Y.size(0)
         else:
             seqlen_tgt = seqlen_src * 4
+
+
         all_decoder_outputs = to_cuda(
             torch.zeros(seqlen_tgt, batch_size, self.output_size)
         )
