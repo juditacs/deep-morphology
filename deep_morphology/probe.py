@@ -50,6 +50,7 @@ class EmbeddingWrapper(nn.Module):
     def __init__(self, embedding_fn):
         super().__init__(config)
 
+
 class Prober(BaseModel):
     def __init__(self, config, train_data, dev_data, encoder=None, embedding=None):
         super().__init__(config)
@@ -194,6 +195,8 @@ class Prober(BaseModel):
                 torch.cuda.current_device())
         else:
             self.result.gpu = None
+        self.result.train_size = len(self.train_data)
+        self.result.dev_size = len(self.dev_data)
         self.config.save()
         return self
 

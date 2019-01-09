@@ -26,7 +26,7 @@ use_cuda = torch.cuda.is_available()
 
 class Result:
     __slots__ = ('train_loss', 'dev_loss', 'train_acc', 'dev_acc',
-                 'running_time', 'start_time',
+                 'running_time', 'start_time', 'train_size', 'dev_size',
                  'parameters', 'epochs_run', 'node', 'gpu')
 
     def __init__(self):
@@ -34,6 +34,7 @@ class Result:
         self.dev_loss = []
         self.train_acc = []
         self.dev_acc = []
+        self.train_size = self.dev_size = None
 
     def start(self):
         self.start_time = datetime.now()
@@ -123,6 +124,8 @@ class Experiment:
                 torch.cuda.current_device())
         else:
             self.result.gpu = None
+        self.result.train_size = len(self.train_data)
+        self.result.dev_size = len(self.dev_data)
         self.config.save()
         return self
 
