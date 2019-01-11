@@ -78,7 +78,7 @@ class ClassificationDataset(BaseDataset):
 
     def decode(self, model_output):
         for i, sample in enumerate(self.raw):
-            output = model_output[i].argmax()
+            output = model_output[i].argmax().item()
             sample.tgt = self.vocabs.tgt.inv_lookup(output)
 
     def print_sample(self, sample, stream):
