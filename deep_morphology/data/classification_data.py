@@ -8,7 +8,6 @@
 from recordclass import recordclass
 import os
 
-
 from deep_morphology.data.base_data import BaseDataset, Vocab
 
 
@@ -61,7 +60,7 @@ class ClassificationDataset(BaseDataset):
     def load_or_create_vocabs(self):
         vocabs = ClassificationFields(None, None, None)
         existing = getattr(self.config, 'vocab_src',
-                           os.path.join(self.config.experiment_dir, 'vocab_'))
+                           os.path.join(self.config.experiment_dir, 'vocab_src'))
         if os.path.exists(existing):
             vocabs.src = Vocab(file=existing, frozen=True)
         elif getattr(self.config, 'pretrained_embedding', False):
@@ -70,7 +69,7 @@ class ClassificationDataset(BaseDataset):
         else:
             vocabs.src = Vocab(constants=self.constants)
         existing = getattr(self.config, 'vocab_tgt',
-                           os.path.join(self.config.experiment_dir, 'vocab_'))
+                           os.path.join(self.config.experiment_dir, 'vocab_tgt'))
         if os.path.exists(existing):
             vocabs.tgt = Vocab(file=existing, frozen=True)
         else:
