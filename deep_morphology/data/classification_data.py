@@ -104,9 +104,10 @@ class NoSpaceClassificationDataset(ClassificationDataset):
 
 
 class UnlabeledNoSpaceClassificationDataset(UnlabeledClassificationDataset):
+
     def extract_sample_from_line(self, line):
         src = line.split("\t")[0]
-        return ClassificationFields(list(src), len(src), None)
+        return ClassificationFields(list(src), len(src)+2, None)
 
     def print_sample(self, sample, stream):
         stream.write("{}\t{}\n".format("".join(sample.src), sample.tgt))
