@@ -79,6 +79,7 @@ class Prober(BaseModel):
         self.result = Result()
 
     def create_classifier(self):
+        # BiLSTM
         enc_size = 2 * self.encoder.hidden_size
         return MLP(
             input_size=enc_size,
@@ -206,6 +207,18 @@ class Prober(BaseModel):
         self.result.end()
         self.result.save(self.config.experiment_dir)
 
+    def _save(self, epoch):
+        if self.config.overwrite_model is True:
+            save_path = os.path.join(self.config.experiment_dir, "model")
+        else:
+            save_path = os.path.join(
+                self.config.experiment_dir,
+                "model.epoch_{}".format("{0:04d}".format(epoch)))
+        logging.info("Saving model to {}".format(save_path))
+        torch.save(
+            {'encoder': self.encoder.state_dict(),
+             'mlp': self.mlp.state_dict()},
+            save_path)
 
 def main():
     args = parse_args()
