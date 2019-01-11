@@ -206,8 +206,12 @@ class Seq2seq(BaseModel):
             )
         self.input_size = input_size
         self.output_size = output_size
-        self.SOS = dataset.vocabs.tgt.SOS
-        self.PAD = dataset.vocabs.tgt.PAD
+        try:
+            self.SOS = dataset.vocabs.tgt.SOS
+            self.PAD = dataset.vocabs.tgt.PAD
+        except AttributeError:
+            self.SOS = dataset.vocabs.src.SOS
+            self.PAD = dataset.vocabs.src.PAD
         self.criterion = nn.CrossEntropyLoss(ignore_index=self.PAD)
         if self.hidden_size_src != self.hidden_size_tgt:
             self.hidden_proj1 = nn.Linear(
