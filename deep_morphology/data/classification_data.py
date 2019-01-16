@@ -8,7 +8,6 @@
 from recordclass import recordclass
 import os
 
-
 from deep_morphology.data.base_data import BaseDataset, Vocab
 
 
@@ -30,7 +29,7 @@ class ClassificationDataset(BaseDataset):
     def load_or_create_vocabs(self):
         vocabs = ClassificationFields(None, None, None)
         existing = getattr(self.config, 'vocab_src',
-                           os.path.join(self.config.experiment_dir, 'vocab_'))
+                           os.path.join(self.config.experiment_dir, 'vocab_src'))
         if os.path.exists(existing):
             vocabs.src = Vocab(file=existing, frozen=True)
         elif getattr(self.config, 'pretrained_embedding', False):
@@ -39,7 +38,7 @@ class ClassificationDataset(BaseDataset):
         else:
             vocabs.src = Vocab(constants=self.constants)
         existing = getattr(self.config, 'vocab_tgt',
-                           os.path.join(self.config.experiment_dir, 'vocab_'))
+                           os.path.join(self.config.experiment_dir, 'vocab_tgt'))
         if os.path.exists(existing):
             vocabs.tgt = Vocab(file=existing, frozen=True)
         else:
@@ -48,7 +47,7 @@ class ClassificationDataset(BaseDataset):
 
     def decode(self, model_output):
         for i, sample in enumerate(self.raw):
-            output = model_output[i].argmax()
+            output = model_output[i].argmax().item()
             sample.tgt = self.vocabs.tgt.inv_lookup(output)
 
     def print_sample(self, sample, stream):
@@ -74,9 +73,10 @@ class NoSpaceClassificationDataset(ClassificationDataset):
 
 
 class UnlabeledNoSpaceClassificationDataset(UnlabeledClassificationDataset):
+
     def extract_sample_from_line(self, line):
         src = line.split("\t")[0]
-        return ClassificationFields(list(src), len(src), None)
+        return ClassificationFields(list(src), len(src)+2, None)
 
     def print_sample(self, sample, stream):
         stream.write("{}\t{}\n".format("".join(sample.src), sample.tgt))
