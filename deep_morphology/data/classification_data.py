@@ -16,37 +16,6 @@ ClassificationFields = recordclass('ClassificationFields',
                                    ['src', 'src_len', 'tgt'])
 
 
-class EmbeddingWrapperDataset(BaseDataset):
-
-    unlabeled_data_class = None
-    data_recordclass = ClassificationFields
-    constants = []
-
-    def extract_sample_from_line(self, line):
-        src, tgt = line.split("\t")[:2]
-        return ClassificationFields(src, 1, tgt)
-
-    def load_or_create_vocabs(self):
-        self.vocabs = ClassificationFields(Vocab(), None, Vocab())
-
-    def load_embedding_and_reindex(self):
-        self.vocab.src.post_load_embedding(self.config.embedding)
-        self.to_idx()
-
-    def to_idx(self):
-        src = []
-        tgt = []
-        for sample in self.raw:
-            if sample.src not in self.vocabs.src:
-                continue
-            src.append(self.vocabs.src[sample.src])
-            tgt.append(self.vocabs.tgt[sample.tgt])
-        if len(src) < len(self.raw):
-            logging.info("{} samples (out of {}) not found in embedding".format(
-                len(self.raw)-len(src), len(self.raw)))
-        self.mtx = self.create_recordclass(src, None, tgt)
-
-
 class ClassificationDataset(BaseDataset):
 
     unlabeled_data_class = 'UnlabeledClassificationDataset'
