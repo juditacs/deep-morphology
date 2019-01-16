@@ -7,6 +7,7 @@
 
 from argparse import ArgumentParser
 import os
+import gzip
 import logging
 import platform
 import numpy as np
@@ -46,31 +47,115 @@ def parse_args():
     return p.parse_args()
 
 
+class DataWrapper:
+    def __init__(self, data, labels):
+        self.data = data
+        self.labels = labels
+        self.tgt_field_idx = 1
+
+    def batched_iter(self, batch_size):
+        starts = list(range(0, len(self.data), batch_size))
+        np.random.shuffle(starts)
+        for start in starts:
+            end = start + batch_size
+            data = self.data[start:end]
+            labels = self.labels[start:end]
+            yield (data, labels)
+
+
 class EmbeddingWrapper(nn.Module):
-    def __init__(self, embedding_fn):
-        super().__init__(config)
+
+    def __init__(self, train_data, dev_data, embedding_fn):
+        super().__init__()
+        self.train_data = []
+        self.train_labels = []
+        self.dev_data = []
+        self.dev_labels = []
+        self.vocab_label = {}
+        with open(train_data) as f:
+            for line in f:
+                word, label = line.strip().split("\t")
+                lab_idx = self.vocab_label.setdefault(label, len(self.vocab_label))
+                self.train_data.append(word)
+                self.train_labels.append(lab_idx)
+        with open(dev_data) as f:
+            for line in f:
+                word, label = line.strip().split("\t")
+                lab_idx = self.vocab_label.setdefault(label, len(self.vocab_label))
+                self.dev_data.append(word)
+                self.dev_labels.append(lab_idx)
+        if embedding_fn.endswith('.gz'):
+            with gzip.open(embedding_fn, "rt") as f:
+                self.load_embedding(f)
+        else:
+            with open(embedding_fn) as f:
+                self.load_embedding(f)
+        prev = len(self.train_data)
+        self.train_data, self.train_labels = self.filter_data(self.train_data, self.train_labels)
+        self.dev_data, self.dev_labels = self.filter_data(self.dev_data, self.dev_labels)
+        self.hidden_size = self.embedding.shape[1]
+        self.embedding_layer = nn.Embedding(len(self.embedding_map), self.hidden_size)
+        self.embedding_layer.weight = nn.Parameter(torch.from_numpy(self.embedding).float())
+        self.dropout = nn.Dropout(0.5)
+
+    def get_train_data_wrapper(self):
+        return DataWrapper(self.train_data, self.train_labels)
+
+    def get_dev_data_wrapper(self):
+        return DataWrapper(self.dev_data, self.dev_labels)
+
+    def filter_data(self, data, labels):
+        filt_data = []
+        filt_labels = []
+        for d, l in zip(data, labels):
+            if d in self.embedding_map:
+                filt_data.append(self.embedding_map[d])
+                filt_labels.append(l)
+        return filt_data, filt_labels
+
+    def load_embedding(self, stream):
+        self.embedding_map = {}
+        vocab = set(self.train_data) | set(self.dev_data)
+        embedding = []
+        # first line, may or may not be the dimension info
+        fd = next(stream).rstrip("\n").split(" ")
+        if len(fd) > 2:
+            word = fd[0]
+            if word in vocab:
+                vec = list(map(float, fd[1:]))
+                embedding.append(vec)
+                self.embedding_map.setdefault(word, len(self.embedding_map))
+        for line in stream:
+            fd = line.rstrip("\n").split(" ")
+            word = fd[0]
+            if word in vocab:
+                vec = list(map(float, fd[1:]))
+                embedding.append(vec)
+                self.embedding_map.setdefault(word, len(self.embedding_map))
+        self.embedding = np.array(embedding)
+        print(self.embedding.shape)
+
+    def forward(self, data):
+        return self.dropout(self.embedding_layer(data))
+
 
 class Prober(BaseModel):
-    def __init__(self, config, train_data, dev_data, encoder=None, embedding=None):
+    def __init__(self, config, train_data, dev_data, encoder):
         super().__init__(config)
         # TODO make sure it's a deep-morphology experiment dir
         self.config = Config.from_yaml(config)
         self.config.train_file = train_data
         self.config.dev_file = dev_data
-        if encoder is not None:
-            enc_cfg = InferenceConfig.from_yaml(
-                os.path.join(encoder, "config.yaml"))
-            self.update_config(enc_cfg)
-            self.data_class = getattr(data_module, self.config.dataset_class)
-            self.train_data = self.data_class(self.config, train_data)
-            self.dev_data = self.data_class(self.config, dev_data)
-            self.encoder = self.load_encoder(enc_cfg)
-            self.relabel_target()
-            self.train_data.save_vocabs()
-            self._probes_embedding = False
-        elif embedding is not None:
-            self.encoder = EmbeddingWrapper(train_data, embedding)
-            self._probes_embedding = True
+        enc_cfg = InferenceConfig.from_yaml(
+            os.path.join(encoder, "config.yaml"))
+        self.update_config(enc_cfg)
+        self.data_class = getattr(data_module, self.config.dataset_class)
+        self.train_data = self.data_class(self.config, train_data)
+        self.dev_data = self.data_class(self.config, dev_data)
+        self.encoder = self.load_encoder(enc_cfg)
+        self.relabel_target()
+        self.train_data.save_vocabs()
+        self.output_size=len(self.train_data.vocabs.tgt),
         self.mlp = self.create_classifier()
 
         # fix encoder
@@ -83,7 +168,7 @@ class Prober(BaseModel):
             input_size=enc_size,
             layers=self.config.mlp_layers,
             nonlinearity=self.config.mlp_nonlinearity,
-            output_size=len(self.train_data.vocabs.tgt),
+            output_size=self.output_size,
         )
 
     def load_encoder(self, enc_cfg):
@@ -204,17 +289,53 @@ class Prober(BaseModel):
         self.result.save(self.config.experiment_dir)
 
 
+class EmbeddingProber(Prober):
+    def __init__(self, config, train_data, dev_data, embedding):
+        BaseModel.__init__(self, config)
+        self.config = Config.from_yaml(config)
+        self.config.train_file = train_data
+        self.config.dev_file = dev_data
+        self.encoder = EmbeddingWrapper(train_data, dev_data, embedding)
+        self.output_size = len(self.encoder.vocab_label)
+        self.train_data = self.encoder.get_train_data_wrapper()
+        self.dev_data = self.encoder.get_dev_data_wrapper()
+        self.mlp = self.create_classifier()
+        self.criterion = nn.CrossEntropyLoss()
+
+    def create_classifier(self):
+        enc_size = self.encoder.hidden_size
+        return MLP(
+            input_size=enc_size,
+            layers=self.config.mlp_layers,
+            nonlinearity=self.config.mlp_nonlinearity,
+            output_size=self.output_size,
+        )
+
+    def forward(self, batch):
+        X = to_cuda(torch.LongTensor(batch[0]))
+        embedded = self.encoder(X)
+        mlp_out = self.mlp(embedded)
+        return mlp_out
+
+    def compute_loss(self, target, output):
+        target = to_cuda(torch.LongTensor(target[1])).view(-1)
+        loss = self.criterion(output, target)
+        return loss
+
+
 def main():
     args = parse_args()
     if args.embedding:
-        assert args.encoder is None
-    else:
-        assert args.embedding is None
-    with Prober(args.config, encoder=args.encoder,
-                train_data=args.train_file, dev_data=args.dev_file,
-                embedding=args.embedding) as prober:
-        prober = to_cuda(prober)
-        prober.run_train()
+        with EmbeddingProber(args.config,
+                    train_data=args.train_file, dev_data=args.dev_file,
+                    embedding=args.embedding) as prober:
+            prober = to_cuda(prober)
+            prober.run_train()
+    elif args.encoder:
+        with Prober(args.config, encoder=args.encoder,
+                    train_data=args.train_file, dev_data=args.dev_file) as prober:
+            prober = to_cuda(prober)
+            prober.run_train()
 
 
 if __name__ == '__main__':
