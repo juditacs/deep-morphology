@@ -52,6 +52,7 @@ class SopaEncoder(nn.Module):
         if self.config.use_sopa:
             self.sopa = Sopa(sopa_input_size, patterns=self.config.patterns,
                              semiring=self.config.semiring, dropout=dropout)
+            self.hidden_size = sum(self.config.patterns.values())
 
     def forward(self, input, input_len):
 
@@ -172,10 +173,14 @@ class SopaSeq2seq(BaseModel):
         else:
             self.decoder = Decoder(config, output_size)
         self.config = config
-        self.PAD = dataset.vocabs.src['PAD']
-        self.SOS = dataset.vocabs.tgt['SOS']
+        try:
+            self.SOS = dataset.vocabs.tgt.SOS
+            self.PAD = dataset.vocabs.tgt.PAD
+        except AttributeError:
+            self.SOS = dataset.vocabs.src.SOS
+            self.PAD = dataset.vocabs.src.PAD
         self.output_size = output_size
-        self.criterion = nn.CrossEntropyLoss(ignore_index=dataset.vocabs.tgt['PAD'])
+        self.criterion = nn.CrossEntropyLoss(ignore_index=self.PAD)
 
         sumpattern = sum(self.config.patterns.values())
         if self.config.use_lstm:

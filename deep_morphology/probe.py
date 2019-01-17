@@ -81,6 +81,9 @@ class Prober(BaseModel):
     def create_classifier(self):
         # BiLSTM
         enc_size = 2 * self.encoder.hidden_size
+        # SOPA
+        if hasattr(self.encoder, 'sopa'):
+            enc_size = self.encoder.hidden_size
         return MLP(
             input_size=enc_size,
             layers=self.config.mlp_layers,
@@ -129,7 +132,13 @@ class Prober(BaseModel):
 
     def forward(self, batch):
         X = to_cuda(torch.LongTensor(batch.src)).transpose(0, 1)
-        output, hidden = self.encoder(X, batch.src_len)
+        enc_out = self.encoder(X, batch.src_len)
+        if len(enc_out) == 2:
+            output, hidden = enc_out[:2]
+        elif len(enc_out) == 3:  # SOPA
+            output = enc_out[2]
+            hidden = enc_out[1]
+        #output, hidden = self.encoder(X, batch.src_len)[:2]
         if getattr(self.config, 'use_lstm_state', False):
             mlp_out = self.mlp(hidden[1][-1])
         else:
