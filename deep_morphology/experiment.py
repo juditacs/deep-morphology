@@ -66,10 +66,10 @@ class Experiment:
             data_module, self.data_class.unlabeled_data_class)
         self.__load_data(train_data, dev_data)
         logging.info("Data loaded")
-        for i, field in enumerate(self.train_data.mtx._fields):
+        for i, field in enumerate(self.train_data.mtx._asdict().keys()):
             logging.info("Train [{}] size: {}".format(
                 field, len(self.train_data.mtx[i])))
-        for i, field in enumerate(self.dev_data.mtx._fields):
+        for i, field in enumerate(self.dev_data.mtx._asdict().keys()):
             logging.info("Dev [{}] size: {}".format(
                 field, len(self.dev_data.mtx[i])))
         self.init_model()

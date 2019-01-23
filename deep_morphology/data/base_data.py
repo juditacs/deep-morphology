@@ -132,7 +132,7 @@ class BaseDataset:
     def load_or_create_vocabs(self):
         vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
         vocabs = []
-        for field in self.data_recordclass._fields:
+        for field in self.data_recordclass._asdict().keys():
             vocab_fn = getattr(self.config, 'vocab_{}'.format(field), vocab_pre+field)
             if os.path.exists(vocab_fn):
                 vocabs.append(Vocab(file=vocab_fn, frozen=True))
@@ -234,7 +234,7 @@ class BaseDataset:
         stream.write("{}\n".format("\t".join(" ".join(s) for s in sample)))
 
     def save_vocabs(self):
-        for vocab_name in self.vocabs._fields:
+        for vocab_name in self.vocabs._asdict().keys():
             vocab = getattr(self.vocabs, vocab_name)
             if vocab is None:
                 continue

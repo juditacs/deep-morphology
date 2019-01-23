@@ -52,7 +52,7 @@ class UnlabeledReinflectionDataset(ReinflectionDataset):
 
     def load_or_create_vocabs(self):
         vocabs = []
-        for field in ReinflectionFields._fields:
+        for field in ReinflectionFields._asdict().keys():
             path = os.path.join(self.config.experiment_dir,
                                 'vocab_{}'.format(field))
             vocabs.append(Vocab(file=path, frozen=True))
