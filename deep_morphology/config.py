@@ -32,6 +32,8 @@ class Config:
         'save_attention_weights': False,
         'shuffle_batches': False,
         'sort_data_by_length': False,
+        'teacher_forcing_mode': 'always',
+        'teacher_forcing_prob': 0.8,
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded
