@@ -258,16 +258,18 @@ class Seq2seq(BaseModel):
         elif tf_mode == 'always':
             do_tf = True
         elif tf_mode == 'sample':
-            do_tf = np.random.random(batch_size) < tf_prob
+            do_tf = (np.random.random(batch_size) < tf_prob).astype(np.int16)
         elif tf_mode == 'symbol':
-            do_tf = np.random.random((seqlen_tgt, batch_size)) < tf_prob
+            do_tf = (np.random.random((seqlen_tgt, batch_size))
+                     < tf_prob).astype(np.int16)
+
         all_decoder_outputs = to_cuda(
             torch.zeros(seqlen_tgt, batch_size, self.output_size)
         )
 
         encoder_lens = to_cuda(torch.LongTensor(batch.src_len))
         encoder_lens.requires_grad = False
-        encoder_outputs, encoder_hidden = self.encoder(X, encoder_lens)
+        encoder_outputs, encoder_hidden = self.encoder(X, batch.src_len)
         decoder_input = to_cuda(torch.LongTensor([self.SOS] * batch_size))
         decoder_hidden = self.init_decoder_hidden(encoder_hidden)
         for t in range(seqlen_tgt):
@@ -283,18 +285,13 @@ class Seq2seq(BaseModel):
             elif tf_mode == 'sample':
                 val, idx = decoder_output.max(-1)
                 decoder_input = idx
-                decoder_input[do_tf] = Y[t, do_tf]
+                decoder_input[:, do_tf] = Y[t, do_tf].unsqueeze(0)
             elif tf_mode == 'symbol':
                 val, idx = decoder_output.max(-1)
                 decoder_input = idx
-                decoder_input[do_tf[t]] = Y[t, do_tf]
+                decoder_input[:, do_tf[t]] = Y[t, do_tf[t]].unsqueeze(0)
             else:
                 raise ValueError("Teacher forcing issue")
-            #if has_target:
-            #    decoder_input = Y[t]
-            #else:
-            #    val, idx = decoder_output.max(-1)
-            #    decoder_input = idx
         return all_decoder_outputs.transpose(0, 1)
 
     def init_decoder_hidden(self, encoder_hidden):
@@ -364,13 +361,27 @@ class VanillaSeq2seq(Seq2seq):
         else:
             seqlen_tgt = seqlen_src * 4
 
+        tf_mode = getattr(self.config, 'teacher_forcing_mode', 'always')
+        tf_prob = getattr(self.config, 'teacher_forcing_prob', 0.5)
+        assert tf_mode in ('always', 'batch', 'sample', 'symbol')
+        if has_target is False:
+            do_tf = False
+        elif tf_mode == 'batch':
+            do_tf = np.random.random() < tf_prob
+        elif tf_mode == 'always':
+            do_tf = True
+        elif tf_mode == 'sample':
+            do_tf = (np.random.random(batch_size) < tf_prob).astype(np.int16)
+        elif tf_mode == 'symbol':
+            do_tf = (np.random.random((seqlen_tgt, batch_size))
+                     < tf_prob).astype(np.int16)
 
         all_decoder_outputs = to_cuda(
             torch.zeros(seqlen_tgt, batch_size, self.output_size)
         )
         encoder_lens = to_cuda(torch.LongTensor(batch.src_len))
         encoder_lens.requires_grad = False
-        encoder_outputs, encoder_hidden = self.encoder(X, encoder_lens)
+        encoder_outputs, encoder_hidden = self.encoder(X, batch.src_len)
         decoder_input = to_cuda(torch.LongTensor([self.SOS] * batch_size))
         decoder_hidden = self.init_decoder_hidden(encoder_hidden)
         for t in range(seqlen_tgt):
@@ -378,11 +389,21 @@ class VanillaSeq2seq(Seq2seq):
                 decoder_input, decoder_hidden
             )
             all_decoder_outputs[t] = decoder_output
-            if has_target:
+            if do_tf is True:
                 decoder_input = Y[t]
-            else:
+            elif do_tf is False:
                 val, idx = decoder_output.max(-1)
                 decoder_input = idx
+            elif tf_mode == 'sample':
+                val, idx = decoder_output.max(-1)
+                decoder_input = idx
+                decoder_input[:, do_tf] = Y[t, do_tf].unsqueeze(0)
+            elif tf_mode == 'symbol':
+                val, idx = decoder_output.max(-1)
+                decoder_input = idx
+                decoder_input[:, do_tf[t]] = Y[t, do_tf[t]].unsqueeze(0)
+            else:
+                raise ValueError("Teacher forcing issue")
         return all_decoder_outputs.transpose(0, 1)
 
 
