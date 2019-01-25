@@ -9,3 +9,4 @@ from deep_morphology.models.sopa_classifier import SopaClassifier, MultiLayerSop
 from deep_morphology.models.sopa_seq2seq import SopaSeq2seq
 from deep_morphology.models.reinflection_seq2seq import ReinflectionSeq2seq
 from deep_morphology.models.test_packed_sequence import TestPackedSeq2seq
+from deep_morphology.models.contextual_embedding_classifier import BERTClassifier

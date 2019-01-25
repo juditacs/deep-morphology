@@ -9,3 +9,4 @@ from deep_morphology.data.classification_data import ClassificationDataset, Unla
 from deep_morphology.data.classification_data import NoSpaceClassificationDataset, UnlabeledNoSpaceClassificationDataset
 from deep_morphology.data.seq2seq_data import GlobalPaddingSeq2seqDataset, UnlabeledGlobalPaddingSeq2seqDataset
 from deep_morphology.data.seq2seq_data import NoSpaceSeq2seqDataset, UnlabeledNoSpaceSeq2seqDataset
+from deep_morphology.data.sentence_probe_data import BERTSentenceProberDataset, UnlabeledBERTSentenceProberDataset
