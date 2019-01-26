@@ -11,6 +11,7 @@ import logging
 import numpy as np
 
 from pytorch_pretrained_bert import BertModel
+from elmoformanylangs import Embedder
 
 from deep_morphology.models.base import BaseModel
 from deep_morphology.models.mlp import MLP
@@ -52,6 +53,51 @@ class BERTClassifier(BaseModel):
         batch_size = X.size(0)
         helper = to_cuda(torch.arange(batch_size))
         target_vecs = bert_out[helper, idx]
+        mlp_out = self.mlp(target_vecs)
+        return mlp_out
+
+    def compute_loss(self, target, output):
+        target = to_cuda(torch.LongTensor(target.label)).view(-1)
+        loss = self.criterion(output, target)
+        return loss
+
+
+class ELMOClassifier(BaseModel):
+
+    def __init__(self, config, dataset):
+        super().__init__(config)
+        self.dataset = dataset
+        self.output_size = len(dataset.vocabs.label)
+        self.embedder = Embedder(self.config.elmo_model, batch_size=self.config.batch_size)
+        self.elmo_layer = self.config.elmo_layer
+        self.mlp = MLP(
+            input_size=1024,
+            layers=self.config.mlp_layers,
+            nonlinearity=self.config.mlp_nonlinearity,
+            output_size=self.output_size,
+        )
+        if self.elmo_layer == 'weighted_sum':
+            self.elmo_weights = nn.Parameter(torch.ones(3, dtype=torch.float))
+        self.criterion = nn.CrossEntropyLoss()
+
+    def forward(self, batch):
+        batch_size = len(batch[0])
+        if self.elmo_layer == 'mean':
+            embedded = self.embedder.sents2elmo(batch.sentence, -1)
+            embedded = np.stack(embedded)
+            embedded = to_cuda(torch.from_numpy(embedded))
+        elif self.elmo_layer == 'weighted_sum':
+            embedded = self.embedder.sents2elmo(batch.sentence, -2)
+            embedded = np.stack(embedded)
+            embedded = to_cuda(torch.from_numpy(embedded))
+            embedded = (self.elmo_weights[None, :, None, None] * embedded).sum(1)
+        else:
+            embedded = self.embedder.sents2elmo(batch.sentence, self.elmo_layer)
+            embedded = np.stack(embedded)
+            embedded = to_cuda(torch.from_numpy(embedded))
+        idx = to_cuda(torch.LongTensor(batch.target_idx))
+        helper = to_cuda(torch.arange(batch_size))
+        target_vecs = embedded[helper, idx]
         mlp_out = self.mlp(target_vecs)
         return mlp_out
 
