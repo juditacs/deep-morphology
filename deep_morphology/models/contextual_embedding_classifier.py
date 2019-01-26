@@ -33,6 +33,8 @@ class BERTClassifier(BaseModel):
         self.bert = BertModel.from_pretrained('bert-base-multilingual-cased')
 
         self.bert_layer = self.config.bert_layer
+        if self.bert_layer == 'weighted_sum':
+            self.bert_weights = nn.Parameter(torch.ones(12, dtype=torch.float))
         self.output_size = len(dataset.vocabs.label)
         self.mlp = MLP(
             input_size=768,
@@ -48,7 +50,12 @@ class BERTClassifier(BaseModel):
     def forward(self, batch):
         X = to_cuda(torch.LongTensor(batch.sentence))
         bert_out, _ = self.bert(X)
-        bert_out = bert_out[self.bert_layer]
+        if self.bert_layer == 'mean':
+            bert_out = torch.stack(bert_out).mean(0)
+        elif self.bert_layer == 'weighted_sum':
+            bert_out = (self.bert_weights[:, None, None, None] * torch.stack(bert_out)).sum(0)
+        else:
+            bert_out = bert_out[self.bert_layer]
         idx = to_cuda(torch.LongTensor(batch.target_idx))
         batch_size = X.size(0)
         helper = to_cuda(torch.arange(batch_size))
