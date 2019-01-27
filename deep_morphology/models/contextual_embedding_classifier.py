@@ -53,7 +53,8 @@ class BERTClassifier(BaseModel):
         if self.bert_layer == 'mean':
             bert_out = torch.stack(bert_out).mean(0)
         elif self.bert_layer == 'weighted_sum':
-            bert_out = (self.bert_weights[:, None, None, None] * torch.stack(bert_out)).sum(0)
+            bert_out = (self.bert_weights[:, None, None, None]
+                        * torch.stack(bert_out)).sum(0)
         else:
             bert_out = bert_out[self.bert_layer]
         idx = to_cuda(torch.LongTensor(batch.target_idx))
