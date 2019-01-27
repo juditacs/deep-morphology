@@ -187,7 +187,6 @@ class ELMOSentenceProberDataset(BaseDataset):
         mtx = SentenceProbeFields(
             [], [], [], []
         )
-        maxlen = max(r.sentence_len for r in self.raw)
         for sample in self.raw:
             # int fields
             mtx.sentence_len.append(sample.sentence_len)
