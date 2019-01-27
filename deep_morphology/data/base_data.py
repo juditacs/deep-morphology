@@ -190,9 +190,11 @@ class BaseDataset:
             if self.config.sort_data_by_length:
                 self.sort_data_by_length()
 
-    def sort_data_by_length(self):
-        if hasattr(self.mtx, 'src_len'):
-            order = np.argsort(-np.array(self.mtx.src_len))
+    def sort_data_by_length(self, sort_field=None):
+        if sort_field is None:
+            sort_field = 'src_len'
+        if hasattr(self.mtx, sort_field):
+            order = np.argsort(-np.array(getattr(self.mtx, sort_field)))
         else:
             order = np.argsort([-len(m) for m in self.mtx.src])
         ordered = []
