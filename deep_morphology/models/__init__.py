@@ -12,3 +12,4 @@ from deep_morphology.models.test_packed_sequence import TestPackedSeq2seq
 from deep_morphology.models.contextual_embedding_classifier import BERTClassifier
 from deep_morphology.models.contextual_embedding_classifier import ELMOClassifier
 from deep_morphology.models.elmo_tagger import ELMOTagger
+from deep_morphology.models.bert_tagger import BERTTagger
