@@ -46,7 +46,7 @@ class ELMOPosDataset(BaseDataset):
         if os.path.exists(existing):
             vocab = Vocab(file=existing, frozen=True)
         else:
-            vocab = Vocab(constants=[])
+            vocab = Vocab(constants=['UNK'])
             vocab['<pad>']
         self.vocabs = ELMOPos(
             None, None, vocab
@@ -195,7 +195,7 @@ class BERTPosDataset(ELMOPosDataset):
         if os.path.exists(existing):
             vocab = Vocab(file=existing, frozen=True)
         else:
-            vocab = Vocab(constants=[])
+            vocab = Vocab(constants=['UNK'])
             vocab['<pad>']
         self.vocabs = BERTPos(
             None, None, None, vocab
