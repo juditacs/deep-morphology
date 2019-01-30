@@ -214,7 +214,7 @@ class BERTPosDataset(ELMOPosDataset):
             pos_tags = []
             for line in sent_lines[start:start+maxlen]:
                 fd = line.split("\t")
-                tokens.append(fd[1])
+                tokens.append(fd[1].replace('#', '_'))
                 pos_tags.append(fd[3])
             bert_tokens = []
             bert_pos = []
@@ -222,6 +222,8 @@ class BERTPosDataset(ELMOPosDataset):
             for token, pos in zip(tokens, pos_tags):
                 bt = self.tokenizer.tokenize(token)
                 token_starts.append(token_starts[-1] + len(bt))
+                if len(bt) == 0:
+                    bert_tokens.append('-')
                 bert_tokens.extend(bt)
                 bert_pos.append(pos)
                 bert_pos.extend([POS_PAD] * (len(bt) - 1))
@@ -296,9 +298,9 @@ class BERTPosDataset(ELMOPosDataset):
             if i == len(sample.token_starts) - 1:
                 end = sample.sentence_len-1
             else:
-                end = sample.token_starts[i+1]
+                end = sample.token_starts[i+1] + 1
             token = [real_sentence[t]]
-            token.extend([t[2:] for t in sample.sentence[t+1:end]])
+            token.extend([tt.lstrip("#") for tt in sample.sentence[t+2:end]])
             token = "".join(token)
             pos = real_pos[t]
             stream.write("{}\t{}\n".format(token, pos))
@@ -323,7 +325,7 @@ class UnlabeledBERTPosDataset(BERTPosDataset):
         tokens = []
         for line in sent_lines:
             fd = line.split("\t")
-            tokens.append(fd[1])
+            tokens.append(fd[1].replace('#', '_'))
         bert_tokens = []
         token_starts = [0]
         for token in tokens:
