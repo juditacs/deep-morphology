@@ -85,6 +85,9 @@ class BERTSentenceProberDataset(BaseDataset):
             else:
                 mtx.label.append(self.vocabs.label[sample.label])
         self.mtx = mtx
+        if not self.is_unlabeled:
+            if self.config.sort_data_by_length:
+                self.sort_data_by_length(sort_field='sentence_len')
 
     @property
     def is_unlabeled(self):
@@ -200,6 +203,9 @@ class ELMOSentenceProberDataset(BaseDataset):
             else:
                 mtx.label.append(self.vocabs.label[sample.label])
         self.mtx = mtx
+        if not self.is_unlabeled:
+            if self.config.sort_data_by_length:
+                self.sort_data_by_length(sort_field='sentence_len')
 
     def batched_iter(self, batch_size):
         starts = list(range(0, len(self), batch_size))
