@@ -6,6 +6,7 @@
 # Distributed under terms of the MIT license.
 
 import os
+import numpy as np
 from recordclass import recordclass
 
 from pytorch_pretrained_bert import BertTokenizer
