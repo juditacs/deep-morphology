@@ -95,7 +95,7 @@ class BERTSentenceProberDataset(BaseDataset):
 
     def batched_iter(self, batch_size):
         starts = list(range(0, len(self), batch_size))
-        if self.config.shuffle_batches:
+        if self.is_unlabeled is False and self.config.shuffle_batches:
             np.random.shuffle(starts)
         for start in starts:
             end = start + batch_size
@@ -209,7 +209,7 @@ class ELMOSentenceProberDataset(BaseDataset):
 
     def batched_iter(self, batch_size):
         starts = list(range(0, len(self), batch_size))
-        if self.config.shuffle_batches:
+        if self.is_unlabeled is False and self.config.shuffle_batches:
             np.random.shuffle(starts)
         PAD = '<pad>'
         for start in starts:
