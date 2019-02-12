@@ -55,9 +55,23 @@ class BERTSentenceProberDataset(BaseDataset):
         if self.config.word_only:
             sent = sent.split(" ")[int(idx)]
             idx = 0
-        tokens = self.tokenizer.tokenize(sent)
-        tok_idx = [i for i in range(len(tokens))
-                   if not tokens[i].startswith('##')]
+        if self.config.use_cls:
+            tokens = ['[CLS]'] + self.tokenizer.tokenize(sent)
+            tok_idx = [i for i in range(1, len(tokens))
+                       if not tokens[i].startswith('##')]
+        else:
+            tokens = self.tokenizer.tokenize(sent)
+            tok_idx = [i for i in range(len(tokens))
+                       if not tokens[i].startswith('##')]
+
+        #new_tok_idx = []
+        #for i, ti in enumerate(tok_idx):
+        #    if i < len(tok_idx)-1:
+        #        new_tok_idx.append(tok_idx[i+1]-1)
+        #    else:
+        #        new_tok_idx.append(len(tokens)-1)
+        #tok_idx = new_tok_idx
+
         return WordPieceSentenceProbeFields(
             sentence=tokens,
             sentence_len=len(tokens),
