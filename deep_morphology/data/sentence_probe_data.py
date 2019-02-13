@@ -64,13 +64,17 @@ class BERTSentenceProberDataset(BaseDataset):
             tok_idx = [i for i in range(len(tokens))
                        if not tokens[i].startswith('##')]
 
-        #new_tok_idx = []
-        #for i, ti in enumerate(tok_idx):
-        #    if i < len(tok_idx)-1:
-        #        new_tok_idx.append(tok_idx[i+1]-1)
-        #    else:
-        #        new_tok_idx.append(len(tokens)-1)
-        #tok_idx = new_tok_idx
+        if self.config.use_wordpiece_unit == 'last':
+            new_tok_idx = []
+            for i, ti in enumerate(tok_idx):
+                if i < len(tok_idx)-1:
+                    new_tok_idx.append(tok_idx[i+1]-1)
+                else:
+                    new_tok_idx.append(len(tokens)-1)
+            tok_idx = new_tok_idx
+        elif self.config.use_wordpiece_unit != 'first':
+            raise ValueError("Unknown choice for wordpiece: {}".format(
+                self.config.use_wordpiece_unit))
 
         return WordPieceSentenceProbeFields(
             sentence=tokens,
