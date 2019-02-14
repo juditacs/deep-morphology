@@ -204,7 +204,7 @@ class BERTPosDataset(ELMOPosDataset):
     def create_pos_sentence(self, sent_lines, maxlen):
         all_sentences = []
         # use unused BERT symbols as begin/end of sentence
-        BOS = '[unused1]'
+        BOS = '[CLS]'
         EOS = '[unused2]'
         POS_PAD = '<pad>'
         last = max(1, len(sent_lines)-maxlen+1)
@@ -319,7 +319,7 @@ class UnlabeledBERTPosDataset(BERTPosDataset):
 
     def create_pos_sentence(self, sent_lines, maxlen):
         # use unused BERT symbols as begin/end of sentence
-        BOS = '[unused1]'
+        BOS = '[CLS]'
         EOS = '[unused2]'
         sent = BERTPos([BOS], None, None, None)
         tokens = []
