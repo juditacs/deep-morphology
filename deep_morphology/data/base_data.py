@@ -240,8 +240,8 @@ class BaseDataset:
             order = np.argsort([-len(m) for m in self.mtx.src])
         ordered = []
         for m in self.mtx:
-            if m is None or m[0] is None:
-                ordered.append(None)
+            if m is None or len(m) == 0 or m[0] is None:
+                ordered.append(m)
             else:
                 ordered.append([m[idx] for idx in order])
         self.mtx = self.create_recordclass(*ordered)
