@@ -165,10 +165,7 @@ class UnlabeledBERTSentenceProberDataset(BERTSentenceProberDataset):
             sample.label = self.vocabs.label.inv_lookup(output)
 
     def print_sample(self, sample, stream):
-        if self.config.use_cls:
-            sentence = " ".join(sample.sentence[1:])
-        else:
-            sentence = " ".join(sample.sentence)
+        sentence = " ".join(sample.sentence[1:])
         sentence = sentence.replace(" ##", "")
         stream.write("{}\t{}\t{}\t{}\n".format(
             sentence, sample.target_word, sample.real_target_idx, sample.label
