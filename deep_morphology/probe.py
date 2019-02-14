@@ -133,7 +133,6 @@ class EmbeddingWrapper(nn.Module):
                 embedding.append(vec)
                 self.embedding_map.setdefault(word, len(self.embedding_map))
         self.embedding = np.array(embedding)
-        print(self.embedding.shape)
 
     def forward(self, data):
         return self.dropout(self.embedding_layer(data))
