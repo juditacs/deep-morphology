@@ -44,7 +44,7 @@ class BaseModel(nn.Module):
             dev_loss, dev_acc = self.run_epoch(dev_data, do_train=False)
             result.dev_loss.append(dev_loss)
             result.dev_acc.append(dev_acc)
-            s = self.save_if_best(train_loss, dev_loss, epoch)
+            s = self.save_if_best(result, epoch)
             saved = saved or s
             logging.info("Epoch {}, Train loss: {}, Train acc: {}, "
                          "Dev loss: {}, Dev acc: {}".format(
@@ -114,15 +114,25 @@ class BaseModel(nn.Module):
             epoch_loss += loss.item()
         return epoch_loss / (step + 1), all_correct / max(all_guess, 1)
 
-    def save_if_best(self, train_loss, dev_loss, epoch):
+    def save_if_best(self, result, epoch):
         if epoch < self.config.save_min_epoch:
             return False
-        loss = dev_loss if dev_loss is not None else train_loss
-        if not hasattr(self, 'min_loss') or self.min_loss > loss:
-            self.min_loss = loss
-            self._save(epoch)
-            return True
-        return False
+        if self.config.save_metric == 'dev_loss':
+            #FIXME why was this added?
+            # loss = dev_loss if dev_loss is not None else train_loss
+            loss = result.dev_loss[-1]
+            if not hasattr(self, 'min_loss') or self.min_loss > loss:
+                self.min_loss = loss
+                self._save(epoch)
+                return True
+            return False
+        elif self.config.save_metric == 'dev_acc':
+            acc = result.dev_acc[-1]
+            if not hasattr(self, 'max_acc') or self.max_acc < acc:
+                self.max_acc = acc
+                self._save(epoch)
+                return True
+            return False
 
     def _save(self, epoch):
         if self.config.overwrite_model is True:
