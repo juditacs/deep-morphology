@@ -60,7 +60,9 @@ class BERTTagger(BaseModel):
 
     def forward(self, batch):
         X = to_cuda(torch.LongTensor(batch.sentence))
-        bert_out, _ = self.bert(X)
+        mask = torch.arange(X.size(1)) < torch.LongTensor(batch.sentence_len).unsqueeze(1)
+        mask = to_cuda(mask.long())
+        bert_out, _ = self.bert(X, attention_mask=mask)
         if self.bert_layer == 'mean':
             bert_out = torch.stack(bert_out).mean(0)
         elif self.bert_layer == 'weighted_sum':
