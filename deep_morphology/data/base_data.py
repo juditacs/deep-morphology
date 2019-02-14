@@ -113,6 +113,47 @@ class Vocab:
         return embedding
 
 
+class DataFields:
+    _fields = ('src', 'tgt')
+    _alias = {}
+
+    def __init__(self, *args, **kwargs):
+        for field in _fields:
+            setattr(self, field, None)
+        for i, arg in enumerate(args):
+            setattr(self, self._fields[i], arg)
+        for kw, arg in kwargs.items():
+            setattr(self, kw, arg)
+
+    def __getitem__(self, idx):
+        return getattr(self, self._fields[idx])
+
+    def __iter__(self):
+        for field in self._fields:
+            yield getattr(self, field)
+
+    def get_existing_fields(self):
+        for field in self._fields:
+            val = getattr(self, field)
+            if val is not None:
+                yield val
+
+    def __getattr__(self, attr):
+        if attr in self._alias:
+            return getattr(self, self._alias[attr])
+        return super().__getattr__(attr)
+
+    def __len__(self):
+        return len(self._fields)
+
+    @classmethod
+    def initialize_all(cls, initializer):
+        d = cls()
+        for field in d._fields:
+            setattr(d, field, initializer())
+        return cls
+
+
 class BaseDataset:
 
     def __init__(self, config, stream_or_file, share_vocabs_with=None):
