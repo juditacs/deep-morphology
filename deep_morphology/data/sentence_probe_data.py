@@ -21,8 +21,8 @@ SentenceProbeFields = recordclass(
 
 WordPieceSentenceProbeFields = recordclass(
     'WordPieceSentenceProbeFields',
-    ['sentence', 'sentence_len', 'token_starts',
-     'target_idx', 'label']
+    ['sentence', 'sentence_len', 'token_starts', 'real_target_idx',
+     'target_idx', 'target_word', 'label']
 )
 
 
@@ -47,22 +47,14 @@ class BERTSentenceProberDataset(BaseDataset):
         else:
             vocab = Vocab(constants=[])
         self.vocabs = WordPieceSentenceProbeFields(
-            None, None, None, None, vocab
+            None, None, None, None, None, None, vocab
         )
 
     def extract_sample_from_line(self, line):
         sent, target, idx, label = line.rstrip("\n").split("\t")
-        if self.config.word_only:
-            sent = sent.split(" ")[int(idx)]
-            idx = 0
-        if self.config.use_cls:
-            tokens = ['[CLS]'] + self.tokenizer.tokenize(sent)
-            tok_idx = [i for i in range(1, len(tokens))
-                       if not tokens[i].startswith('##')]
-        else:
-            tokens = self.tokenizer.tokenize(sent)
-            tok_idx = [i for i in range(len(tokens))
-                       if not tokens[i].startswith('##')]
+        tokens = ['[CLS]'] + self.tokenizer.tokenize(sent)
+        tok_idx = [i for i in range(1, len(tokens))
+                   if not tokens[i].startswith('##')]
 
         if self.config.use_wordpiece_unit == 'last':
             new_tok_idx = []
@@ -81,12 +73,14 @@ class BERTSentenceProberDataset(BaseDataset):
             sentence_len=len(tokens),
             token_starts=tok_idx,
             target_idx=tok_idx[int(idx)],
+            real_target_idx=idx,
+            target_word=target,
             label=label,
         )
 
     def to_idx(self):
         mtx = WordPieceSentenceProbeFields(
-            [], [], [], [], []
+            [], [], [], [], [], [], []
         )
         maxlen = max(r.sentence_len for r in self.raw)
         for sample in self.raw:
@@ -140,17 +134,28 @@ class UnlabeledBERTSentenceProberDataset(BERTSentenceProberDataset):
 
     def extract_sample_from_line(self, line):
         sent, target, idx = line.rstrip("\n").split("\t")[:3]
-        if self.config.word_only:
-            sent = sent.split(" ")[int(idx)]
-            idx = 0
-        tokens = self.tokenizer.tokenize(sent)
-        tok_idx = [i for i in range(len(tokens))
+        tokens = ['[CLS]'] + self.tokenizer.tokenize(sent)
+        tok_idx = [i for i in range(1, len(tokens))
                    if not tokens[i].startswith('##')]
+
+        if self.config.use_wordpiece_unit == 'last':
+            new_tok_idx = []
+            for i, ti in enumerate(tok_idx):
+                if i < len(tok_idx)-1:
+                    new_tok_idx.append(tok_idx[i+1]-1)
+                else:
+                    new_tok_idx.append(len(tokens)-1)
+            tok_idx = new_tok_idx
+        elif self.config.use_wordpiece_unit != 'first':
+            raise ValueError("Unknown choice for wordpiece: {}".format(
+                self.config.use_wordpiece_unit))
         return WordPieceSentenceProbeFields(
             sentence=tokens,
             sentence_len=len(tokens),
             token_starts=tok_idx,
             target_idx=tok_idx[int(idx)],
+            real_target_idx=idx,
+            target_word=target,
             label=None,
         )
 
@@ -160,13 +165,13 @@ class UnlabeledBERTSentenceProberDataset(BERTSentenceProberDataset):
             sample.label = self.vocabs.label.inv_lookup(output)
 
     def print_sample(self, sample, stream):
-        starts = [i for i, t in enumerate(sample.sentence) if not t.startswith('##')]
-        real_idx = starts.index(sample.target_idx)
-        sentence = " ".join(sample.sentence)
+        if self.config.use_cls:
+            sentence = " ".join(sample.sentence[1:])
+        else:
+            sentence = " ".join(sample.sentence)
         sentence = sentence.replace(" ##", "")
-        target = sentence.split(" ")[real_idx]
         stream.write("{}\t{}\t{}\t{}\n".format(
-            sentence, target, real_idx, sample.label
+            sentence, sample.target_word, sample.real_target_idx, sample.label
         ))
 
 
@@ -188,8 +193,8 @@ class ELMOSentenceProberDataset(BaseDataset):
             vocab = Vocab(file=existing, frozen=True)
         else:
             vocab = Vocab(constants=[])
-        self.vocabs = WordPieceSentenceProbeFields(
-            None, None, None, None, vocab
+        self.vocabs = SentenceProbeFields(
+            None, None, None, vocab
         )
 
     def extract_sample_from_line(self, line):
