@@ -10,6 +10,7 @@ import os
 import gzip
 from sys import stdout
 import numpy as np
+from collections import OrderedDict
 
 
 class Vocab:
@@ -118,7 +119,7 @@ class DataFields:
     _alias = {}
 
     def __init__(self, *args, **kwargs):
-        for field in _fields:
+        for field in self._fields:
             setattr(self, field, None)
         for i, arg in enumerate(args):
             setattr(self, self._fields[i], arg)
@@ -127,6 +128,9 @@ class DataFields:
 
     def __getitem__(self, idx):
         return getattr(self, self._fields[idx])
+
+    def __setitem__(self, idx, value):
+        return setattr(self, self._fields[idx], value)
 
     def __iter__(self):
         for field in self._fields:
@@ -141,7 +145,7 @@ class DataFields:
     def __getattr__(self, attr):
         if attr in self._alias:
             return getattr(self, self._alias[attr])
-        return super().__getattr__(attr)
+        return getattr(super(), attr)
 
     def __len__(self):
         return len(self._fields)
@@ -152,6 +156,9 @@ class DataFields:
         for field in d._fields:
             setattr(d, field, initializer())
         return cls
+
+    def _asdict(self):
+        return OrderedDict((k, getattr(self, k, None)) for k in self._fields)
 
 
 class BaseDataset:
@@ -173,7 +180,11 @@ class BaseDataset:
     def load_or_create_vocabs(self):
         vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
         vocabs = []
-        for field in self.data_recordclass._asdict().keys():
+        need_vocab = getattr(self.data_recordclass, '_needs_vocab', None)
+        if need_vocab is None:
+            need_vocab = list(self.data_recordclass._asdict().keys())
+        kw = {}
+        for field in need_vocab:
             vocab_fn = getattr(self.config, 'vocab_{}'.format(field), vocab_pre+field)
             if os.path.exists(vocab_fn):
                 vocabs.append(Vocab(file=vocab_fn, frozen=True))
@@ -258,7 +269,6 @@ class BaseDataset:
         self.print_raw(stream)
 
     def decode(self, model_output):
-        assert len(model_output) == len(self.mtx[0])
         for i, sample in enumerate(self.raw):
             output = list(model_output[i])
             decoded = [self.vocabs[self.tgt_field_idx].inv_lookup(s)
@@ -277,7 +287,12 @@ class BaseDataset:
         stream.write("{}\n".format("\t".join(" ".join(s) for s in sample)))
 
     def save_vocabs(self):
-        for vocab_name in self.vocabs._asdict().keys():
+        #FIXME recordclass removal
+        if hasattr(self.vocabs, '_fields'):
+            vocab_list = list(self.vocabs._fields)
+        else:
+            vocab_list = list(self.vocabs._asdict().keys())
+        for vocab_name in vocab_list:
             vocab = getattr(self.vocabs, vocab_name)
             if vocab is None:
                 continue

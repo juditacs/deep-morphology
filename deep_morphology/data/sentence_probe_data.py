@@ -11,7 +11,7 @@ from recordclass import recordclass
 
 from pytorch_pretrained_bert import BertTokenizer
 
-from deep_morphology.data.base_data import BaseDataset, Vocab
+from deep_morphology.data.base_data import BaseDataset, Vocab, DataFields
 
 
 SentenceProbeFields = recordclass(
@@ -24,6 +24,89 @@ WordPieceSentenceProbeFields = recordclass(
     ['sentence', 'sentence_len', 'token_starts', 'real_target_idx',
      'target_idx', 'target_word', 'label']
 )
+
+
+class WordOnlyFields(DataFields):
+    _fields = ('sentence', 'target_word', 'target_word_len', 'target_idx', 'label')
+    _alias = {
+        'input': 'target_word',
+        'input_len': 'target_word_len',
+        'src_len': 'target_word_len',
+        'tgt': 'label',
+    }
+    _needs_vocab = ['target_word', 'label']
+
+
+class WordOnlySentenceProberDataset(BaseDataset):
+
+    data_recordclass = WordOnlyFields
+    unlabeled_data_class = 'UnlabeledWordOnlySentenceProberDataset'
+    constants = []
+
+    def load_or_create_vocabs(self):
+        vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
+        needs_vocab = getattr(self.data_recordclass, '_needs_vocab',
+                              self.data_recordclass._fields)
+        self.vocabs = self.data_recordclass()
+        for field in needs_vocab:
+            vocab_fn = getattr(self.config, 'vocab_{}'.format(field), vocab_pre+field)
+            if field == 'label':
+                constants = []
+            else:
+                constants = ['SOS', 'EOS', 'PAD', 'UNK']
+            if os.path.exists(vocab_fn):
+                setattr(self.vocabs, field, Vocab(file=vocab_fn, frozen=True))
+            else:
+                setattr(self.vocabs, field, Vocab(constants=constants))
+
+    def extract_sample_from_line(self, line):
+        fd = line.rstrip("\n").split("\t")
+        if len(line) > 3:
+            sent, target, idx, label = fd[:4]
+        else:
+            sent, target, idx = fd[:3]
+            label = None
+        idx = int(idx)
+        return WordOnlyFields(
+            sentence=sent,
+            target_word=target,
+            target_word_idx=idx,
+            taget_word_len=len(target),
+            label=label,
+        )
+
+    def to_idx(self):
+        words = []
+        lens = []
+        labels = []
+        for sample in self.raw:
+            idx = list(self.vocabs.target_word[c] for c in sample.target_word)
+            idx = [self.vocabs.target_word.SOS] + idx + [self.vocabs.target_word.EOS]
+            words.append(idx)
+            lens.append(len(idx))
+            labels.append(self.vocabs.label[sample.label])
+        self.mtx = WordOnlyFields(
+            target_word=words, target_word_len=lens, label=labels
+        )
+
+    def print_sample(self, sample, stream):
+        stream.write("{}\t{}\t{}\t{}\n".format(
+            sample.sentence, sample.target_word, sample.target_idx, sample.label
+        ))
+
+    def decode(self, model_output):
+        for i, sample in enumerate(self.raw):
+            output = model_output[i].argmax().item()
+            sample.label = self.vocabs.label.inv_lookup(output)
+
+    def __len__(self):
+        return len(self.raw)
+
+
+class UnlabeledWordOnlySentenceProberDataset(WordOnlySentenceProberDataset):
+    def is_unlabeled(self):
+        return True
+    pass
 
 
 class BERTSentenceProberDataset(BaseDataset):
@@ -82,7 +165,6 @@ class BERTSentenceProberDataset(BaseDataset):
         mtx = WordPieceSentenceProbeFields(
             [], [], [], [], [], [], []
         )
-        maxlen = max(r.sentence_len for r in self.raw)
         for sample in self.raw:
             # int fields
             mtx.sentence_len.append(sample.sentence_len)

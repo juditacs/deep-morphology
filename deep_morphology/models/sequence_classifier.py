@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 
 from deep_morphology.models import BaseModel
+from deep_morphology.models.seq2seq import LSTMEncoder
 
 
 use_cuda = torch.cuda.is_available()
@@ -25,27 +26,23 @@ class SequenceClassifier(BaseModel):
         super().__init__(config)
         input_size = len(dataset.vocabs.input)
         output_size = len(dataset.vocabs.label)
-        self.hidden_size = self.config.hidden_size
-        self.embedding_dropout = nn.Dropout(self.config.dropout)
-        self.embedding = nn.Embedding(
-            input_size, self.config.embedding_size)
-        nn.init.xavier_uniform_(self.embedding.weight)
-        self.cell = nn.LSTM(self.config.embedding_size, self.hidden_size,
-                            batch_first=False, dropout=self.config.dropout,
-                            num_layers=self.config.num_layers,
-                            bidirectional=True)
-        self.out_proj = nn.Linear(self.hidden_size, output_size)
+        self.lstm = LSTMEncoder(
+            input_size, output_size,
+            lstm_hidden_size=self.config.hidden_size,
+            lstm_num_layers=self.config.num_layers,
+            lstm_dropout=self.config.dropout,
+            embedding_size=self.config.embedding_size,
+            embedding_dropout=self.config.dropout,
+        )
+        self.out_proj = nn.Linear(self.config.hidden_size, output_size)
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, batch):
         input = to_cuda(torch.LongTensor(batch.input))
         input = input.transpose(0, 1)  # time_major
-        embedded = self.embedding(input)
-        embedded = self.embedding_dropout(embedded)
-        outputs, hidden = self.cell(embedded)
-        outputs = outputs[:, :, :self.hidden_size] + \
-            outputs[:, :, self.hidden_size:]
-        labels = self.out_proj(outputs[-1])
+        input_len = batch.input_len
+        outputs, hidden = self.lstm(input, input_len)
+        labels = self.out_proj(hidden[0][0])
         return labels
 
     def compute_loss(self, target, output):

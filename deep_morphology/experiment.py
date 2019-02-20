@@ -67,11 +67,13 @@ class Experiment:
         self.__load_data(train_data, dev_data)
         logging.info("Data loaded")
         for i, field in enumerate(self.train_data.mtx._asdict().keys()):
-            logging.info("Train [{}] size: {}".format(
-                field, len(self.train_data.mtx[i])))
+            if self.train_data.mtx[i] is not None:
+                logging.info("Train [{}] size: {}".format(
+                    field, len(self.train_data.mtx[i])))
         for i, field in enumerate(self.dev_data.mtx._asdict().keys()):
-            logging.info("Dev [{}] size: {}".format(
-                field, len(self.dev_data.mtx[i])))
+            if self.dev_data.mtx[i] is not None:
+                logging.info("Dev [{}] size: {}".format(
+                    field, len(self.dev_data.mtx[i])))
         self.init_model()
 
     def set_random_seeds(self):
