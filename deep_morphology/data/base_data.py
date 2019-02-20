@@ -136,16 +136,17 @@ class DataFields:
         for field in self._fields:
             yield getattr(self, field)
 
-    def get_existing_fields(self):
+    def get_existing_fields_and_values(self):
         for field in self._fields:
             val = getattr(self, field)
             if val is not None:
-                yield val
+                yield field, val
 
     def __getattr__(self, attr):
         if attr in self._alias:
             return getattr(self, self._alias[attr])
-        return getattr(super(), attr)
+        raise AttributeError("{} does not have a {} field".format(
+            self.__class__.__name__, attr))
 
     def __len__(self):
         return len(self._fields)
@@ -157,6 +158,7 @@ class DataFields:
             setattr(d, field, initializer())
         return cls
 
+    # FIXME remove if recordclass is ever removed
     def _asdict(self):
         return OrderedDict((k, getattr(self, k, None)) for k in self._fields)
 

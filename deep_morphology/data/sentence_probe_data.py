@@ -7,6 +7,7 @@
 
 import os
 import numpy as np
+import logging
 from recordclass import recordclass
 
 from pytorch_pretrained_bert import BertTokenizer
@@ -71,7 +72,7 @@ class WordOnlySentenceProberDataset(BaseDataset):
             sentence=sent,
             target_word=target,
             target_word_idx=idx,
-            taget_word_len=len(target),
+            target_word_len=len(target),
             label=label,
         )
 
@@ -79,11 +80,21 @@ class WordOnlySentenceProberDataset(BaseDataset):
         words = []
         lens = []
         labels = []
+        if self.config.use_global_padding:
+            maxlen = self.get_max_seqlen()
+            longer = sum(s.target_word_len > maxlen for s in self.raw)
+            if longer > 0:
+                logging.warning('{} elements longer than maxlen'.format(longer))
         for sample in self.raw:
             idx = list(self.vocabs.target_word[c] for c in sample.target_word)
             idx = [self.vocabs.target_word.SOS] + idx + [self.vocabs.target_word.EOS]
+            if self.config.use_global_padding:
+                idx = idx[:maxlen-2]
+                idx = idx + [self.vocabs.target_word.PAD] * (maxlen - len(idx))
+                lens.append(maxlen)
+            else:
+                lens.append(len(idx))
             words.append(idx)
-            lens.append(len(idx))
             labels.append(self.vocabs.label[sample.label])
         self.mtx = WordOnlyFields(
             target_word=words, target_word_len=lens, label=labels
@@ -91,7 +102,7 @@ class WordOnlySentenceProberDataset(BaseDataset):
 
     def print_sample(self, sample, stream):
         stream.write("{}\t{}\t{}\t{}\n".format(
-            sample.sentence, sample.target_word, sample.target_idx, sample.label
+            sample.sentence, sample.target_word, sample.target_word_idx, sample.label
         ))
 
     def decode(self, model_output):
@@ -101,6 +112,11 @@ class WordOnlySentenceProberDataset(BaseDataset):
 
     def __len__(self):
         return len(self.raw)
+
+    def get_max_seqlen(self):
+        if hasattr(self.config, 'max_seqlen'):
+            return self.config.max_seqlen
+        return max(s.target_word_len for s in self.raw) + 2
 
 
 class UnlabeledWordOnlySentenceProberDataset(WordOnlySentenceProberDataset):
