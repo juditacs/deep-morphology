@@ -31,7 +31,8 @@ class BERTClassifier(BaseModel):
     def __init__(self, config, dataset):
         super().__init__(config)
         self.dataset = dataset
-        self.bert = BertModel.from_pretrained('bert-base-multilingual-cased')
+        model_name = getattr(self.config, 'bert_model', 'bert-base-multilingual-cased')
+        self.bert = BertModel.from_pretrained(model_name)
 
         self.bert_layer = self.config.bert_layer
         if self.bert_layer == 'weighted_sum':

@@ -31,7 +31,8 @@ class BERTTagger(BaseModel):
         super().__init__(config)
         self.dataset = dataset
         self.output_size = len(dataset.vocabs.pos)
-        self.bert = BertModel.from_pretrained('bert-base-multilingual-cased')
+        model_name = getattr(self.config, 'bert_model', 'bert-base-multilingual-cased')
+        self.bert = BertModel.from_pretrained(model_name)
         self.bert_layer = self.config.bert_layer
         if self.bert_layer == 'weighted_sum':
             self.bert_weights = nn.Parameter(torch.ones(12, dtype=torch.float))
