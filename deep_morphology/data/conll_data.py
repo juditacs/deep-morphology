@@ -115,7 +115,7 @@ class ELMOPosDataset(BaseDataset):
     @property
     def is_unlabeled(self):
         return False
-            
+
     def extract_sample_from_line(self, line):
         raise NotImplementedError("This function should not be called.")
 
@@ -184,8 +184,9 @@ class BERTPosDataset(ELMOPosDataset):
     def __init__(self, config, stream_or_file, share_vocabs_with=None):
         self.config = config
         self.load_or_create_vocabs()
+        model_name = getattr(self.config, 'bert_model', 'bert-base-multilingual-cased')
         self.tokenizer = BertTokenizer.from_pretrained(
-            'bert-base-multilingual-cased', do_lower_case=False)
+            model_name, do_lower_case=False)
         self.load_stream_or_file(stream_or_file)
         self.to_idx()
         self.tgt_field_idx = -1
@@ -287,7 +288,7 @@ class BERTPosDataset(ELMOPosDataset):
     @property
     def is_unlabeled(self):
         return False
-            
+
     def extract_sample_from_line(self, line):
         raise NotImplementedError("This function should not be called.")
 

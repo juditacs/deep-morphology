@@ -34,12 +34,19 @@ class BERTClassifier(BaseModel):
         model_name = getattr(self.config, 'bert_model', 'bert-base-multilingual-cased')
         self.bert = BertModel.from_pretrained(model_name)
 
+        if 'large' in model_name:
+            bert_size = 1024
+            n_layer = 24
+        else:
+            bert_size = 768
+            n_layer = 12
+
         self.bert_layer = self.config.bert_layer
         if self.bert_layer == 'weighted_sum':
-            self.bert_weights = nn.Parameter(torch.ones(12, dtype=torch.float))
+            self.bert_weights = nn.Parameter(torch.ones(n_layer, dtype=torch.float))
         self.output_size = len(dataset.vocabs.label)
         self.mlp = MLP(
-            input_size=768,
+            input_size=bert_size,
             layers=self.config.mlp_layers,
             nonlinearity=self.config.mlp_nonlinearity,
             output_size=self.output_size,
