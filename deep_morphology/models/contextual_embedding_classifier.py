@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import logging
 import numpy as np
+import os
 
 from pytorch_pretrained_bert import BertModel
 from elmoformanylangs import Embedder
@@ -47,24 +48,108 @@ class BERTClassifier(BaseModel):
         for p in self.bert.parameters():
             p.requires_grad = False
 
-    def forward(self, batch):
-        X = to_cuda(torch.LongTensor(batch.sentence))
-        mask = torch.arange(X.size(1)) < torch.LongTensor(batch.sentence_len).unsqueeze(1)
-        mask = to_cuda(mask.long())
-        bert_out, _ = self.bert(X, attention_mask=mask)
-        if self.bert_layer == 'mean':
-            bert_out = torch.stack(bert_out).mean(0)
-        elif self.bert_layer == 'weighted_sum':
-            bert_out = (self.bert_weights[:, None, None, None]
-                        * torch.stack(bert_out)).sum(0)
-        else:
-            bert_out = bert_out[self.bert_layer]
-        idx = to_cuda(torch.LongTensor(batch.target_idx))
-        batch_size = X.size(0)
-        helper = to_cuda(torch.arange(batch_size))
-        target_vecs = bert_out[helper, idx]
+    def forward(self, batch, dataset):
+        self.bert.train(False)
+        if self.bert_layer == 'weighted_sum':
+            if dataset._start not in dataset._cache:
+                X = to_cuda(torch.LongTensor(batch.sentence))
+                X.requires_grad = False
+                mask = torch.arange(X.size(1)) < torch.LongTensor(batch.sentence_len).unsqueeze(1)
+                mask = to_cuda(mask.long())
+                bert_out, _ = self.bert(X, attention_mask=mask)
+                dataset._cache[dataset._start] = bert_out
+            bert_out = dataset._cache[dataset._start]
+            bert_out = (self.bert_weights[:, None, None, None] * torch.stack(bert_out)).sum(0)
+            idx = to_cuda(torch.LongTensor(batch.target_idx))
+            batch_size = bert_out.size(0)
+            helper = to_cuda(torch.arange(batch_size))
+            target_vecs = bert_out[helper, idx]
+            mlp_out = self.mlp(target_vecs)
+            return mlp_out
+
+        if dataset._start not in dataset._cache:
+            X = to_cuda(torch.LongTensor(batch.sentence))
+            X.requires_grad = False
+            mask = torch.arange(X.size(1)) < torch.LongTensor(batch.sentence_len).unsqueeze(1)
+            mask = to_cuda(mask.long())
+            bert_out, _ = self.bert(X, attention_mask=mask)
+            if self.bert_layer == 'mean':
+                bert_out = torch.stack(bert_out).mean(0)
+            elif self.bert_layer == 'weighted_sum':
+                bert_out = (self.bert_weights[:, None, None, None] * torch.stack(bert_out)).sum(0)
+            else:
+                bert_out = bert_out[self.bert_layer]
+            idx = to_cuda(torch.LongTensor(batch.target_idx))
+            batch_size = X.size(0)
+            helper = to_cuda(torch.arange(batch_size))
+            target_vecs = bert_out[helper, idx]
+            dataset._cache[dataset._start] = target_vecs
+        target_vecs = dataset._cache[dataset._start]
         mlp_out = self.mlp(target_vecs)
         return mlp_out
+
+    def _save(self, epoch):
+        if self.config.overwrite_model is True:
+            save_path = os.path.join(self.config.experiment_dir, "model")
+        else:
+            save_path = os.path.join(
+                self.config.experiment_dir,
+                "model.epoch_{}".format("{0:04d}".format(epoch)))
+        logging.info("Saving model to {}".format(save_path))
+        st = {'mlp': self.mlp.state_dict()}
+        if self.config.bert_layer == 'weighted_sum':
+            st['bert_weights'] = self.bert_weights
+        torch.save(st, save_path)
+
+    def _load(self, model_file):
+        st = torch.load(model_file)
+        self.mlp.load_state_dict(st['mlp'])
+        if self.config.bert_layer == 'weighted_sum':
+            self.bert_weights = st['bert_weights']
+
+    def run_epoch(self, data, do_train, result=None):
+        epoch_loss = 0
+        all_correct = all_guess = 0
+        tgt_id = data.tgt_field_idx
+        for step, batch in enumerate(data.batched_iter(self.config.batch_size)):
+            output = self.forward(batch, data)
+            for opt in self.optimizers:
+                opt.zero_grad()
+            loss = self.compute_loss(batch, output)
+            if do_train:
+                loss.backward()
+                if getattr(self.config, 'clip', None):
+                    torch.nn.utils.clip_grad_norm_(
+                        self.parameters(), self.config.clip)
+                for opt in self.optimizers:
+                    opt.step()
+            target = torch.LongTensor(batch[tgt_id])
+            prediction = output.max(dim=-1)[1].cpu()
+            correct = torch.eq(prediction, target)
+            if hasattr(batch, 'tgt_len'):
+                doc_lens = to_cuda(torch.LongTensor(batch.tgt_len))
+                tgt_size = target.size()
+                m = torch.arange(tgt_size[1]).unsqueeze(0).expand(tgt_size)
+                mask = doc_lens.unsqueeze(1).expand(tgt_size) <= to_cuda(m.long())
+                correct[mask] = 0
+                numel = doc_lens.sum().item()
+            else:
+                numel = target.numel()
+            all_correct += correct.sum().item()
+            all_guess += numel
+            epoch_loss += loss.item()
+        return epoch_loss / (step + 1), all_correct / max(all_guess, 1)
+
+    def run_inference(self, data):
+        self.train(False)
+        all_output = []
+        for bi, batch in enumerate(data.batched_iter(self.config.batch_size)):
+            output = self.forward(batch, data)
+            output = output.data.cpu().numpy()
+            if output.ndim == 3:
+                output = output.argmax(axis=2)
+            all_output.extend(list(output))
+        return all_output
 
     def compute_loss(self, target, output):
         target = to_cuda(torch.LongTensor(target.label)).view(-1)

@@ -138,6 +138,7 @@ class BERTSentenceProberDataset(BaseDataset):
         self.load_stream_or_file(stream_or_file)
         self.to_idx()
         self.tgt_field_idx = -1
+        self._cache = {}
 
     def load_or_create_vocabs(self):
         existing = os.path.join(self.config.experiment_dir, 'vocab_label')
@@ -221,6 +222,7 @@ class BERTSentenceProberDataset(BaseDataset):
                     batch.append(sents)
                 else:
                     batch.append(mtx[start:end])
+            self._start = start
             yield self.create_recordclass(*batch)
 
 
