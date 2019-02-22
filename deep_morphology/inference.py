@@ -56,12 +56,7 @@ class Inference(Experiment):
         self.model.train(False)
         if model_file is None:
             model_file = self.find_last_model()
-        logging.info("Loading model from {}".format(model_file))
-        try:
-            self.model.load_state_dict(torch.load(model_file))
-        except RuntimeError:
-            logging.warning("Strict loading failed. I'll try strict=False now")
-            self.model.load_state_dict(torch.load(model_file), strict=False)
+        self.model._load(model_file)
 
     def find_last_model(self):
         model_pre = os.path.join(self.config.experiment_dir, 'model')

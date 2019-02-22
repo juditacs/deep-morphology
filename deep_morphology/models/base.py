@@ -134,6 +134,14 @@ class BaseModel(nn.Module):
                 return True
             return False
 
+    def _load(self, model_file):
+        logging.info("Loading model from {}".format(model_file))
+        try:
+            self.load_state_dict(torch.load(model_file))
+        except RuntimeError:
+            logging.warning("Strict loading failed. I'll try strict=False now")
+            self.load_state_dict(torch.load(model_file), strict=False)
+
     def _save(self, epoch):
         if self.config.overwrite_model is True:
             save_path = os.path.join(self.config.experiment_dir, "model")
