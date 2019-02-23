@@ -12,5 +12,6 @@ from deep_morphology.data.seq2seq_data import NoSpaceSeq2seqDataset, UnlabeledNo
 from deep_morphology.data.sentence_probe_data import BERTSentenceProberDataset, UnlabeledBERTSentenceProberDataset
 from deep_morphology.data.sentence_probe_data import ELMOSentenceProberDataset, UnlabeledELMOSentenceProberDataset
 from deep_morphology.data.sentence_probe_data import WordOnlySentenceProberDataset, UnlabeledWordOnlySentenceProberDataset
+from deep_morphology.data.sentence_probe_data import ELMOSentencePairDataset, UnlabeledELMOSentencePairDataset
 from deep_morphology.data.conll_data import ELMOPosDataset, UnlabeledELMOPosDataset
 from deep_morphology.data.conll_data import BERTPosDataset, UnlabeledBERTPosDataset

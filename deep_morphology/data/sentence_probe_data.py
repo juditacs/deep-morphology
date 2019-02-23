@@ -35,7 +35,121 @@ class WordOnlyFields(DataFields):
         'src_len': 'target_word_len',
         'tgt': 'label',
     }
-    _needs_vocab = ['target_word', 'label']
+    _needs_vocab = ('target_word', 'label')
+
+
+class SentencePairFields(DataFields):
+    _fields = (
+        'left_sentence', 'left_sentence_len', 'left_target_word', 'left_target_idx',
+        'right_sentence', 'right_sentence_len', 'right_target_word', 'right_target_idx',
+        'label',
+    )
+    _alias = {'tgt': 'label'}
+    _needs_vocab = ('label', )
+
+
+
+class ELMOSentencePairDataset(BaseDataset):
+
+    data_recordclass = SentencePairFields
+    unlabeled_data_class = 'UnlabeledELMOSentencePairDataset'
+    constants = []
+
+    # FIXME this is a copy of WordOnlySentenceProberDataset's method
+    # should be removed along with recordclass
+    def load_or_create_vocabs(self):
+        vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
+        needs_vocab = getattr(self.data_recordclass, '_needs_vocab',
+                              self.data_recordclass._fields)
+        self.vocabs = self.data_recordclass()
+        for field in needs_vocab:
+            vocab_fn = getattr(self.config, 'vocab_{}'.format(field), vocab_pre+field)
+            if field == 'label':
+                constants = []
+            else:
+                constants = ['SOS', 'EOS', 'PAD', 'UNK']
+            if os.path.exists(vocab_fn):
+                setattr(self.vocabs, field, Vocab(file=vocab_fn, frozen=True))
+            else:
+                setattr(self.vocabs, field, Vocab(constants=constants))
+
+    def extract_sample_from_line(self, line):
+        fd = line.rstrip("\n").split("\t")
+        left_sen = fd[0].split(" ")
+        right_sen = fd[3].split(" ")
+        lidx = int(fd[2])
+        ridx = int(fd[5])
+        assert left_sen[lidx] == fd[1]
+        assert right_sen[ridx] == fd[4]
+        if len(fd) > 6:
+            label = fd[6]
+        else:
+            label = None
+        return SentencePairFields(
+            left_sentence=left_sen,
+            left_sentence_len=len(left_sen),
+            left_target_word=left_sen[lidx],
+            left_target_idx=lidx,
+            right_sentence=right_sen,
+            right_sentence_len=len(right_sen),
+            right_target_word=right_sen[ridx],
+            right_target_idx=ridx,
+            label=label
+        )
+
+    def to_idx(self):
+        mtx = SentencePairFields.initialize_all(list)
+        for sample in self.raw:
+            for field, value in sample._asdict().items():
+                if field == 'label':
+                    mtx.label.append(self.vocabs.label[value])
+                else:
+                    getattr(mtx, field).append(value)
+        self.mtx = mtx
+
+    def batched_iter(self, batch_size):
+        starts = list(range(0, len(self), batch_size))
+        if self.is_unlabeled is False and self.config.shuffle_batches:
+            np.random.shuffle(starts)
+        PAD = '<pad>'
+        for start in starts:
+            self._start = start
+            end = min(start + batch_size, len(self.raw))
+            batch = SentencePairFields.initialize_all(list)
+            # pad left sentences
+            maxlen = max(self.mtx.left_sentence_len[start:end])
+            sents = [self.mtx.left_sentence[i] + [PAD] * (maxlen - self.mtx.left_sentence_len[i])
+                     for i in range(start, end)]
+            batch.left_sentence = sents
+            batch.left_target_idx = self.mtx.left_target_idx[start:end]
+            # pad right sentences
+            maxlen = max(self.mtx.right_sentence_len[start:end])
+            sents = [self.mtx.right_sentence[i] + [PAD] * (maxlen - self.mtx.right_sentence_len[i])
+                     for i in range(start, end)]
+            batch.right_sentence = sents
+            batch.right_target_idx = self.mtx.right_target_idx[start:end]
+            batch.label = self.mtx.label[start:end]
+            yield batch
+
+    def decode(self, model_output):
+        for i, sample in enumerate(self.raw):
+            output = model_output[i].argmax().item()
+            sample.label = self.vocabs.label.inv_lookup(output)
+
+    def print_sample(self, sample, stream):
+        stream.write("{}\n".format("\t".join(map(str, (
+            " ".join(sample.left_sentence),
+            sample.left_target_word,
+            sample.left_target_idx,
+            " ".join(sample.right_sentence),
+            sample.right_target_word,
+            sample.right_target_idx,
+            sample.label)
+        ))))
+
+
+class UnlabeledELMOSentencePairDataset(ELMOSentencePairDataset):
+    pass
 
 
 class WordOnlySentenceProberDataset(BaseDataset):

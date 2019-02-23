@@ -208,3 +208,61 @@ class ELMOClassifier(BaseModel):
         target = to_cuda(torch.LongTensor(target.label)).view(-1)
         loss = self.criterion(output, target)
         return loss
+
+
+class ELMOPairClassifier(BaseModel):
+
+    def __init__(self, config, dataset):
+        super().__init__(config)
+        self.dataset = dataset
+        assert len(self.dataset.vocabs.label) == 2
+        self.left_elmo = Embedder(self.config.elmo_model, batch_size=self.config.batch_size)
+        self.right_elmo = Embedder(self.config.elmo_model, batch_size=self.config.batch_size)
+        self.elmo_layer = self.config.elmo_layer
+        self.mlp = MLP(
+            input_size=2 * 1024,
+            layers=self.config.mlp_layers,
+            nonlinearity=self.config.mlp_nonlinearity,
+            output_size=2,
+        )
+        if self.elmo_layer == 'weighted_sum':
+            self.elmo_weights = nn.Parameter(torch.ones(3, dtype=torch.float))
+        self.criterion = nn.CrossEntropyLoss()
+
+    def forward(self, batch):
+        batch_size = len(batch[0])
+
+        left_X = self.embed(batch.left_sentence, self.left_elmo)
+        right_X = self.embed(batch.right_sentence, self.right_elmo)
+
+        helper = to_cuda(torch.arange(batch_size))
+        left_idx = to_cuda(torch.LongTensor(batch.left_target_idx))
+        right_idx = to_cuda(torch.LongTensor(batch.right_target_idx))
+
+        left_target = left_X[helper, left_idx]
+        right_target = right_X[helper, right_idx]
+
+        mlp_input = torch.cat((left_target, right_target), 1)
+        mlp_out = self.mlp(mlp_input)
+        return mlp_out
+
+    def embed(self, input_sentence, embedder):
+        if self.elmo_layer == 'mean':
+            embedded = embedder.sents2elmo(input_sentence, -1)
+            embedded = np.stack(embedded)
+            embedded = to_cuda(torch.from_numpy(embedded))
+        elif self.elmo_layer == 'weighted_sum':
+            embedded = embedder.sents2elmo(input_sentence, -2)
+            embedded = np.stack(embedded)
+            embedded = to_cuda(torch.from_numpy(embedded))
+            embedded = (self.elmo_weights[None, :, None, None] * embedded).sum(1)
+        else:
+            embedded = embedder.sents2elmo(input_sentence, self.elmo_layer)
+            embedded = np.stack(embedded)
+            embedded = to_cuda(torch.from_numpy(embedded))
+        return embedded
+
+    def compute_loss(self, target, output):
+        target = to_cuda(torch.LongTensor(target.label)).view(-1)
+        loss = self.criterion(output, target)
+        return loss

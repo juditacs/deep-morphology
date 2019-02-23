@@ -14,6 +14,10 @@ import subprocess
 
 from deep_morphology import models
 
+# TODO test for
+# DataFields class
+# - should not be able to set attributes not in _fields
+
 
 train_src = os.path.join(os.path.dirname(os.path.realpath(__file__)), "train.py")
 inference_src = os.path.join(os.path.dirname(os.path.realpath(__file__)), "inference.py")

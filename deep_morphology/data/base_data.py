@@ -156,9 +156,8 @@ class DataFields:
         d = cls()
         for field in d._fields:
             setattr(d, field, initializer())
-        return cls
+        return d
 
-    # FIXME remove if recordclass is ever removed
     def _asdict(self):
         return OrderedDict((k, getattr(self, k, None)) for k in self._fields)
 
@@ -261,7 +260,8 @@ class BaseDataset:
 
     @property
     def is_unlabeled(self):
-        return self.raw[0].tgt is None
+        return "Unlabeled" in self.__class__.__name__
+        # return self.raw[0].tgt is None
 
     def create_recordclass(self, *data):
         return self.__class__.data_recordclass(*data)
