@@ -173,15 +173,12 @@ class ELMOClassifier(BaseModel):
         self.output_size = len(dataset.vocabs.label)
         self.embedder = Embedder(self.config.elmo_model, batch_size=self.config.batch_size)
         self.elmo_layer = self.config.elmo_layer
-        if self.config.projection_only:
-            self.mlp = nn.Linear(1024, self.output_size)
-        else:
-            self.mlp = MLP(
-                input_size=1024,
-                layers=self.config.mlp_layers,
-                nonlinearity=self.config.mlp_nonlinearity,
-                output_size=self.output_size,
-            )
+        self.mlp = MLP(
+            input_size=1024,
+            layers=self.config.mlp_layers,
+            nonlinearity=self.config.mlp_nonlinearity,
+            output_size=self.output_size,
+        )
         if self.elmo_layer == 'weighted_sum':
             self.elmo_weights = nn.Parameter(torch.ones(3, dtype=torch.float))
         self.criterion = nn.CrossEntropyLoss()
