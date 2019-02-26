@@ -236,7 +236,6 @@ class WordOnlySentenceProberDataset(BaseDataset):
 class UnlabeledWordOnlySentenceProberDataset(WordOnlySentenceProberDataset):
     def is_unlabeled(self):
         return True
-    pass
 
 
 class BERTSentenceProberDataset(BaseDataset):
@@ -267,27 +266,24 @@ class BERTSentenceProberDataset(BaseDataset):
 
     def extract_sample_from_line(self, line):
         sent, target, idx, label = line.rstrip("\n").split("\t")
-        tokens = ['[CLS]'] + self.tokenizer.tokenize(sent)
-        tok_idx = [i for i in range(1, len(tokens))
-                   if not tokens[i].startswith('##')]
+        idx = int(idx)
+        tokens = ['[CLS]']
+        tok_idx = []
+        for i, t in enumerate(sent.split(" ")):
+            if self.config.use_wordpiece_unit == 'first':
+                tok_idx.append(len(tokens))
+            bert_toks = self.tokenizer.tokenize(t)
+            tokens.extend(bert_toks)
+            if self.config.use_wordpiece_unit == 'last':
+                tok_idx.append(len(tokens)-1)
 
-        if self.config.use_wordpiece_unit == 'last':
-            new_tok_idx = []
-            for i, ti in enumerate(tok_idx):
-                if i < len(tok_idx)-1:
-                    new_tok_idx.append(tok_idx[i+1]-1)
-                else:
-                    new_tok_idx.append(len(tokens)-1)
-            tok_idx = new_tok_idx
-        elif self.config.use_wordpiece_unit != 'first':
-            raise ValueError("Unknown choice for wordpiece: {}".format(
-                self.config.use_wordpiece_unit))
+        assert tokens[tok_idx[idx]].lstrip("##") in target
 
         return WordPieceSentenceProbeFields(
             sentence=tokens,
             sentence_len=len(tokens),
             token_starts=tok_idx,
-            target_idx=tok_idx[int(idx)],
+            target_idx=tok_idx[idx],
             real_target_idx=idx,
             target_word=target,
             label=label,
@@ -348,22 +344,20 @@ class UnlabeledBERTSentenceProberDataset(BERTSentenceProberDataset):
         return True
 
     def extract_sample_from_line(self, line):
-        sent, target, idx = line.rstrip("\n").split("\t")[:3]
-        tokens = ['[CLS]'] + self.tokenizer.tokenize(sent)
-        tok_idx = [i for i in range(1, len(tokens))
-                   if not tokens[i].startswith('##')]
+        sent, target, idx, label = line.rstrip("\n").split("\t")
+        idx = int(idx)
+        tokens = ['[CLS]']
+        tok_idx = []
+        for i, t in enumerate(sent.split(" ")):
+            if self.config.use_wordpiece_unit == 'first':
+                tok_idx.append(len(tokens))
+            bert_toks = self.tokenizer.tokenize(t)
+            tokens.extend(bert_toks)
+            if self.config.use_wordpiece_unit == 'last':
+                tok_idx.append(len(tokens)-1)
 
-        if self.config.use_wordpiece_unit == 'last':
-            new_tok_idx = []
-            for i, ti in enumerate(tok_idx):
-                if i < len(tok_idx)-1:
-                    new_tok_idx.append(tok_idx[i+1]-1)
-                else:
-                    new_tok_idx.append(len(tokens)-1)
-            tok_idx = new_tok_idx
-        elif self.config.use_wordpiece_unit != 'first':
-            raise ValueError("Unknown choice for wordpiece: {}".format(
-                self.config.use_wordpiece_unit))
+        assert tokens[tok_idx[idx]].lstrip("##") in target
+
         return WordPieceSentenceProbeFields(
             sentence=tokens,
             sentence_len=len(tokens),
