@@ -184,7 +184,6 @@ class BaseDataset:
         need_vocab = getattr(self.data_recordclass, '_needs_vocab', None)
         if need_vocab is None:
             need_vocab = list(self.data_recordclass._asdict().keys())
-        kw = {}
         for field in need_vocab:
             vocab_fn = getattr(self.config, 'vocab_{}'.format(field), vocab_pre+field)
             if os.path.exists(vocab_fn):
@@ -307,6 +306,7 @@ class BaseDataset:
         if self.is_unlabeled is False and self.config.shuffle_batches:
             np.random.shuffle(starts)
         for start in starts:
+            self._start = start
             end = start + batch_size
             batch = []
             for i, mtx in enumerate(self.mtx):
