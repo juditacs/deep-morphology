@@ -48,6 +48,15 @@ class SentencePairFields(DataFields):
     _needs_vocab = ('label', )
 
 
+class BERTSentencePairFields(DataFields):
+    _fields = (
+        'left_sentence', 'left_tokens', 'left_sentence_len', 'left_target_word', 'left_target_idx',
+        'right_sentence', 'right_tokens', 'right_sentence_len', 'right_target_word', 'right_target_idx',
+        'label',
+    )
+    _alias = {'tgt': 'label'}
+    _needs_vocab = ('label', )
+
 
 class ELMOSentencePairDataset(BaseDataset):
 
@@ -58,6 +67,8 @@ class ELMOSentencePairDataset(BaseDataset):
     # FIXME this is a copy of WordOnlySentenceProberDataset's method
     # should be removed along with recordclass
     def load_or_create_vocabs(self):
+        # FIXME this should be init or more like nowhere
+        self.tgt_field_idx = -1
         vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
         needs_vocab = getattr(self.data_recordclass, '_needs_vocab',
                               self.data_recordclass._fields)
@@ -149,6 +160,112 @@ class ELMOSentencePairDataset(BaseDataset):
 
 
 class UnlabeledELMOSentencePairDataset(ELMOSentencePairDataset):
+    pass
+
+
+class BERTSentencePairDataset(ELMOSentencePairDataset):
+    unlabeled_data_class = 'UnlabeledBERTSentencePairDataset'
+
+    def __init__(self, config, stream_or_file, share_vocabs_with=None):
+        self.config = config
+        if share_vocabs_with is None:
+            self.load_or_create_vocabs()
+        else:
+            self.vocabs = share_vocabs_with.vocabs
+        model_name = getattr(self.config, 'bert_model', 'bert-base-multilingual-cased')
+        self.tokenizer = BertTokenizer.from_pretrained(
+            model_name, do_lower_case=False)
+        self.load_stream_or_file(stream_or_file)
+        self.to_idx()
+        self.tgt_field_idx = -1
+
+    def extract_sample_from_line(self, line):
+        fd = line.rstrip("\n").split("\t")
+        left_sen, left_idx = self.parse_sentence(fd[:3])
+        right_sen, right_idx = self.parse_sentence(fd[3:6])
+
+        if len(fd) > 6:
+            label = fd[6]
+        else:
+            label = None
+        return BERTSentencePairFields(
+            left_sentence=fd[0],
+            left_tokens=left_sen,
+            left_sentence_len=len(left_sen),
+            left_target_word=fd[1],
+            left_target_idx=left_idx,
+            right_sentence=fd[3],
+            right_tokens=right_sen,
+            right_sentence_len=len(right_sen),
+            right_target_word=fd[4],
+            right_target_idx=right_idx,
+            label=label,
+        )
+
+    def parse_sentence(self, fields):
+        sent, target, idx = fields
+        idx = int(idx)
+        bert_tokens = ['[CLS]']
+        for i, t in enumerate(sent.split(" ")):
+            bt = self.tokenizer.tokenize(t)
+            if i == idx:
+                if self.config.use_wordpiece_unit == 'first':
+                    bert_idx = len(bert_tokens)
+                elif self.config.use_wordpiece_unit == 'last':
+                    bert_idx = len(bert_tokens) + len(bt) - 1
+            bert_tokens.extend(bt)
+        return bert_tokens, bert_idx
+
+    def to_idx(self):
+        self.mtx = BERTSentencePairFields.initialize_all(list)
+        for sample in self.raw:
+            # left fields
+            self.mtx.left_sentence_len.append(sample.left_sentence_len)
+            tok_idx = self.tokenizer.convert_tokens_to_ids(sample.left_tokens)
+            self.mtx.left_tokens.append(tok_idx)
+            self.mtx.left_target_idx.append(sample.left_target_idx)
+            # right fields
+            self.mtx.right_sentence_len.append(sample.right_sentence_len)
+            tok_idx = self.tokenizer.convert_tokens_to_ids(sample.right_tokens)
+            self.mtx.right_tokens.append(tok_idx)
+            self.mtx.right_target_idx.append(sample.right_target_idx)
+            # label if labeled
+            if sample.label is None:
+                self.mtx.label.append(None)
+            else:
+                self.mtx.label.append(self.vocabs.label[sample.label])
+
+    def __len__(self):
+        return len(self.raw)
+
+    def batched_iter(self, batch_size):
+        starts = list(range(0, len(self), batch_size))
+        if self.is_unlabeled is False and self.config.shuffle_batches:
+            np.random.shuffle(starts)
+        PAD = 0
+        for start in starts:
+            self._start = start
+            end = min(start + batch_size, len(self.raw))
+            batch = BERTSentencePairFields.initialize_all(list)
+            # pad left sentences
+            maxlen = max(self.mtx.left_sentence_len[start:end])
+            sents = [self.mtx.left_tokens[i] + [PAD] * (maxlen - self.mtx.left_sentence_len[i])
+                     for i in range(start, end)]
+            batch.left_tokens = sents
+            batch.left_sentence_len = self.mtx.left_sentence_len[start:end]
+            batch.left_target_idx = self.mtx.left_target_idx[start:end]
+            # pad right sentences
+            maxlen = max(self.mtx.right_sentence_len[start:end])
+            sents = [self.mtx.right_tokens[i] + [PAD] * (maxlen - self.mtx.right_sentence_len[i])
+                     for i in range(start, end)]
+            batch.right_tokens = sents
+            batch.right_sentence_len = self.mtx.right_sentence_len[start:end]
+            batch.right_target_idx = self.mtx.right_target_idx[start:end]
+            batch.label = self.mtx.label[start:end]
+            yield batch
+
+
+class UnlabeledBERTSentencePairDataset(BERTSentencePairDataset):
     pass
 
 
@@ -277,7 +394,8 @@ class BERTSentenceProberDataset(BaseDataset):
             if self.config.use_wordpiece_unit == 'last':
                 tok_idx.append(len(tokens)-1)
 
-        assert tokens[tok_idx[idx]].lstrip("##") in target
+        if not tokens[tok_idx[idx]] == '[UNK]':
+            assert tokens[tok_idx[idx]].lstrip("##") in target
 
         return WordPieceSentenceProbeFields(
             sentence=tokens,
@@ -356,7 +474,8 @@ class UnlabeledBERTSentenceProberDataset(BERTSentenceProberDataset):
             if self.config.use_wordpiece_unit == 'last':
                 tok_idx.append(len(tokens)-1)
 
-        assert tokens[tok_idx[idx]].lstrip("##") in target
+        if not tokens[tok_idx[idx]] == '[UNK]':
+            assert tokens[tok_idx[idx]].lstrip("##") in target
 
         return WordPieceSentenceProbeFields(
             sentence=tokens,
@@ -392,6 +511,7 @@ class ELMOSentenceProberDataset(BaseDataset):
         self.load_stream_or_file(stream_or_file)
         self.to_idx()
         self.tgt_field_idx = -1
+        self._cache = {}
 
     def load_or_create_vocabs(self):
         existing = os.path.join(self.config.experiment_dir, 'vocab_label')
@@ -442,6 +562,7 @@ class ELMOSentenceProberDataset(BaseDataset):
             np.random.shuffle(starts)
         PAD = '<pad>'
         for start in starts:
+            self._start = start
             end = start + batch_size
             batch = []
             for i, mtx in enumerate(self.mtx):
