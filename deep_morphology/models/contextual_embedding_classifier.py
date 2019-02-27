@@ -44,10 +44,6 @@ class BERTEmbedder(nn.Module):
         else:
             self._cache = None
 
-    def fix_bert(self):
-        for p in self.bert.parameters():
-            p.requires_grad = False
-
     def forward(self, sentences, sentence_lens):
         self.bert.train(False)
         mask = torch.arange(sentences.size(1)) < torch.LongTensor(sentence_lens).unsqueeze(1)
@@ -80,11 +76,46 @@ class BERTEmbedder(nn.Module):
                 return bert_out[self.layer]
 
     def state_dict(self, *args, **kwargs):
+        args[0]['{}weights'.format(args[1])] = self.weights
+        return args[0]
+
+
+class ELMOEmbedder(nn.Module):
+
+    def __init__(self, model_file, layer, batch_size=128, use_cache=False):
+        super().__init__()
+        self.elmo = Embedder(model_file, batch_size=batch_size)
+        self.layer = layer
+        if self.layer == 'weighted_sum':
+            self.weights = nn.Parameter(torch.ones(3, dtype=torch.float))
+            self.softmax = nn.Softmax(0)
+        if use_cache:
+            self._cache = {}
+        else:
+            self._cache = None
+
+    def forward(self, sentence):
+        return to_cuda(torch.from_numpy(np.stack(self.elmo.sents2elmo(sentence, -2))))
+
+    def embed(self, sentence, cache_key=None):
+        if cache_key is not None and self._cache is not None:
+            if cache_key not in self._cache:
+                self._cache[cache_key] = self.forward(sentence)
+            elmo_out = self._cache[cache_key]
+        else:
+            elmo_out = self.forward(sentence)
+        if self.layer == 'weighted_sum':
+            return (self.weights[None, :, None, None] * elmo_out).sum(1)
+        if self.layer == 'mean':
+            return elmo_out.mean(1)
+        return elmo_out[:, self.layer]
+
+    def state_dictaaa(self, *args, **kwargs):
         if self.layer == 'weighted_sum':
             return {'weights': self.weights}
         return {}
 
-    def load_state_dict(self, data):
+    def load_state_dictaaaa(self, data):
         if self.layer == 'weighted_sum':
             self.weights = data['weights']
 
@@ -106,7 +137,6 @@ class BERTPairClassifier(BaseModel):
             hidden = 1024
         else:
             hidden = 768
-        self.bert.fix_bert()
         self.mlp = MLP(
             input_size=2 * hidden,
             layers=self.config.mlp_layers,
@@ -201,36 +231,27 @@ class ELMOClassifier(BaseModel):
         super().__init__(config)
         self.dataset = dataset
         self.output_size = len(dataset.vocabs.label)
-        self.embedder = Embedder(self.config.elmo_model, batch_size=self.config.batch_size)
-        self.elmo_layer = self.config.elmo_layer
+        if hasattr(self.config, 'use_cache'):
+            use_cache = self.config.use_cache
+        else:
+            use_cache = (self.config.elmo_layer != 'weighted_sum')
+        self.elmo = ELMOEmbedder(self.config.elmo_model, self.config.elmo_layer,
+                                 batch_size=self.config.batch_size, use_cache=use_cache)
         self.mlp = MLP(
             input_size=1024,
             layers=self.config.mlp_layers,
             nonlinearity=self.config.mlp_nonlinearity,
             output_size=self.output_size,
         )
-        if self.elmo_layer == 'weighted_sum':
-            self.elmo_weights = nn.Parameter(torch.ones(3, dtype=torch.float))
         self.criterion = nn.CrossEntropyLoss()
 
-    def forward(self, batch):
+    def forward(self, batch, dataset):
         batch_size = len(batch[0])
-        if self.elmo_layer == 'mean':
-            embedded = self.embedder.sents2elmo(batch.sentence, -1)
-            embedded = np.stack(embedded)
-            embedded = to_cuda(torch.from_numpy(embedded))
-        elif self.elmo_layer == 'weighted_sum':
-            embedded = self.embedder.sents2elmo(batch.sentence, -2)
-            embedded = np.stack(embedded)
-            embedded = to_cuda(torch.from_numpy(embedded))
-            embedded = (self.elmo_weights[None, :, None, None] * embedded).sum(1)
-        else:
-            embedded = self.embedder.sents2elmo(batch.sentence, self.elmo_layer)
-            embedded = np.stack(embedded)
-            embedded = to_cuda(torch.from_numpy(embedded))
+        cache_key = (id(dataset), dataset._start)
+        elmo_out = self.elmo.embed(batch.sentence, cache_key=cache_key)
         idx = to_cuda(torch.LongTensor(batch.target_idx))
         helper = to_cuda(torch.arange(batch_size))
-        target_vecs = embedded[helper, idx]
+        target_vecs = elmo_out[helper, idx]
         mlp_out = self.mlp(target_vecs)
         return mlp_out
 
@@ -239,6 +260,12 @@ class ELMOClassifier(BaseModel):
         loss = self.criterion(output, target)
         return loss
 
+    def run_epoch(self, data, do_train, result=None):
+        return super().run_epoch(data, do_train, result=result, pass_dataset_to_forward=True)
+
+    def run_inference(self, data):
+        return super().run_inference(data, pass_dataset_to_forward=True)
+
 
 class ELMOPairClassifier(BaseModel):
 
@@ -246,51 +273,46 @@ class ELMOPairClassifier(BaseModel):
         super().__init__(config)
         self.dataset = dataset
         assert len(self.dataset.vocabs.label) == 2
-        self.left_elmo = Embedder(self.config.elmo_model, batch_size=self.config.batch_size)
-        self.right_elmo = Embedder(self.config.elmo_model, batch_size=self.config.batch_size)
-        self.elmo_layer = self.config.elmo_layer
+        if hasattr(self.config, 'use_cache'):
+            use_cache = self.config.use_cache
+        else:
+            use_cache = (self.config.elmo_layer != 'weighted_sum')
+        self.left_elmo = ELMOEmbedder(self.config.elmo_model, self.config.elmo_layer,
+                                      batch_size=self.config.batch_size, use_cache=use_cache)
+        self.right_elmo = ELMOEmbedder(self.config.elmo_model, self.config.elmo_layer,
+                                       batch_size=self.config.batch_size, use_cache=use_cache)
         self.mlp = MLP(
             input_size=2 * 1024,
             layers=self.config.mlp_layers,
             nonlinearity=self.config.mlp_nonlinearity,
             output_size=2,
         )
-        if self.elmo_layer == 'weighted_sum':
-            self.elmo_weights = nn.Parameter(torch.ones(3, dtype=torch.float))
         self.criterion = nn.CrossEntropyLoss()
 
-    def forward(self, batch):
+    def forward(self, batch, dataset):
         batch_size = len(batch[0])
 
-        left_X = self.embed(batch.left_sentence, self.left_elmo)
-        right_X = self.embed(batch.right_sentence, self.right_elmo)
+        left_key = (id(dataset), 'left', dataset._start)
+        left_out = self.left_elmo.embed(batch.left_sentence, cache_key=left_key)
+        right_key = (id(dataset), 'right', dataset._start)
+        right_out = self.right_elmo.embed(batch.right_sentence, cache_key=right_key)
 
         helper = to_cuda(torch.arange(batch_size))
         left_idx = to_cuda(torch.LongTensor(batch.left_target_idx))
         right_idx = to_cuda(torch.LongTensor(batch.right_target_idx))
 
-        left_target = left_X[helper, left_idx]
-        right_target = right_X[helper, right_idx]
+        left_target = left_out[helper, left_idx]
+        right_target = right_out[helper, right_idx]
 
         mlp_input = torch.cat((left_target, right_target), 1)
         mlp_out = self.mlp(mlp_input)
         return mlp_out
 
-    def embed(self, input_sentence, embedder):
-        if self.elmo_layer == 'mean':
-            embedded = embedder.sents2elmo(input_sentence, -1)
-            embedded = np.stack(embedded)
-            embedded = to_cuda(torch.from_numpy(embedded))
-        elif self.elmo_layer == 'weighted_sum':
-            embedded = embedder.sents2elmo(input_sentence, -2)
-            embedded = np.stack(embedded)
-            embedded = to_cuda(torch.from_numpy(embedded))
-            embedded = (self.elmo_weights[None, :, None, None] * embedded).sum(1)
-        else:
-            embedded = embedder.sents2elmo(input_sentence, self.elmo_layer)
-            embedded = np.stack(embedded)
-            embedded = to_cuda(torch.from_numpy(embedded))
-        return embedded
+    def run_epoch(self, data, do_train, result=None):
+        return super().run_epoch(data, do_train, result=result, pass_dataset_to_forward=True)
+
+    def run_inference(self, data):
+        return super().run_inference(data, pass_dataset_to_forward=True)
 
     def compute_loss(self, target, output):
         target = to_cuda(torch.LongTensor(target.label)).view(-1)
