@@ -131,8 +131,8 @@ class BERTPairClassifier(BaseModel):
         if hasattr(self.config, 'use_cache'):
             use_cache = self.config.use_cache
         else:
-            use_cache = (self.config.bert_layer != 'weighted_sum')
-        self.bert = BERTEmbedder(model_name, self.config.bert_layer, use_cache=use_cache)
+            use_cache = (self.config.layer != 'weighted_sum')
+        self.bert = BERTEmbedder(model_name, self.config.layer, use_cache=use_cache)
         if 'large' in model_name:
             hidden = 1024
         else:
@@ -186,8 +186,8 @@ class BERTClassifier(BaseModel):
         if hasattr(self.config, 'use_cache'):
             use_cache = self.config.use_cache
         else:
-            use_cache = (self.config.bert_layer != 'weighted_sum')
-        self.bert = BERTEmbedder(model_name, self.config.bert_layer, use_cache=use_cache)
+            use_cache = (self.config.layer != 'weighted_sum')
+        self.bert = BERTEmbedder(model_name, self.config.layer, use_cache=use_cache)
 
         if 'large' in model_name:
             bert_size = 1024
@@ -234,8 +234,8 @@ class ELMOClassifier(BaseModel):
         if hasattr(self.config, 'use_cache'):
             use_cache = self.config.use_cache
         else:
-            use_cache = (self.config.elmo_layer != 'weighted_sum')
-        self.elmo = ELMOEmbedder(self.config.elmo_model, self.config.elmo_layer,
+            use_cache = (self.config.layer != 'weighted_sum')
+        self.elmo = ELMOEmbedder(self.config.elmo_model, self.config.layer,
                                  batch_size=self.config.batch_size, use_cache=use_cache)
         self.mlp = MLP(
             input_size=1024,
@@ -276,10 +276,10 @@ class ELMOPairClassifier(BaseModel):
         if hasattr(self.config, 'use_cache'):
             use_cache = self.config.use_cache
         else:
-            use_cache = (self.config.elmo_layer != 'weighted_sum')
-        self.left_elmo = ELMOEmbedder(self.config.elmo_model, self.config.elmo_layer,
+            use_cache = (self.config.layer != 'weighted_sum')
+        self.left_elmo = ELMOEmbedder(self.config.elmo_model, self.config.layer,
                                       batch_size=self.config.batch_size, use_cache=use_cache)
-        self.right_elmo = ELMOEmbedder(self.config.elmo_model, self.config.elmo_layer,
+        self.right_elmo = ELMOEmbedder(self.config.elmo_model, self.config.layer,
                                        batch_size=self.config.batch_size, use_cache=use_cache)
         self.mlp = MLP(
             input_size=2 * 1024,
