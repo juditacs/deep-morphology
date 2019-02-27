@@ -31,6 +31,8 @@ class BERTEmbedder(nn.Module):
     def __init__(self, model_name, layer, use_cache=False):
         super().__init__()
         self.bert = BertModel.from_pretrained(model_name)
+        for p in self.bert.parameters():
+            p.requires_grad = False
         self.layer = layer
         if 'large' in model_name:
             n_layer = 24
@@ -191,18 +193,17 @@ class BERTClassifier(BaseModel):
         super().__init__(config)
         self.dataset = dataset
         model_name = getattr(self.config, 'bert_model', 'bert-base-multilingual-cased')
-        self.bert = BertModel.from_pretrained(model_name)
+        if hasattr(self.config, 'use_cache'):
+            use_cache = self.config.use_cache
+        else:
+            use_cache = (self.config.bert_layer != 'weighted_sum')
+        self.bert = BERTEmbedder(model_name, self.config.bert_layer, use_cache=use_cache)
 
         if 'large' in model_name:
             bert_size = 1024
-            n_layer = 24
         else:
             bert_size = 768
-            n_layer = 12
 
-        self.bert_layer = self.config.bert_layer
-        if self.bert_layer == 'weighted_sum':
-            self.bert_weights = nn.Parameter(torch.ones(n_layer, dtype=torch.float))
         self.output_size = len(dataset.vocabs.label)
         self.mlp = MLP(
             input_size=bert_size,
@@ -211,87 +212,17 @@ class BERTClassifier(BaseModel):
             output_size=self.output_size,
         )
         self.criterion = nn.CrossEntropyLoss()
-        # fix BERT
-        for p in self.bert.parameters():
-            p.requires_grad = False
 
     def forward(self, batch, dataset):
-        self.bert.train(False)
-        if getattr(self.config, 'cache_bert', True) is True:
-            if self.bert_layer == 'weighted_sum':
-                if dataset._start not in dataset._cache:
-                    X = to_cuda(torch.LongTensor(batch.sentence))
-                    X.requires_grad = False
-                    mask = torch.arange(X.size(1)) < torch.LongTensor(batch.sentence_len).unsqueeze(1)
-                    mask = to_cuda(mask.long())
-                    bert_out, _ = self.bert(X, attention_mask=mask)
-                    dataset._cache[dataset._start] = bert_out
-                bert_out = dataset._cache[dataset._start]
-                bert_out = (self.bert_weights[:, None, None, None] * torch.stack(bert_out)).sum(0)
-                idx = to_cuda(torch.LongTensor(batch.target_idx))
-                batch_size = bert_out.size(0)
-                helper = to_cuda(torch.arange(batch_size))
-                target_vecs = bert_out[helper, idx]
-                mlp_out = self.mlp(target_vecs)
-                return mlp_out
-
-            if dataset._start not in dataset._cache:
-                X = to_cuda(torch.LongTensor(batch.sentence))
-                X.requires_grad = False
-                mask = torch.arange(X.size(1)) < torch.LongTensor(batch.sentence_len).unsqueeze(1)
-                mask = to_cuda(mask.long())
-                bert_out, _ = self.bert(X, attention_mask=mask)
-                if self.bert_layer == 'mean':
-                    bert_out = torch.stack(bert_out).mean(0)
-                elif self.bert_layer == 'weighted_sum':
-                    bert_out = (self.bert_weights[:, None, None, None] * torch.stack(bert_out)).sum(0)
-                else:
-                    bert_out = bert_out[self.bert_layer]
-                idx = to_cuda(torch.LongTensor(batch.target_idx))
-                batch_size = X.size(0)
-                helper = to_cuda(torch.arange(batch_size))
-                target_vecs = bert_out[helper, idx]
-                dataset._cache[dataset._start] = target_vecs
-            target_vecs = dataset._cache[dataset._start]
-            mlp_out = self.mlp(target_vecs)
-            return mlp_out
-
         X = to_cuda(torch.LongTensor(batch.sentence))
         X.requires_grad = False
-        mask = torch.arange(X.size(1)) < torch.LongTensor(batch.sentence_len).unsqueeze(1)
-        mask = to_cuda(mask.long())
-        bert_out, _ = self.bert(X, attention_mask=mask)
-        if self.bert_layer == 'mean':
-            bert_out = torch.stack(bert_out).mean(0)
-        elif self.bert_layer == 'weighted_sum':
-            bert_out = (self.bert_weights[:, None, None, None] * torch.stack(bert_out)).sum(0)
-        else:
-            bert_out = bert_out[self.bert_layer]
+        bert_out = self.bert.embed(X, batch.sentence_len, (id(dataset), dataset._start))
         idx = to_cuda(torch.LongTensor(batch.target_idx))
         batch_size = X.size(0)
         helper = to_cuda(torch.arange(batch_size))
         target_vecs = bert_out[helper, idx]
         mlp_out = self.mlp(target_vecs)
         return mlp_out
-
-    def _save(self, epoch):
-        if self.config.overwrite_model is True:
-            save_path = os.path.join(self.config.experiment_dir, "model")
-        else:
-            save_path = os.path.join(
-                self.config.experiment_dir,
-                "model.epoch_{}".format("{0:04d}".format(epoch)))
-        logging.info("Saving model to {}".format(save_path))
-        st = {'mlp': self.mlp.state_dict()}
-        if self.config.bert_layer == 'weighted_sum':
-            st['bert_weights'] = self.bert_weights
-        torch.save(st, save_path)
-
-    def _load(self, model_file):
-        st = torch.load(model_file)
-        self.mlp.load_state_dict(st['mlp'])
-        if self.config.bert_layer == 'weighted_sum':
-            self.bert_weights = st['bert_weights']
 
     def run_epoch(self, data, do_train, result=None):
         epoch_loss = 0
