@@ -7,9 +7,7 @@
 # Distributed under terms of the MIT license.
 import torch
 import torch.nn as nn
-import logging
 import numpy as np
-import os
 
 from pytorch_pretrained_bert import BertModel
 from elmoformanylangs import Embedder
@@ -143,48 +141,10 @@ class BERTPairClassifier(BaseModel):
         return loss
 
     def run_epoch(self, data, do_train, result=None):
-        epoch_loss = 0
-        all_correct = all_guess = 0
-        tgt_id = data.tgt_field_idx
-        for step, batch in enumerate(data.batched_iter(self.config.batch_size)):
-            output = self.forward(batch, data)
-            for opt in self.optimizers:
-                opt.zero_grad()
-            loss = self.compute_loss(batch, output)
-            if do_train:
-                loss.backward()
-                if getattr(self.config, 'clip', None):
-                    torch.nn.utils.clip_grad_norm_(
-                        self.parameters(), self.config.clip)
-                for opt in self.optimizers:
-                    opt.step()
-            target = torch.LongTensor(batch[tgt_id])
-            prediction = output.max(dim=-1)[1].cpu()
-            correct = torch.eq(prediction, target)
-            if hasattr(batch, 'tgt_len'):
-                doc_lens = to_cuda(torch.LongTensor(batch.tgt_len))
-                tgt_size = target.size()
-                m = torch.arange(tgt_size[1]).unsqueeze(0).expand(tgt_size)
-                mask = doc_lens.unsqueeze(1).expand(tgt_size) <= to_cuda(m.long())
-                correct[mask] = 0
-                numel = doc_lens.sum().item()
-            else:
-                numel = target.numel()
-            all_correct += correct.sum().item()
-            all_guess += numel
-            epoch_loss += loss.item()
-        return epoch_loss / (step + 1), all_correct / max(all_guess, 1)
+        return super().run_epoch(data, do_train, result=result, pass_dataset_to_forward=True)
 
     def run_inference(self, data):
-        self.train(False)
-        all_output = []
-        for bi, batch in enumerate(data.batched_iter(self.config.batch_size)):
-            output = self.forward(batch, data)
-            output = output.data.cpu().numpy()
-            if output.ndim == 3:
-                output = output.argmax(axis=2)
-            all_output.extend(list(output))
-        return all_output
+        return super().run_inference(data, pass_dataset_to_forward=True)
 
 
 class BERTClassifier(BaseModel):
@@ -215,7 +175,6 @@ class BERTClassifier(BaseModel):
 
     def forward(self, batch, dataset):
         X = to_cuda(torch.LongTensor(batch.sentence))
-        X.requires_grad = False
         bert_out = self.bert.embed(X, batch.sentence_len, (id(dataset), dataset._start))
         idx = to_cuda(torch.LongTensor(batch.target_idx))
         batch_size = X.size(0)
@@ -225,48 +184,10 @@ class BERTClassifier(BaseModel):
         return mlp_out
 
     def run_epoch(self, data, do_train, result=None):
-        epoch_loss = 0
-        all_correct = all_guess = 0
-        tgt_id = data.tgt_field_idx
-        for step, batch in enumerate(data.batched_iter(self.config.batch_size)):
-            output = self.forward(batch, data)
-            for opt in self.optimizers:
-                opt.zero_grad()
-            loss = self.compute_loss(batch, output)
-            if do_train:
-                loss.backward()
-                if getattr(self.config, 'clip', None):
-                    torch.nn.utils.clip_grad_norm_(
-                        self.parameters(), self.config.clip)
-                for opt in self.optimizers:
-                    opt.step()
-            target = torch.LongTensor(batch[tgt_id])
-            prediction = output.max(dim=-1)[1].cpu()
-            correct = torch.eq(prediction, target)
-            if hasattr(batch, 'tgt_len'):
-                doc_lens = to_cuda(torch.LongTensor(batch.tgt_len))
-                tgt_size = target.size()
-                m = torch.arange(tgt_size[1]).unsqueeze(0).expand(tgt_size)
-                mask = doc_lens.unsqueeze(1).expand(tgt_size) <= to_cuda(m.long())
-                correct[mask] = 0
-                numel = doc_lens.sum().item()
-            else:
-                numel = target.numel()
-            all_correct += correct.sum().item()
-            all_guess += numel
-            epoch_loss += loss.item()
-        return epoch_loss / (step + 1), all_correct / max(all_guess, 1)
+        return super().run_epoch(data, do_train, result=result, pass_dataset_to_forward=True)
 
     def run_inference(self, data):
-        self.train(False)
-        all_output = []
-        for bi, batch in enumerate(data.batched_iter(self.config.batch_size)):
-            output = self.forward(batch, data)
-            output = output.data.cpu().numpy()
-            if output.ndim == 3:
-                output = output.argmax(axis=2)
-            all_output.extend(list(output))
-        return all_output
+        return super().run_inference(data, pass_dataset_to_forward=True)
 
     def compute_loss(self, target, output):
         target = to_cuda(torch.LongTensor(target.label)).view(-1)
