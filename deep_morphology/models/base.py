@@ -81,12 +81,15 @@ class BaseModel(nn.Module):
                 return ea_acc or ea_loss
         return False
 
-    def run_epoch(self, data, do_train, result=None):
+    def run_epoch(self, data, do_train, pass_dataset_to_forward=False, result=None):
         epoch_loss = 0
         all_correct = all_guess = 0
         tgt_id = data.tgt_field_idx
         for step, batch in enumerate(data.batched_iter(self.config.batch_size)):
-            output = self.forward(batch)
+            if pass_dataset_to_forward:
+                output = self.forward(batch, data)
+            else:
+                output = self.forward(batch)
             for opt in self.optimizers:
                 opt.zero_grad()
             loss = self.compute_loss(batch, output)
@@ -152,11 +155,14 @@ class BaseModel(nn.Module):
         logging.info("Saving model to {}".format(save_path))
         torch.save(self.state_dict(), save_path)
 
-    def run_inference(self, data):
+    def run_inference(self, data, pass_dataset_to_forward=False):
         self.train(False)
         all_output = []
         for bi, batch in enumerate(data.batched_iter(self.config.batch_size)):
-            output = self.forward(batch)
+            if pass_dataset_to_forward:
+                output = self.forward(batch, data)
+            else:
+                output = self.forward(batch)
             output = output.data.cpu().numpy()
             if output.ndim == 3:
                 output = output.argmax(axis=2)
