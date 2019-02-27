@@ -28,7 +28,7 @@ def to_cuda(var):
 
 class BERTEmbedder(nn.Module):
 
-    def __init__(self, model_name, layer):
+    def __init__(self, model_name, layer, use_cache=False):
         super().__init__()
         self.bert = BertModel.from_pretrained(model_name)
         self.layer = layer
@@ -38,6 +38,11 @@ class BERTEmbedder(nn.Module):
             n_layer = 12
         if self.layer == 'weighted_sum':
             self.weights = nn.Parameter(torch.ones(n_layer, dtype=torch.float))
+            self.softmax = nn.Softmax(0)
+        if use_cache:
+            self._cache = {}
+        else:
+            self._cache = None
 
     def fix_bert(self):
         for p in self.bert.parameters():
@@ -48,20 +53,40 @@ class BERTEmbedder(nn.Module):
         mask = torch.arange(sentences.size(1)) < torch.LongTensor(sentence_lens).unsqueeze(1)
         mask = to_cuda(mask.long())
         bert_out, _ = self.bert(sentences, attention_mask=mask)
-        if self.layer == 'mean':
-            return torch.stack(bert_out).mean(0)
-        if self.layer == 'weighted_sum':
-            return (self.bert_weights[:, None, None, None] * torch.stack(bert_out)).sum(0)
-        return bert_out[self.layer]
+        return bert_out
+
+    def embed(self, sentences, sentence_lens, cache_key=None):
+        if cache_key is not None and self._cache is not None:
+            if cache_key not in self._cache:
+                if self.layer == 'weighted_sum':
+                    self._cache[cache_key] = self.forward(sentences, sentence_lens)
+                elif self.layer == 'mean':
+                    self._cache[cache_key] = torch.stack(self.forward(sentences, sentence_lens)).mean(0)
+                else:
+                    self._cache[cache_key] = self.forward(sentences, sentence_lens)[self.layer]
+            if self.layer == 'weighted_sum':
+                weights = self.softmax(self.weights)
+                return (weights[:, None, None, None] * torch.stack(self._cache[cache_key])).sum(0)
+            else:
+                return self._cache[cache_key]
+        else:
+            bert_out = self.forward(sentences, sentence_lens)
+            if self.layer == 'weighted_sum':
+                weights = self.softmax(self.weights)
+                return (weights[:, None, None, None] * torch.stack(bert_out)).sum(0)
+            elif self.layer == 'mean':
+                return torch.stack(bert_out).mean(0)
+            else:
+                return bert_out[self.layer]
 
     def state_dict(self, *args, **kwargs):
         if self.layer == 'weighted_sum':
-            return self.weights.state_dict(*args, **kwargs)
+            return {'weights': self.weights}
         return {}
 
     def load_state_dict(self, data):
         if self.layer == 'weighted_sum':
-            return self.weights.load_state_dict(data)
+            self.weights = data['weights']
 
 
 class BERTPairClassifier(BaseModel):
@@ -70,7 +95,13 @@ class BERTPairClassifier(BaseModel):
         super().__init__(config)
         self.dataset = dataset
         model_name = getattr(self.config, 'bert_model', 'bert-base-multilingual-cased')
-        self.bert = BERTEmbedder(model_name, self.config.bert_layer)
+        # if use_cache is defined in config, use it
+        # otherwise cache if layer != weighted_sum to avoid excessive memory use
+        if hasattr(self.config, 'use_cache'):
+            use_cache = self.config.use_cache
+        else:
+            use_cache = (self.config.bert_layer != 'weighted_sum')
+        self.bert = BERTEmbedder(model_name, self.config.bert_layer, use_cache=use_cache)
         if 'large' in model_name:
             hidden = 1024
         else:
@@ -88,13 +119,15 @@ class BERTPairClassifier(BaseModel):
         batch_size = len(batch.left_tokens)
         helper = to_cuda(torch.arange(batch_size))
 
+        i = dataset._start
+        id_ = id(dataset)
         left_X = to_cuda(torch.LongTensor(batch.left_tokens))
-        left_bert = self.bert(left_X, batch.left_sentence_len)
+        left_bert = self.bert.embed(left_X, batch.left_sentence_len, ('left', id_, i))
         left_idx = to_cuda(torch.LongTensor(batch.left_target_idx))
         left_target = left_bert[helper, left_idx]
 
         right_X = to_cuda(torch.LongTensor(batch.right_tokens))
-        right_bert = self.bert(right_X, batch.right_sentence_len)
+        right_bert = self.bert.embed(right_X, batch.right_sentence_len, ('right', id_, i))
         right_idx = to_cuda(torch.LongTensor(batch.right_target_idx))
         right_target = right_bert[helper, right_idx]
 
