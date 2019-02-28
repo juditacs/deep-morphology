@@ -28,7 +28,8 @@ WordPieceSentenceProbeFields = recordclass(
 
 
 class WordOnlyFields(DataFields):
-    _fields = ('sentence', 'target_word', 'target_word_len', 'target_idx', 'label')
+    _fields = ('sentence', 'target_word', 'target_word_len', 'target_idx',
+               'label')
     _alias = {
         'input': 'target_word',
         'input_len': 'target_word_len',
@@ -40,8 +41,10 @@ class WordOnlyFields(DataFields):
 
 class SentencePairFields(DataFields):
     _fields = (
-        'left_sentence', 'left_sentence_len', 'left_target_word', 'left_target_idx',
-        'right_sentence', 'right_sentence_len', 'right_target_word', 'right_target_idx',
+        'left_sentence', 'left_sentence_len',
+        'left_target_word', 'left_target_idx',
+        'right_sentence', 'right_sentence_len',
+        'right_target_word', 'right_target_idx',
         'label',
     )
     _alias = {'tgt': 'label'}
@@ -50,8 +53,10 @@ class SentencePairFields(DataFields):
 
 class BERTSentencePairFields(DataFields):
     _fields = (
-        'left_sentence', 'left_tokens', 'left_sentence_len', 'left_target_word', 'left_target_idx',
-        'right_sentence', 'right_tokens', 'right_sentence_len', 'right_target_word', 'right_target_idx',
+        'left_sentence', 'left_tokens', 'left_sentence_len',
+        'left_target_word', 'left_target_idx',
+        'right_sentence', 'right_tokens', 'right_sentence_len',
+        'right_target_word', 'right_target_idx',
         'label',
     )
     _alias = {'tgt': 'label'}
@@ -74,7 +79,8 @@ class ELMOSentencePairDataset(BaseDataset):
                               self.data_recordclass._fields)
         self.vocabs = self.data_recordclass()
         for field in needs_vocab:
-            vocab_fn = getattr(self.config, 'vocab_{}'.format(field), vocab_pre+field)
+            vocab_fn = getattr(self.config, 'vocab_{}'.format(field),
+                               vocab_pre+field)
             if field == 'label':
                 constants = []
             else:
@@ -129,13 +135,15 @@ class ELMOSentencePairDataset(BaseDataset):
             batch = SentencePairFields.initialize_all(list)
             # pad left sentences
             maxlen = max(self.mtx.left_sentence_len[start:end])
-            sents = [self.mtx.left_sentence[i] + [PAD] * (maxlen - self.mtx.left_sentence_len[i])
+            sents = [self.mtx.left_sentence[i] +
+                     [PAD] * (maxlen - self.mtx.left_sentence_len[i])
                      for i in range(start, end)]
             batch.left_sentence = sents
             batch.left_target_idx = self.mtx.left_target_idx[start:end]
             # pad right sentences
             maxlen = max(self.mtx.right_sentence_len[start:end])
-            sents = [self.mtx.right_sentence[i] + [PAD] * (maxlen - self.mtx.right_sentence_len[i])
+            sents = [self.mtx.right_sentence[i] +
+                     [PAD] * (maxlen - self.mtx.right_sentence_len[i])
                      for i in range(start, end)]
             batch.right_sentence = sents
             batch.right_target_idx = self.mtx.right_target_idx[start:end]
@@ -172,7 +180,8 @@ class BERTSentencePairDataset(ELMOSentencePairDataset):
             self.load_or_create_vocabs()
         else:
             self.vocabs = share_vocabs_with.vocabs
-        model_name = getattr(self.config, 'bert_model', 'bert-base-multilingual-cased')
+        model_name = getattr(self.config, 'bert_model',
+                             'bert-base-multilingual-cased')
         self.tokenizer = BertTokenizer.from_pretrained(
             model_name, do_lower_case=False)
         self.load_stream_or_file(stream_or_file)
@@ -249,14 +258,16 @@ class BERTSentencePairDataset(ELMOSentencePairDataset):
             batch = BERTSentencePairFields.initialize_all(list)
             # pad left sentences
             maxlen = max(self.mtx.left_sentence_len[start:end])
-            sents = [self.mtx.left_tokens[i] + [PAD] * (maxlen - self.mtx.left_sentence_len[i])
+            sents = [self.mtx.left_tokens[i] +
+                     [PAD] * (maxlen - self.mtx.left_sentence_len[i])
                      for i in range(start, end)]
             batch.left_tokens = sents
             batch.left_sentence_len = self.mtx.left_sentence_len[start:end]
             batch.left_target_idx = self.mtx.left_target_idx[start:end]
             # pad right sentences
             maxlen = max(self.mtx.right_sentence_len[start:end])
-            sents = [self.mtx.right_tokens[i] + [PAD] * (maxlen - self.mtx.right_sentence_len[i])
+            sents = [self.mtx.right_tokens[i] +
+                     [PAD] * (maxlen - self.mtx.right_sentence_len[i])
                      for i in range(start, end)]
             batch.right_tokens = sents
             batch.right_sentence_len = self.mtx.right_sentence_len[start:end]
@@ -281,7 +292,8 @@ class WordOnlySentenceProberDataset(BaseDataset):
                               self.data_recordclass._fields)
         self.vocabs = self.data_recordclass()
         for field in needs_vocab:
-            vocab_fn = getattr(self.config, 'vocab_{}'.format(field), vocab_pre+field)
+            vocab_fn = getattr(self.config, 'vocab_{}'.format(field),
+                               vocab_pre+field)
             if field == 'label':
                 constants = []
             else:
@@ -318,7 +330,8 @@ class WordOnlySentenceProberDataset(BaseDataset):
                 logging.warning('{} elements longer than maxlen'.format(longer))
         for sample in self.raw:
             idx = list(self.vocabs.target_word[c] for c in sample.target_word)
-            idx = [self.vocabs.target_word.SOS] + idx + [self.vocabs.target_word.EOS]
+            idx = [self.vocabs.target_word.SOS] + \
+                idx + [self.vocabs.target_word.EOS]
             if self.config.use_global_padding:
                 idx = idx[:maxlen-2]
                 idx = idx + [self.vocabs.target_word.PAD] * (maxlen - len(idx))
@@ -333,7 +346,8 @@ class WordOnlySentenceProberDataset(BaseDataset):
 
     def print_sample(self, sample, stream):
         stream.write("{}\t{}\t{}\t{}\n".format(
-            sample.sentence, sample.target_word, sample.target_word_idx, sample.label
+            sample.sentence, sample.target_word,
+            sample.target_word_idx, sample.label
         ))
 
     def decode(self, model_output):
@@ -363,7 +377,8 @@ class BERTSentenceProberDataset(BaseDataset):
     def __init__(self, config, stream_or_file, share_vocabs_with=None):
         self.config = config
         self.load_or_create_vocabs()
-        model_name = getattr(self.config, 'bert_model', 'bert-base-multilingual-cased')
+        model_name = getattr(self.config, 'bert_model',
+                             'bert-base-multilingual-cased')
         self.tokenizer = BertTokenizer.from_pretrained(
             model_name, do_lower_case=False)
         self.load_stream_or_file(stream_or_file)
@@ -610,5 +625,5 @@ class UnlabeledELMOSentenceProberDataset(ELMOSentenceProberDataset):
     def print_sample(self, sample, stream):
         stream.write("{}\t{}\t{}\t{}\n".format(
             " ".join(sample.sentence), sample.sentence[sample.target_idx],
-                     sample.target_idx, sample.label
+            sample.target_idx, sample.label
         ))

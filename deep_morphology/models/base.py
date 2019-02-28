@@ -69,8 +69,10 @@ class BaseModel(nn.Module):
             return False
         window = self.config.early_stopping_window
         if len(result.dev_loss) > 2 * window:
-            ea_loss = sum(result.dev_loss[-2*window:-window]) <= sum(result.dev_loss[-window:])
-            ea_acc = sum(result.dev_acc[-2*window:-window]) >= sum(result.dev_acc[-window:])
+            ea_loss = sum(result.dev_loss[-2*window:-window]) <= \
+                sum(result.dev_loss[-window:])
+            ea_acc = sum(result.dev_acc[-2*window:-window]) >= \
+                sum(result.dev_acc[-window:])
             if self.config.early_stopping_monitor == 'dev_acc':
                 return ea_acc
             if self.config.early_stopping_monitor == 'dev_loss':
@@ -81,7 +83,8 @@ class BaseModel(nn.Module):
                 return ea_acc or ea_loss
         return False
 
-    def run_epoch(self, data, do_train, pass_dataset_to_forward=False, result=None):
+    def run_epoch(self, data, do_train, pass_dataset_to_forward=False,
+                  result=None):
         epoch_loss = 0
         all_correct = all_guess = 0
         tgt_id = data.tgt_field_idx
@@ -107,7 +110,8 @@ class BaseModel(nn.Module):
                 doc_lens = to_cuda(torch.LongTensor(batch.tgt_len))
                 tgt_size = target.size()
                 m = torch.arange(tgt_size[1]).unsqueeze(0).expand(tgt_size)
-                mask = doc_lens.unsqueeze(1).expand(tgt_size) <= to_cuda(m.long())
+                mask = doc_lens.unsqueeze(1).expand(tgt_size) <= \
+                    to_cuda(m.long())
                 correct[mask] = 0
                 numel = doc_lens.sum().item()
             else:
@@ -121,7 +125,7 @@ class BaseModel(nn.Module):
         if epoch < self.config.save_min_epoch:
             return False
         if self.config.save_metric == 'dev_loss':
-            #FIXME why was this added?
+            # FIXME why was this added?
             # loss = dev_loss if dev_loss is not None else train_loss
             loss = result.dev_loss[-1]
             if not hasattr(self, 'min_loss') or self.min_loss > loss:

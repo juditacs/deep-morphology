@@ -46,7 +46,8 @@ class BERTEmbedder(nn.Module):
 
     def forward(self, sentences, sentence_lens):
         self.bert.train(False)
-        mask = torch.arange(sentences.size(1)) < torch.LongTensor(sentence_lens).unsqueeze(1)
+        mask = torch.arange(sentences.size(1)) < \
+            torch.LongTensor(sentence_lens).unsqueeze(1)
         mask = to_cuda(mask.long())
         bert_out, _ = self.bert(sentences, attention_mask=mask)
         return bert_out
@@ -55,21 +56,26 @@ class BERTEmbedder(nn.Module):
         if cache_key is not None and self._cache is not None:
             if cache_key not in self._cache:
                 if self.layer == 'weighted_sum':
-                    self._cache[cache_key] = self.forward(sentences, sentence_lens)
+                    self._cache[cache_key] = self.forward(
+                        sentences, sentence_lens)
                 elif self.layer == 'mean':
-                    self._cache[cache_key] = torch.stack(self.forward(sentences, sentence_lens)).mean(0)
+                    self._cache[cache_key] = torch.stack(self.forward(
+                        sentences, sentence_lens)).mean(0)
                 else:
-                    self._cache[cache_key] = self.forward(sentences, sentence_lens)[self.layer]
+                    self._cache[cache_key] = self.forward(
+                        sentences, sentence_lens)[self.layer]
             if self.layer == 'weighted_sum':
                 weights = self.softmax(self.weights)
-                return (weights[:, None, None, None] * torch.stack(self._cache[cache_key])).sum(0)
+                return (weights[:, None, None, None] *
+                        torch.stack(self._cache[cache_key])).sum(0)
             else:
                 return self._cache[cache_key]
         else:
             bert_out = self.forward(sentences, sentence_lens)
             if self.layer == 'weighted_sum':
                 weights = self.softmax(self.weights)
-                return (weights[:, None, None, None] * torch.stack(bert_out)).sum(0)
+                return (weights[:, None, None, None] *
+                        torch.stack(bert_out)).sum(0)
             elif self.layer == 'mean':
                 return torch.stack(bert_out).mean(0)
             else:
@@ -96,7 +102,8 @@ class ELMOEmbedder(nn.Module):
             self._cache = None
 
     def forward(self, sentence):
-        return to_cuda(torch.from_numpy(np.stack(self.elmo.sents2elmo(sentence, -2))))
+        return to_cuda(torch.from_numpy(
+            np.stack(self.elmo.sents2elmo(sentence, -2))))
 
     def embed(self, sentence, cache_key=None):
         if cache_key is not None and self._cache is not None:
@@ -126,14 +133,16 @@ class BERTPairClassifier(BaseModel):
     def __init__(self, config, dataset):
         super().__init__(config)
         self.dataset = dataset
-        model_name = getattr(self.config, 'bert_model', 'bert-base-multilingual-cased')
+        model_name = getattr(self.config, 'bert_model',
+                             'bert-base-multilingual-cased')
         # if use_cache is defined in config, use it
         # otherwise cache if layer != weighted_sum to avoid excessive memory use
         if hasattr(self.config, 'use_cache'):
             use_cache = self.config.use_cache
         else:
             use_cache = (self.config.layer != 'weighted_sum')
-        self.bert = BERTEmbedder(model_name, self.config.layer, use_cache=use_cache)
+        self.bert = BERTEmbedder(model_name, self.config.layer,
+                                 use_cache=use_cache)
         if 'large' in model_name:
             hidden = 1024
         else:
@@ -153,12 +162,14 @@ class BERTPairClassifier(BaseModel):
         i = dataset._start
         id_ = id(dataset)
         left_X = to_cuda(torch.LongTensor(batch.left_tokens))
-        left_bert = self.bert.embed(left_X, batch.left_sentence_len, ('left', id_, i))
+        left_bert = self.bert.embed(left_X, batch.left_sentence_len,
+                                    ('left', id_, i))
         left_idx = to_cuda(torch.LongTensor(batch.left_target_idx))
         left_target = left_bert[helper, left_idx]
 
         right_X = to_cuda(torch.LongTensor(batch.right_tokens))
-        right_bert = self.bert.embed(right_X, batch.right_sentence_len, ('right', id_, i))
+        right_bert = self.bert.embed(right_X, batch.right_sentence_len,
+                                     ('right', id_, i))
         right_idx = to_cuda(torch.LongTensor(batch.right_target_idx))
         right_target = right_bert[helper, right_idx]
 
@@ -172,7 +183,8 @@ class BERTPairClassifier(BaseModel):
         return loss
 
     def run_epoch(self, data, do_train, result=None):
-        return super().run_epoch(data, do_train, result=result, pass_dataset_to_forward=True)
+        return super().run_epoch(data, do_train, result=result,
+                                 pass_dataset_to_forward=True)
 
     def run_inference(self, data):
         return super().run_inference(data, pass_dataset_to_forward=True)
@@ -183,12 +195,14 @@ class BERTClassifier(BaseModel):
     def __init__(self, config, dataset):
         super().__init__(config)
         self.dataset = dataset
-        model_name = getattr(self.config, 'bert_model', 'bert-base-multilingual-cased')
+        model_name = getattr(self.config, 'bert_model',
+                             'bert-base-multilingual-cased')
         if hasattr(self.config, 'use_cache'):
             use_cache = self.config.use_cache
         else:
             use_cache = (self.config.layer != 'weighted_sum')
-        self.bert = BERTEmbedder(model_name, self.config.layer, use_cache=use_cache)
+        self.bert = BERTEmbedder(model_name, self.config.layer,
+                                 use_cache=use_cache)
 
         if 'large' in model_name:
             bert_size = 1024
@@ -206,7 +220,8 @@ class BERTClassifier(BaseModel):
 
     def forward(self, batch, dataset):
         X = to_cuda(torch.LongTensor(batch.sentence))
-        bert_out = self.bert.embed(X, batch.sentence_len, (id(dataset), dataset._start))
+        bert_out = self.bert.embed(X, batch.sentence_len,
+                                   (id(dataset), dataset._start))
         idx = to_cuda(torch.LongTensor(batch.target_idx))
         batch_size = X.size(0)
         helper = to_cuda(torch.arange(batch_size))
@@ -215,7 +230,8 @@ class BERTClassifier(BaseModel):
         return mlp_out
 
     def run_epoch(self, data, do_train, result=None):
-        return super().run_epoch(data, do_train, result=result, pass_dataset_to_forward=True)
+        return super().run_epoch(data, do_train, result=result,
+                                 pass_dataset_to_forward=True)
 
     def run_inference(self, data):
         return super().run_inference(data, pass_dataset_to_forward=True)
@@ -237,7 +253,8 @@ class ELMOClassifier(BaseModel):
         else:
             use_cache = (self.config.layer != 'weighted_sum')
         self.elmo = ELMOEmbedder(self.config.elmo_model, self.config.layer,
-                                 batch_size=self.config.batch_size, use_cache=use_cache)
+                                 batch_size=self.config.batch_size,
+                                 use_cache=use_cache)
         self.mlp = MLP(
             input_size=1024,
             layers=self.config.mlp_layers,
@@ -262,7 +279,8 @@ class ELMOClassifier(BaseModel):
         return loss
 
     def run_epoch(self, data, do_train, result=None):
-        return super().run_epoch(data, do_train, result=result, pass_dataset_to_forward=True)
+        return super().run_epoch(data, do_train, result=result,
+                                 pass_dataset_to_forward=True)
 
     def run_inference(self, data):
         return super().run_inference(data, pass_dataset_to_forward=True)
@@ -279,9 +297,12 @@ class ELMOPairClassifier(BaseModel):
         else:
             use_cache = (self.config.layer != 'weighted_sum')
         self.left_elmo = ELMOEmbedder(self.config.elmo_model, self.config.layer,
-                                      batch_size=self.config.batch_size, use_cache=use_cache)
-        self.right_elmo = ELMOEmbedder(self.config.elmo_model, self.config.layer,
-                                       batch_size=self.config.batch_size, use_cache=use_cache)
+                                      batch_size=self.config.batch_size,
+                                      use_cache=use_cache)
+        self.right_elmo = ELMOEmbedder(self.config.elmo_model,
+                                       self.config.layer,
+                                       batch_size=self.config.batch_size,
+                                       use_cache=use_cache)
         self.mlp = MLP(
             input_size=2 * 1024,
             layers=self.config.mlp_layers,
@@ -296,7 +317,8 @@ class ELMOPairClassifier(BaseModel):
         left_key = (id(dataset), 'left', dataset._start)
         left_out = self.left_elmo.embed(batch.left_sentence, cache_key=left_key)
         right_key = (id(dataset), 'right', dataset._start)
-        right_out = self.right_elmo.embed(batch.right_sentence, cache_key=right_key)
+        right_out = self.right_elmo.embed(batch.right_sentence,
+                                          cache_key=right_key)
 
         helper = to_cuda(torch.arange(batch_size))
         left_idx = to_cuda(torch.LongTensor(batch.left_target_idx))
@@ -310,7 +332,8 @@ class ELMOPairClassifier(BaseModel):
         return mlp_out
 
     def run_epoch(self, data, do_train, result=None):
-        return super().run_epoch(data, do_train, result=result, pass_dataset_to_forward=True)
+        return super().run_epoch(data, do_train, result=result,
+                                 pass_dataset_to_forward=True)
 
     def run_inference(self, data):
         return super().run_inference(data, pass_dataset_to_forward=True)

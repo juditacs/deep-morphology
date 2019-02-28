@@ -185,7 +185,8 @@ class BaseDataset:
         if need_vocab is None:
             need_vocab = list(self.data_recordclass._asdict().keys())
         for field in need_vocab:
-            vocab_fn = getattr(self.config, 'vocab_{}'.format(field), vocab_pre+field)
+            vocab_fn = getattr(self.config, 'vocab_{}'.format(field),
+                               vocab_pre+field)
             if os.path.exists(vocab_fn):
                 vocabs.append(Vocab(file=vocab_fn, frozen=True))
             else:
@@ -288,7 +289,7 @@ class BaseDataset:
         stream.write("{}\n".format("\t".join(" ".join(s) for s in sample)))
 
     def save_vocabs(self):
-        #FIXME recordclass removal
+        # FIXME recordclass removal
         if hasattr(self.vocabs, '_fields'):
             vocab_list = list(self.vocabs._fields)
         else:
