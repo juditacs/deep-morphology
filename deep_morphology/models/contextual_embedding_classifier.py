@@ -76,7 +76,8 @@ class BERTEmbedder(nn.Module):
                 return bert_out[self.layer]
 
     def state_dict(self, *args, **kwargs):
-        args[0]['{}weights'.format(args[1])] = self.weights
+        if self.layer == 'weighted_sum':
+            args[0]['{}weights'.format(args[1])] = self.weights
         return args[0]
 
 
