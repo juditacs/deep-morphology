@@ -342,3 +342,27 @@ class ELMOPairClassifier(BaseModel):
         target = to_cuda(torch.LongTensor(target.label)).view(-1)
         loss = self.criterion(output, target)
         return loss
+
+
+class EmbeddingClassifier(BaseModel):
+
+    def __init__(self, config, dataset):
+        super().__init__(config)
+        self.dataset = dataset
+        self.output_size = len(dataset.vocabs.label)
+        self.mlp = MLP(
+            input_size=self.dataset.embedding_size,
+            layers=self.config.mlp_layers,
+            nonlinearity=self.config.mlp_nonlinearity,
+            output_size=self.output_size,
+        )
+        self.criterion = nn.CrossEntropyLoss()
+
+    def forward(self, batch):
+        mlp_in = to_cuda(torch.FloatTensor(batch.target_word))
+        return self.mlp(mlp_in)
+
+    def compute_loss(self, target, output):
+        target = to_cuda(torch.LongTensor(target.label)).view(-1)
+        loss = self.criterion(output, target)
+        return loss

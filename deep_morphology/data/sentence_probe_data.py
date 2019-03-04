@@ -6,6 +6,7 @@
 # Distributed under terms of the MIT license.
 
 import os
+import gzip
 import numpy as np
 import logging
 from recordclass import recordclass
@@ -39,6 +40,14 @@ class WordOnlyFields(DataFields):
     _needs_vocab = ('target_word', 'label')
 
 
+class EmbeddingOnlyFields(DataFields):
+    _fields = ('sentence', 'target_word', 'target_word_idx', 'label')
+    _alias = {
+        'tgt': 'label',
+    }
+    _needs_vocab = ('label', )
+
+
 class SentencePairFields(DataFields):
     _fields = (
         'left_sentence', 'left_sentence_len',
@@ -61,6 +70,119 @@ class BERTSentencePairFields(DataFields):
     )
     _alias = {'tgt': 'label'}
     _needs_vocab = ('label', )
+
+
+
+class Embedding:
+    def __init__(self, embedding_file, filter=None):
+        self.filter_ = filter
+        if embedding_file.endswith('.gz'):
+            with gzip.open(embedding_file, 'rt') as f:
+                self.load_stream(f)
+        else:
+            with open(embedding_file, 'rt') as f:
+                self.load_stream(f)
+
+    def load_stream(self, stream):
+        self.mtx = []
+        self.vocab = {}
+        for line in stream:
+            fd = line.strip().split(" ")
+            if len(fd) == 2:
+                continue
+            word = fd[0]
+            if self.filter_ and word not in self.filter_:
+                continue
+            self.vocab[word] = len(self.mtx)
+            self.mtx.append(list(map(float, fd[1:])))
+        self.mtx = np.array(self.mtx)
+
+    def __len__(self):
+        return self.mtx.shape[0]
+
+    def __getitem__(self, key):
+        return self.mtx[self.vocab[key]]
+
+    @property
+    def embedding_dim(self):
+        return self.mtx.shape[1]
+
+
+class EmbeddingProberDataset(BaseDataset):
+    unlabeled_data_class = 'UnlabeledEmbeddingProberDataset'
+    constants = []
+    data_recordclass = EmbeddingOnlyFields
+
+    def load_or_create_vocabs(self):
+        vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
+        needs_vocab = getattr(self.data_recordclass, '_needs_vocab',
+                              self.data_recordclass._fields)
+        self.vocabs = self.data_recordclass()
+        for field in needs_vocab:
+            vocab_fn = getattr(self.config, 'vocab_{}'.format(field),
+                               vocab_pre+field)
+            if field == 'label':
+                constants = []
+            else:
+                constants = ['SOS', 'EOS', 'PAD', 'UNK']
+            if os.path.exists(vocab_fn):
+                setattr(self.vocabs, field, Vocab(file=vocab_fn, frozen=True))
+            else:
+                setattr(self.vocabs, field, Vocab(constants=constants))
+
+    def to_idx(self):
+        vocab = set(r.target_word for r in self.raw)
+        self.embedding = Embedding(self.config.embedding, filter=vocab)
+        self.embedding_size = self.embedding.embedding_dim
+        word_vecs = []
+        labels = []
+        for r in self.raw:
+            word_vecs.append(self.embedding[r.target_word])
+            labels.append(self.vocabs.label[r.label])
+        self.mtx = EmbeddingOnlyFields(
+            target_word=word_vecs,
+            label=labels
+        )
+
+    def extract_sample_from_line(self, line):
+        fd = line.rstrip("\n").split("\t")
+        sent, target, idx = fd[:3]
+        if len(fd) > 3:
+            label = fd[3]
+        else:
+            label = None
+        return EmbeddingOnlyFields(
+            sentence=sent,
+            target_word=target,
+            target_word_idx=int(idx),
+            label=label
+        )
+
+    def print_sample(self, sample, stream):
+        stream.write("{}\t{}\t{}\t{}\n".format(
+            sample.sentence, sample.target_word,
+            sample.target_word_idx, sample.label
+        ))
+
+    def decode(self, model_output):
+        for i, sample in enumerate(self.raw):
+            output = model_output[i].argmax().item()
+            sample.label = self.vocabs.label.inv_lookup(output)
+
+    def batched_iter(self, batch_size):
+        starts = list(range(0, len(self), batch_size))
+        if self.is_unlabeled is False and self.config.shuffle_batches:
+            np.random.shuffle(starts)
+        for start in starts:
+            end = start + batch_size
+            yield EmbeddingOnlyFields(
+                target_word=self.mtx.target_word[start:end],
+                label=self.mtx.label[start:end]
+            )
+
+
+class UnlabeledEmbeddingProberDataset(EmbeddingProberDataset):
+    pass
 
 
 class ELMOSentencePairDataset(BaseDataset):
