@@ -327,4 +327,4 @@ class BaseDataset:
             yield self.create_recordclass(*batch)
 
     def __len__(self):
-        return len(self.mtx[0])
+        return len(self.raw)
