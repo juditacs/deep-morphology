@@ -60,6 +60,18 @@ class SentencePairFields(DataFields):
     _needs_vocab = ('label', )
 
 
+class WordOnlySentencePairFields(DataFields):
+    _fields = (
+        'left_sentence', 'left_target_word',
+        'left_target_word_len', 'left_target_idx',
+        'right_sentence', 'right_target_word',
+        'right_target_word_len', 'right_target_idx',
+        'label',
+    )
+    _alias = {'tgt': 'label'}
+    _needs_vocab = ('left_target_word', 'right_target_word', 'label', )
+
+
 class BERTSentencePairFields(DataFields):
     _fields = (
         'left_sentence', 'left_tokens', 'left_sentence_len',
@@ -70,7 +82,6 @@ class BERTSentencePairFields(DataFields):
     )
     _alias = {'tgt': 'label'}
     _needs_vocab = ('label', )
-
 
 
 class Embedding:
@@ -452,13 +463,15 @@ class WordOnlySentenceProberDataset(BaseDataset):
                 logging.warning('{} elements longer than maxlen'.format(longer))
         for sample in self.raw:
             idx = list(self.vocabs.target_word[c] for c in sample.target_word)
-            idx = [self.vocabs.target_word.SOS] + \
-                idx + [self.vocabs.target_word.EOS]
             if self.config.use_global_padding:
                 idx = idx[:maxlen-2]
+                idx = [self.vocabs.target_word.SOS] + \
+                    idx + [self.vocabs.target_word.EOS]
                 idx = idx + [self.vocabs.target_word.PAD] * (maxlen - len(idx))
                 lens.append(maxlen)
             else:
+                idx = [self.vocabs.target_word.SOS] + \
+                    idx + [self.vocabs.target_word.EOS]
                 lens.append(len(idx))
             words.append(idx)
             labels.append(self.vocabs.label[sample.label])
@@ -749,3 +762,122 @@ class UnlabeledELMOSentenceProberDataset(ELMOSentenceProberDataset):
             " ".join(sample.sentence), sample.sentence[sample.target_idx],
             sample.target_idx, sample.label
         ))
+
+
+class WordOnlySentencePairDataset(BaseDataset):
+    data_recordclass = WordOnlySentencePairFields
+    unlabeled_data_class = 'UnlabeledWordOnlySentencePairDataset'
+
+    def load_or_create_vocabs(self):
+        vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
+        self.vocabs = self.data_recordclass()
+        for field in ['left_target_word', 'label']:
+            vocab_fn = getattr(self.config, 'vocab_{}'.format(field),
+                               vocab_pre+field)
+            if field == 'label':
+                constants = []
+            else:
+                constants = ['SOS', 'EOS', 'PAD', 'UNK']
+            if os.path.exists(vocab_fn):
+                setattr(self.vocabs, field, Vocab(file=vocab_fn, frozen=True))
+            else:
+                setattr(self.vocabs, field, Vocab(constants=constants))
+        self.vocabs.right_target_word = self.vocabs.left_target_word
+
+    def extract_sample_from_line(self, line):
+        fd = line.rstrip("\n").split("\t")
+        lw = fd[1]
+        rw = fd[4]
+        if len(fd) > 6:
+            label = fd[6]
+        else:
+            label = None
+        return WordOnlySentencePairFields(
+            left_sentence=fd[0],
+            left_target_word=lw,
+            left_target_word_len=len(lw),
+            left_target_idx=int(fd[2]),
+            right_sentence=fd[3],
+            right_target_word=rw,
+            right_target_word_len=len(rw),
+            right_target_idx=int(fd[5]),
+            label=label
+        )
+
+    def to_idx(self):
+        left = []
+        left_lens = []
+        right = []
+        right_lens = []
+        labels = []
+        SOS = self.vocabs.left_target_word.SOS
+        EOS = self.vocabs.left_target_word.EOS
+        PAD = self.vocabs.left_target_word.PAD
+        if self.config.use_global_padding:
+            maxlen = self.get_max_seqlen()
+            longer = sum(s.left_target_word_len > maxlen for s in self.raw) + \
+                sum(s.right_target_word_len > maxlen for s in self.raw)
+            if longer > 0:
+                logging.warning('{} elements longer than maxlen'.format(longer))
+        for sample in self.raw:
+            left_idx = list(self.vocabs.left_target_word[c]
+                            for c in sample.left_target_word)
+            right_idx = list(self.vocabs.right_target_word[c]
+                             for c in sample.right_target_word)
+            if self.config.use_global_padding:
+                left_idx = left_idx[:maxlen-2]
+                right_idx = right_idx[:maxlen-2]
+                left_idx = [SOS] + left_idx + [EOS]
+                left_idx = left_idx + [PAD] * (maxlen - len(left_idx))
+                left.append(left_idx)
+                left_lens.append(maxlen)
+                right_idx = [SOS] + right_idx + [EOS]
+                right_idx = right_idx + [PAD] * (maxlen - len(right_idx))
+                right.append(right_idx)
+                right_lens.append(maxlen)
+            else:
+                left_idx = [SOS] + left_idx + [EOS]
+                left.append(left_idx)
+                left_lens.append(len(left_idx))
+                right_idx = [SOS] + right_idx + [EOS]
+                right.append(right_idx)
+                right_lens.append(len(right_idx))
+            labels.append(self.vocabs.label[sample.label])
+        self.mtx = WordOnlySentencePairFields(
+            left_target_word=left,
+            left_target_word_len=left_lens,
+            right_target_word=right,
+            right_target_word_len=right_lens,
+            label=labels,
+        )
+
+    def get_max_seqlen(self):
+        if hasattr(self.config, 'max_seqlen'):
+            return self.config.max_seqlen
+        return max(
+            max(s.left_target_word_len, s.right_target_word_len)
+            for s in self.raw
+        ) + 2
+
+    def get_input_vocab_size(self):
+        return len(self.vocabs.left_target_word)
+
+    def decode(self, model_output):
+        for i, sample in enumerate(self.raw):
+            output = model_output[i].argmax().item()
+            sample.label = self.vocabs.label.inv_lookup(output)
+
+    def print_sample(self, sample, stream):
+        stream.write("{}\n".format("\t".join(map(str, (
+            " ".join(sample.left_sentence),
+            sample.left_target_word,
+            sample.left_target_idx,
+            " ".join(sample.right_sentence),
+            sample.right_target_word,
+            sample.right_target_idx,
+            sample.label)
+        ))))
+
+
+class UnlabeledWordOnlySentencePairDataset(WordOnlySentencePairDataset):
+    pass

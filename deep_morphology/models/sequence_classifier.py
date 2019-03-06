@@ -11,6 +11,7 @@ import torch.nn as nn
 from deep_morphology.models import BaseModel
 from deep_morphology.models.seq2seq import LSTMEncoder
 from deep_morphology.models.cnn import Conv1DEncoder
+from deep_morphology.models.mlp import MLP
 
 
 use_cuda = torch.cuda.is_available()
@@ -43,7 +44,7 @@ class SequenceClassifier(BaseModel):
         input = input.transpose(0, 1)  # time_major
         input_len = batch.input_len
         outputs, hidden = self.lstm(input, input_len)
-        labels = self.out_proj(hidden[0][0])
+        labels = self.out_proj(hidden[0][-1])
         return labels
 
     def compute_loss(self, target, output):
@@ -71,6 +72,90 @@ class CNNSequenceClassifier(BaseModel):
         embedded = self.embedding_dropout(embedded)
         cnn_out = self.cnn(embedded)
         return cnn_out
+
+    def compute_loss(self, target, output):
+        target = to_cuda(torch.LongTensor(target.label)).view(-1)
+        loss = self.criterion(output, target)
+        return loss
+
+
+class PairSequenceClassifier(BaseModel):
+    def __init__(self, config, dataset):
+        super().__init__(config)
+        input_size = dataset.get_input_vocab_size()
+        output_size = len(dataset.vocabs.label)
+        self.lstm = LSTMEncoder(
+            input_size, output_size,
+            lstm_hidden_size=self.config.hidden_size,
+            lstm_num_layers=self.config.num_layers,
+            lstm_dropout=self.config.dropout,
+            embedding_size=self.config.embedding_size,
+            embedding_dropout=self.config.dropout,
+        )
+        assert output_size == 2
+        hidden = self.config.hidden_size
+        self.mlp = MLP(
+            input_size=2 * hidden,
+            layers=self.config.mlp_layers,
+            nonlinearity=self.config.mlp_nonlinearity,
+            output_size=output_size,
+        )
+        self.criterion = nn.CrossEntropyLoss()
+
+    def forward(self, batch):
+        left_in = to_cuda(torch.LongTensor(batch.left_target_word))
+        left_in = left_in.transpose(0, 1)
+        left_len = batch.left_target_word_len
+        _, left_hidden = self.lstm(left_in, left_len)
+
+        right_in = to_cuda(torch.LongTensor(batch.right_target_word))
+        right_in = right_in.transpose(0, 1)
+        right_len = batch.right_target_word_len
+        _, right_hidden = self.lstm(right_in, right_len)
+
+        mlp_in = torch.cat((left_hidden[0][-1], right_hidden[0][-1]), -1)
+        logits = self.mlp(mlp_in)
+        return logits
+
+    def compute_loss(self, target, output):
+        target = to_cuda(torch.LongTensor(target.label)).view(-1)
+        loss = self.criterion(output, target)
+        return loss
+
+
+class PairCNNSequenceClassifier(BaseModel):
+    def __init__(self, config, dataset):
+        super().__init__(config)
+        input_size = dataset.get_input_vocab_size()
+        output_size = len(dataset.vocabs.label)
+        input_seqlen = dataset.get_max_seqlen()
+        self.embedding_dropout = nn.Dropout(self.config.dropout)
+        self.embedding = nn.Embedding(input_size, self.config.embedding_size)
+        nn.init.xavier_uniform_(self.embedding.weight)
+        self.cnn = Conv1DEncoder(self.config.embedding_size, self.config.cnn_output_size,
+                                 input_seqlen, self.config.conv_layers)
+        self.mlp = MLP(
+            input_size=2 * self.config.cnn_output_size,
+            layers=self.config.mlp_layers,
+            nonlinearity=self.config.mlp_nonlinearity,
+            output_size=output_size,
+        )
+        self.criterion = nn.CrossEntropyLoss()
+
+    def forward(self, batch):
+        left_in = to_cuda(torch.LongTensor(batch.left_target_word))
+        left_emb = self.embedding(left_in)
+        left_emb = self.embedding_dropout(left_emb)
+        left_out = self.cnn(left_emb)
+
+        right_in = to_cuda(torch.LongTensor(batch.right_target_word))
+        right_emb = self.embedding(right_in)
+        right_emb = self.embedding_dropout(right_emb)
+        right_out = self.cnn(right_emb)
+
+        proj_in = torch.cat((left_out, right_out), -1)
+        labels = self.mlp(proj_in)
+        return labels
 
     def compute_loss(self, target, output):
         target = to_cuda(torch.LongTensor(target.label)).view(-1)
