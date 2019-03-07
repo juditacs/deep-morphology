@@ -161,6 +161,7 @@ class EmbeddingProberDataset(BaseDataset):
             language = self.config.train_file.split("/")[-2]
             emb_fn = os.path.join(os.environ['HOME'], 'resources',
                                   'fasttext', language, 'common.vec')
+            self.config.embedding = emb_fn
         else:
             emb_fn = self.config.embedding
         self.embedding = Embedding(emb_fn, filter=vocab)
@@ -241,6 +242,7 @@ class EmbeddingPairDataset(BaseDataset):
             language = self.config.train_file.split("/")[-2]
             emb_fn = os.path.join(os.environ['HOME'], 'resources',
                                   'fasttext', language, 'common.vec')
+            self.config.embedding = emb_fn
         else:
             emb_fn = self.config.embedding
         self.embedding = Embedding(emb_fn, filter=vocab)

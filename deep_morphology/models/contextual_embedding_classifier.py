@@ -262,6 +262,7 @@ class ELMOClassifier(BaseModel):
         if self.config.elmo_model == 'discover':
             language = self.config.train_file.split("/")[-2]
             elmo_model = os.path.join(os.environ['HOME'], 'resources', 'elmo', language)
+            self.config.elmo_model = elmo_model
         else:
             elmo_model = self.config.elmo_model
 
@@ -313,6 +314,7 @@ class ELMOPairClassifier(BaseModel):
         if self.config.elmo_model == 'discover':
             language = self.config.train_file.split("/")[-2]
             elmo_model = os.path.join(os.environ['HOME'], 'resources', 'elmo', language)
+            self.config.elmo_model = elmo_model
         else:
             elmo_model = self.config.elmo_model
 
