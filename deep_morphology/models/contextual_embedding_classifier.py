@@ -8,6 +8,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+import os
 
 from pytorch_pretrained_bert import BertModel
 from elmoformanylangs import Embedder
@@ -252,7 +253,13 @@ class ELMOClassifier(BaseModel):
             use_cache = self.config.use_cache
         else:
             use_cache = (self.config.layer != 'weighted_sum')
-        self.elmo = ELMOEmbedder(self.config.elmo_model, self.config.layer,
+        if self.config.elmo_model == 'discover':
+            language = self.config.train_file.split("/")[-2]
+            elmo_model = os.path.join(os.environ['HOME'], 'resources', 'elmo', language)
+        else:
+            elmo_model = self.config.elmo_model
+
+        self.elmo = ELMOEmbedder(elmo_model, self.config.layer,
                                  batch_size=self.config.batch_size,
                                  use_cache=use_cache)
         self.mlp = MLP(
@@ -296,11 +303,16 @@ class ELMOPairClassifier(BaseModel):
             use_cache = self.config.use_cache
         else:
             use_cache = (self.config.layer != 'weighted_sum')
-        self.left_elmo = ELMOEmbedder(self.config.elmo_model, self.config.layer,
+        if self.config.elmo_model == 'discover':
+            language = self.config.train_file.split("/")[-2]
+            elmo_model = os.path.join(os.environ['HOME'], 'resources', 'elmo', language)
+        else:
+            elmo_model = self.config.elmo_model
+
+        self.left_elmo = ELMOEmbedder(elmo_model, self.config.layer,
                                       batch_size=self.config.batch_size,
                                       use_cache=use_cache)
-        self.right_elmo = ELMOEmbedder(self.config.elmo_model,
-                                       self.config.layer,
+        self.right_elmo = ELMOEmbedder(elmo_model, self.config.layer,
                                        batch_size=self.config.batch_size,
                                        use_cache=use_cache)
         self.mlp = MLP(
@@ -350,6 +362,7 @@ class EmbeddingClassifier(BaseModel):
         super().__init__(config)
         self.dataset = dataset
         self.output_size = len(dataset.vocabs.label)
+        self.dropout = nn.Dropout(self.config.dropout)
         self.mlp = MLP(
             input_size=self.dataset.embedding_size,
             layers=self.config.mlp_layers,
@@ -360,6 +373,36 @@ class EmbeddingClassifier(BaseModel):
 
     def forward(self, batch):
         mlp_in = to_cuda(torch.FloatTensor(batch.target_word))
+        mlp_in = self.dropout(mlp_in)
+        return self.mlp(mlp_in)
+
+    def compute_loss(self, target, output):
+        target = to_cuda(torch.LongTensor(target.label)).view(-1)
+        loss = self.criterion(output, target)
+        return loss
+
+
+class EmbeddingPairClassifier(BaseModel):
+
+    def __init__(self, config, dataset):
+        super().__init__(config)
+        self.dataset = dataset
+        self.output_size = len(dataset.vocabs.label)
+        self.dropout = nn.Dropout(self.config.dropout)
+        self.mlp = MLP(
+            input_size=2*self.dataset.embedding_size,
+            layers=self.config.mlp_layers,
+            nonlinearity=self.config.mlp_nonlinearity,
+            output_size=self.output_size,
+        )
+        self.criterion = nn.CrossEntropyLoss()
+
+    def forward(self, batch):
+        left_vec = to_cuda(torch.FloatTensor(batch.left_target_word))
+        left_vec = self.dropout(left_vec)
+        right_vec = to_cuda(torch.FloatTensor(batch.right_target_word))
+        right_vec = self.dropout(right_vec)
+        mlp_in = torch.cat((left_vec, right_vec), -1)
         return self.mlp(mlp_in)
 
     def compute_loss(self, target, output):

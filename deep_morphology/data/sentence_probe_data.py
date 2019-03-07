@@ -48,6 +48,18 @@ class EmbeddingOnlyFields(DataFields):
     _needs_vocab = ('label', )
 
 
+class EmbeddingOnlyPairFields(DataFields):
+    _fields = (
+        'left_sentence', 'left_target_word', 'left_target_idx',
+        'right_sentence', 'right_target_word', 'right_target_idx',
+        'label',
+    )
+    _alias = {
+        'tgt': 'label',
+    }
+    _needs_vocab = ('label', )
+
+
 class SentencePairFields(DataFields):
     _fields = (
         'left_sentence', 'left_sentence_len',
@@ -112,6 +124,8 @@ class Embedding:
         return self.mtx.shape[0]
 
     def __getitem__(self, key):
+        if key not in self.vocab:
+            return self.mtx[0]
         return self.mtx[self.vocab[key]]
 
     @property
@@ -143,7 +157,13 @@ class EmbeddingProberDataset(BaseDataset):
 
     def to_idx(self):
         vocab = set(r.target_word for r in self.raw)
-        self.embedding = Embedding(self.config.embedding, filter=vocab)
+        if self.config.embedding == 'discover':
+            language = self.config.train_file.split("/")[-2]
+            emb_fn = os.path.join(os.environ['HOME'], 'resources',
+                                  'fasttext', language, 'common.vec')
+        else:
+            emb_fn = self.config.embedding
+        self.embedding = Embedding(emb_fn, filter=vocab)
         self.embedding_size = self.embedding.embedding_dim
         word_vecs = []
         labels = []
@@ -193,6 +213,97 @@ class EmbeddingProberDataset(BaseDataset):
 
 
 class UnlabeledEmbeddingProberDataset(EmbeddingProberDataset):
+    pass
+
+
+class EmbeddingPairDataset(BaseDataset):
+    unlabeled_data_class = 'UnlabeledEmbeddingPairDataset'
+    constants = []
+    data_recordclass = EmbeddingOnlyPairFields
+
+    def load_or_create_vocabs(self):
+        vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
+        self.vocabs = self.data_recordclass()
+        for field in ('left_target_word', 'label'):
+            vocab_fn = getattr(self.config, 'vocab_{}'.format(field),
+                               vocab_pre+field)
+            constants = []
+            if os.path.exists(vocab_fn):
+                setattr(self.vocabs, field, Vocab(file=vocab_fn, frozen=True))
+            else:
+                setattr(self.vocabs, field, Vocab(constants=constants))
+        self.vocabs.right_target_word = self.vocabs.left_target_word
+
+    def to_idx(self):
+        vocab = set(r.left_target_word for r in self.raw) | \
+            set(r.right_target_word for r in self.raw)
+        if self.config.embedding == 'discover':
+            language = self.config.train_file.split("/")[-2]
+            emb_fn = os.path.join(os.environ['HOME'], 'resources',
+                                  'fasttext', language, 'common.vec')
+        else:
+            emb_fn = self.config.embedding
+        self.embedding = Embedding(emb_fn, filter=vocab)
+        self.embedding_size = self.embedding.embedding_dim
+        left_vecs = []
+        right_vecs = []
+        labels = []
+        for r in self.raw:
+            left_vecs.append(self.embedding[r.left_target_word])
+            right_vecs.append(self.embedding[r.right_target_word])
+            labels.append(self.vocabs.label[r.label])
+        self.mtx = EmbeddingOnlyPairFields(
+            left_target_word=left_vecs,
+            right_target_word=right_vecs,
+            label=labels,
+        )
+
+    def extract_sample_from_line(self, line):
+        fd = line.rstrip("\n").split("\t")
+        if len(fd) > 6:
+            label = fd[6]
+        else:
+            label = None
+        return EmbeddingOnlyPairFields(
+            left_sentence=fd[0],
+            left_target_word=fd[1],
+            left_target_idx=fd[2],
+            right_sentence=fd[3],
+            right_target_word=fd[4],
+            right_target_idx=fd[5],
+            label=label
+        )
+
+    def decode(self, model_output):
+        for i, sample in enumerate(self.raw):
+            output = model_output[i].argmax().item()
+            sample.label = self.vocabs.label.inv_lookup(output)
+
+    def print_sample(self, sample, stream):
+        stream.write("{}\n".format("\t".join(map(str, (
+            " ".join(sample.left_sentence),
+            sample.left_target_word,
+            sample.left_target_idx,
+            " ".join(sample.right_sentence),
+            sample.right_target_word,
+            sample.right_target_idx,
+            sample.label)
+        ))))
+
+    def batched_iter(self, batch_size):
+        starts = list(range(0, len(self), batch_size))
+        if self.is_unlabeled is False and self.config.shuffle_batches:
+            np.random.shuffle(starts)
+        for start in starts:
+            end = start + batch_size
+            yield EmbeddingOnlyPairFields(
+                left_target_word=self.mtx.left_target_word[start:end],
+                right_target_word=self.mtx.right_target_word[start:end],
+                label=self.mtx.label[start:end]
+            )
+
+
+class UnlabeledEmbeddingPairDataset(EmbeddingPairDataset):
     pass
 
 
