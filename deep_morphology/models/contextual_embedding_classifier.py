@@ -142,6 +142,7 @@ class BERTPairClassifier(BaseModel):
             use_cache = self.config.use_cache
         else:
             use_cache = (self.config.layer != 'weighted_sum')
+        self.dropout = nn.Dropout(self.config.dropout)
         self.bert = BERTEmbedder(model_name, self.config.layer,
                                  use_cache=use_cache)
         if 'large' in model_name:
@@ -165,12 +166,14 @@ class BERTPairClassifier(BaseModel):
         left_X = to_cuda(torch.LongTensor(batch.left_tokens))
         left_bert = self.bert.embed(left_X, batch.left_sentence_len,
                                     ('left', id_, i))
+        left_bert = self.dropout(left_bert)
         left_idx = to_cuda(torch.LongTensor(batch.left_target_idx))
         left_target = left_bert[helper, left_idx]
 
         right_X = to_cuda(torch.LongTensor(batch.right_tokens))
         right_bert = self.bert.embed(right_X, batch.right_sentence_len,
                                      ('right', id_, i))
+        right_bert = self.dropout(right_bert)
         right_idx = to_cuda(torch.LongTensor(batch.right_target_idx))
         right_target = right_bert[helper, right_idx]
 
@@ -204,6 +207,7 @@ class BERTClassifier(BaseModel):
             use_cache = (self.config.layer != 'weighted_sum')
         self.bert = BERTEmbedder(model_name, self.config.layer,
                                  use_cache=use_cache)
+        self.dropout = nn.Dropout(self.config.dropout)
 
         if 'large' in model_name:
             bert_size = 1024
@@ -223,6 +227,7 @@ class BERTClassifier(BaseModel):
         X = to_cuda(torch.LongTensor(batch.sentence))
         bert_out = self.bert.embed(X, batch.sentence_len,
                                    (id(dataset), dataset._start))
+        bert_out = self.dropout(bert_out)
         idx = to_cuda(torch.LongTensor(batch.target_idx))
         batch_size = X.size(0)
         helper = to_cuda(torch.arange(batch_size))
@@ -253,6 +258,7 @@ class ELMOClassifier(BaseModel):
             use_cache = self.config.use_cache
         else:
             use_cache = (self.config.layer != 'weighted_sum')
+        self.dropout = nn.Dropout(self.config.dropout)
         if self.config.elmo_model == 'discover':
             language = self.config.train_file.split("/")[-2]
             elmo_model = os.path.join(os.environ['HOME'], 'resources', 'elmo', language)
@@ -274,6 +280,7 @@ class ELMOClassifier(BaseModel):
         batch_size = len(batch[0])
         cache_key = (id(dataset), dataset._start)
         elmo_out = self.elmo.embed(batch.sentence, cache_key=cache_key)
+        elmo_out = self.dropout(elmo_out)
         idx = to_cuda(torch.LongTensor(batch.target_idx))
         helper = to_cuda(torch.arange(batch_size))
         target_vecs = elmo_out[helper, idx]
@@ -309,6 +316,7 @@ class ELMOPairClassifier(BaseModel):
         else:
             elmo_model = self.config.elmo_model
 
+        self.dropout = nn.Dropout(self.config.dropout)
         self.left_elmo = ELMOEmbedder(elmo_model, self.config.layer,
                                       batch_size=self.config.batch_size,
                                       use_cache=use_cache)
@@ -328,9 +336,11 @@ class ELMOPairClassifier(BaseModel):
 
         left_key = (id(dataset), 'left', dataset._start)
         left_out = self.left_elmo.embed(batch.left_sentence, cache_key=left_key)
+        left_out = self.dropout(left_out)
         right_key = (id(dataset), 'right', dataset._start)
         right_out = self.right_elmo.embed(batch.right_sentence,
                                           cache_key=right_key)
+        right_out = self.dropout(right_out)
 
         helper = to_cuda(torch.arange(batch_size))
         left_idx = to_cuda(torch.LongTensor(batch.left_target_idx))
