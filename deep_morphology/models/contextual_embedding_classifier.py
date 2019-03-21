@@ -29,7 +29,11 @@ class BERTEmbedder(nn.Module):
 
     def __init__(self, model_name, layer, use_cache=False):
         super().__init__()
-        self.bert = BertModel.from_pretrained(model_name)
+        if 'bert' in globals():
+            self.bert = globals()['bert']
+        else:
+            self.bert = BertModel.from_pretrained(model_name)
+            globals()['bert'] = self.bert
         for p in self.bert.parameters():
             p.requires_grad = False
         self.layer = layer
