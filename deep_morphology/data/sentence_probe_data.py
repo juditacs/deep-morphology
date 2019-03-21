@@ -428,8 +428,13 @@ class BERTSentencePairDataset(ELMOSentencePairDataset):
             self.vocabs = share_vocabs_with.vocabs
         model_name = getattr(self.config, 'bert_model',
                              'bert-base-multilingual-cased')
-        self.tokenizer = BertTokenizer.from_pretrained(
-            model_name, do_lower_case=False)
+        if 'bert_tokenizer' in globals():
+            self.tokenizer = globals()['bert_tokenizer']
+
+        else:
+            self.tokenizer = BertTokenizer.from_pretrained(
+                model_name, do_lower_case=False)
+            globals()['bert_tokenizer'] = self.tokenizer
         self.load_stream_or_file(stream_or_file)
         self.to_idx()
         self.tgt_field_idx = -1
@@ -639,8 +644,13 @@ class BERTSentenceProberDataset(BaseDataset):
         self.load_or_create_vocabs()
         model_name = getattr(self.config, 'bert_model',
                              'bert-base-multilingual-cased')
-        self.tokenizer = BertTokenizer.from_pretrained(
-            model_name, do_lower_case=False)
+        if 'bert_tokenizer' in globals():
+            self.tokenizer = globals()['bert_tokenizer']
+
+        else:
+            self.tokenizer = BertTokenizer.from_pretrained(
+                model_name, do_lower_case=False)
+            globals()['bert_tokenizer'] = self.tokenizer
         self.load_stream_or_file(stream_or_file)
         self.to_idx()
         self.tgt_field_idx = -1
