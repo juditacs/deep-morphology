@@ -283,10 +283,10 @@ class EmbeddingPairDataset(BaseDataset):
 
     def print_sample(self, sample, stream):
         stream.write("{}\n".format("\t".join(map(str, (
-            " ".join(sample.left_sentence),
+            sample.left_sentence,
             sample.left_target_word,
             sample.left_target_idx,
-            " ".join(sample.right_sentence),
+            sample.right_sentence,
             sample.right_target_word,
             sample.right_target_idx,
             sample.label)
@@ -520,6 +520,18 @@ class BERTSentencePairDataset(ELMOSentencePairDataset):
             batch.right_target_idx = self.mtx.right_target_idx[start:end]
             batch.label = self.mtx.label[start:end]
             yield batch
+
+    def print_sample(self, sample, stream):
+        stream.write("{}\n".format("\t".join(map(str, (
+            sample.left_sentence,
+            sample.left_target_word,
+            sample.left_target_idx,
+            sample.right_sentence,
+            sample.right_target_word,
+            sample.right_target_idx,
+            sample.label)
+        ))))
+
 
 
 class UnlabeledBERTSentencePairDataset(BERTSentencePairDataset):
@@ -982,10 +994,10 @@ class WordOnlySentencePairDataset(BaseDataset):
 
     def print_sample(self, sample, stream):
         stream.write("{}\n".format("\t".join(map(str, (
-            " ".join(sample.left_sentence),
+            sample.left_sentence,
             sample.left_target_word,
             sample.left_target_idx,
-            " ".join(sample.right_sentence),
+            sample.right_sentence,
             sample.right_target_word,
             sample.right_target_idx,
             sample.label)
