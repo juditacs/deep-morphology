@@ -670,7 +670,7 @@ class BERTSentenceProberDataset(BaseDataset):
                 tok_idx.append(len(tokens)-1)
 
         if not tokens[tok_idx[idx]] == '[UNK]':
-            assert tokens[tok_idx[idx]].lstrip("##") in target
+            assert set(tokens[tok_idx[idx]]) & set(target)
 
         return WordPieceSentenceProbeFields(
             sentence=tokens,
@@ -750,7 +750,7 @@ class UnlabeledBERTSentenceProberDataset(BERTSentenceProberDataset):
                 tok_idx.append(len(tokens)-1)
 
         if not tokens[tok_idx[idx]] == '[UNK]':
-            assert tokens[tok_idx[idx]].lstrip("##") in target
+            assert set(tokens[tok_idx[idx]]) & set(target)
 
         return WordPieceSentenceProbeFields(
             sentence=tokens,
