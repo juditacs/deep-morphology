@@ -27,7 +27,7 @@ use_cuda = torch.cuda.is_available()
 class Result:
     __slots__ = ('train_loss', 'dev_loss', 'train_acc', 'dev_acc',
                  'running_time', 'start_time', 'train_size', 'dev_size',
-                 'parameters', 'epochs_run', 'node', 'gpu')
+                 'parameters', 'epochs_run', 'node', 'gpu', 'exception')
 
     def __init__(self):
         self.train_loss = []
@@ -116,6 +116,8 @@ class Experiment:
             self.model = self.model.cuda()
 
     def __enter__(self):
+        logging.info("Starting experiment: {}".format(
+            self.config.experiment_dir))
         self.result = Result()
         self.result.start()
         self.result.node = platform.node()
@@ -131,7 +133,14 @@ class Experiment:
         self.config.save()
         return self
 
-    def __exit__(self, *args):
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is None:
+            self.result.exception = None
+        else:
+            self.result.exception = {
+                'type': exc_type.__name__,
+                'value': str(exc_value),
+            }
         self.result.epochs_run = len(self.result.train_loss)
         self.config.save()
         self.result.end()
