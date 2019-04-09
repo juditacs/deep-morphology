@@ -101,6 +101,9 @@ class ELMOEmbedder(nn.Module):
         if self.layer == 'weighted_sum':
             self.weights = nn.Parameter(torch.ones(3, dtype=torch.float))
             self.softmax = nn.Softmax(0)
+        elif self.layer == 'weight_contextual_layers':
+            self.weights = nn.Parameter(torch.ones(2, dtype=torch.float))
+            self.softmax = nn.Softmax(0)
         if use_cache:
             self._cache = {}
         else:
@@ -119,7 +122,9 @@ class ELMOEmbedder(nn.Module):
             elmo_out = self.forward(sentence)
         if self.layer == 'weighted_sum':
             return (self.weights[None, :, None, None] * elmo_out).sum(1)
-        if self.layer == 'mean':
+        elif self.layer == 'weight_contextual_layers':
+            return (self.weights[None, :, None, None] * elmo_out[:, 1:]).sum(1)
+        elif self.layer == 'mean':
             return elmo_out.mean(1)
         return elmo_out[:, self.layer]
 
