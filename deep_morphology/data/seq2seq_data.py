@@ -69,10 +69,21 @@ class NoSpaceSeq2seqDataset(Seq2seqDataset):
     constants = ['PAD', 'UNK', 'SOS', 'EOS']
 
     def extract_sample_from_line(self, line):
-        src, tgt = line.rstrip("\n").split("\t")[:2]
-        src = list(src)
-        tgt = list(tgt)
-        return Seq2seqWithLenFields(src, len(src)+2, len(tgt)+2, tgt)
+        fd = line.rstrip("\n").split("\t")
+        src = list(fd[0])
+        src_len = len(src) + 2
+        if len(fd) > 1:
+            tgt = list(fd[1])
+            tgt_len = len(tgt) + 2
+        else:
+            tgt = tgt_len = None
+        return Seq2seqWithLenFields(src, src_len, tgt_len, tgt)
+
+    def print_sample(self, sample, stream):
+        stream.write("{}\t{}\n".format(
+            "".join(sample.src),
+            "".join(sample.tgt),
+        ))
 
 
 class UnlabeledNoSpaceSeq2seqDataset(UnlabeledSeq2seqDataset):
@@ -81,6 +92,12 @@ class UnlabeledNoSpaceSeq2seqDataset(UnlabeledSeq2seqDataset):
         src = line.rstrip("\n").split("\t")[0]
         src = list(src)
         return Seq2seqWithLenFields(src, len(src)+2, None, None)
+
+    def print_sample(self, sample, stream):
+        stream.write("{}\t{}\n".format(
+            "".join(sample.src),
+            "".join(sample.tgt),
+        ))
 
 
 class InflectionDataset(BaseDataset):
