@@ -285,11 +285,11 @@ class Seq2seq(BaseModel):
             elif tf_mode == 'sample':
                 val, idx = decoder_output.max(-1)
                 decoder_input = idx
-                decoder_input[:, do_tf] = Y[t, do_tf].unsqueeze(0)
+                decoder_input[do_tf] = Y[t, do_tf].unsqueeze(0)
             elif tf_mode == 'symbol':
                 val, idx = decoder_output.max(-1)
                 decoder_input = idx
-                decoder_input[:, do_tf[t]] = Y[t, do_tf[t]].unsqueeze(0)
+                decoder_input[do_tf[t]] = Y[t, do_tf[t]].unsqueeze(0)
             else:
                 raise ValueError("Teacher forcing issue")
         return all_decoder_outputs.transpose(0, 1)
