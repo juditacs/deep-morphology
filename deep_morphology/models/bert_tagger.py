@@ -8,13 +8,12 @@
 
 import torch
 import torch.nn as nn
-import logging
-import numpy as np
 
 from pytorch_pretrained_bert import BertModel
 
 from deep_morphology.models.base import BaseModel
 from deep_morphology.models.seq2seq import compute_sequence_loss
+from deep_morphology.models.mlp import MLP
 
 use_cuda = torch.cuda.is_available()
 
@@ -34,21 +33,29 @@ class BERTTagger(BaseModel):
         model_name = getattr(self.config, 'bert_model', 'bert-base-multilingual-cased')
         self.bert = BertModel.from_pretrained(model_name)
         self.bert_layer = self.config.bert_layer
+        bert_size = 768 if 'base' in model_name else 1024
+        n_layer = 12 if 'base' in model_name else 24
         if self.bert_layer == 'weighted_sum':
-            self.bert_weights = nn.Parameter(torch.ones(12, dtype=torch.float))
+            self.bert_weights = nn.Parameter(torch.ones(n_layer, dtype=torch.float))
         if hasattr(self.config, 'lstm_size'):
             self.lstm = nn.LSTM(
-                768, self.config.lstm_size, batch_first=True,
+                bert_size, self.config.lstm_size, batch_first=True,
                 dropout=self.config.dropout,
                 num_layers=self.config.lstm_num_layers,
                 bidirectional=True)
             hidden_size = self.config.lstm_size * 2
         else:
             self.lstm = None
-            hidden_size = 768
+            hidden_size = bert_size
         if self.bert_layer == 'weighted_sum':
-            self.bert_weights = nn.Parameter(torch.ones(12, dtype=torch.float))
+            self.bert_weights = nn.Parameter(torch.ones(n_layer, dtype=torch.float))
         self.output_proj = nn.Linear(hidden_size, self.output_size)
+        self.output_proj = MLP(
+            input_size=bert_size,
+            layers=self.config.mlp_layers,
+            nonlinearity=self.config.mlp_nonlinearity,
+            output_size=self.output_size,
+        )
         # ignore <pad> = 3
         self.criterion = nn.CrossEntropyLoss(
             ignore_index=self.dataset.vocabs.pos['<pad>'])
@@ -67,8 +74,8 @@ class BERTTagger(BaseModel):
         if self.bert_layer == 'mean':
             bert_out = torch.stack(bert_out).mean(0)
         elif self.bert_layer == 'weighted_sum':
-            bert_out = (self.bert_weights[:, None, None, None]
-                        * torch.stack(bert_out)).sum(0)
+            bert_out = (
+                self.bert_weights[:, None, None, None] * torch.stack(bert_out)).sum(0)
         else:
             bert_out = bert_out[self.bert_layer]
         if self.lstm:
