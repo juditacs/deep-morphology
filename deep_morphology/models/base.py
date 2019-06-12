@@ -33,6 +33,12 @@ class BaseModel(nn.Module):
         self.init_optimizers()
 
         saved = False
+        if self.config.lr_decay is not False:
+            lrd = self.config.lr_decay
+            scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                self.optimizers[0], mode='max', factor=lrd, patience=0, verbose=True)
+        else:
+            scheduler = None
 
         for epoch in range(self.config.epochs):
             self.train(True)
@@ -60,6 +66,8 @@ class BaseModel(nn.Module):
             if epoch == 0:
                 self.config.save()
             result.save(self.config.experiment_dir)
+            if scheduler:
+                scheduler.step(dev_acc)
         if saved is False:
             self._save(epoch)
 
