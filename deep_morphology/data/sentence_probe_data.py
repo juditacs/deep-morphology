@@ -538,7 +538,6 @@ class BERTSentencePairDataset(ELMOSentencePairDataset):
         ))))
 
 
-
 class UnlabeledBERTSentencePairDataset(BERTSentencePairDataset):
     pass
 
