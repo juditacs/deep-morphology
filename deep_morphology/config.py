@@ -29,6 +29,7 @@ class Config:
         'lr_decay_patience': 0,
         'early_stopping_window': 5,
         'early_stopping_monitor': 'both',
+        'early_stopping_strict': False,
         'share_embedding': False,  # inflection
         'save_min_epoch': 0,
         'save_attention_weights': False,

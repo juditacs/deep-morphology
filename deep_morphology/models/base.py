@@ -78,19 +78,26 @@ class BaseModel(nn.Module):
         if epoch < self.config.min_epochs - 1:
             return False
         window = self.config.early_stopping_window
-        if len(result.dev_loss) > 2 * window:
+        if len(result.dev_loss) < 2 * window:
+            return False
+        if self.config.early_stopping_strict:
             ea_loss = sum(result.dev_loss[-2*window:-window]) <= \
-                sum(result.dev_loss[-window:])
+                    sum(result.dev_loss[-window:])
             ea_acc = sum(result.dev_acc[-2*window:-window]) >= \
-                sum(result.dev_acc[-window:])
-            if self.config.early_stopping_monitor == 'dev_acc':
-                return ea_acc
-            if self.config.early_stopping_monitor == 'dev_loss':
-                return ea_loss
-            if self.config.early_stopping_monitor == 'both':
-                return ea_acc and ea_loss
-            if self.config.early_stopping_monitor == 'either':
-                return ea_acc or ea_loss
+                    sum(result.dev_acc[-window:])
+        else:
+            ea_loss = sum(result.dev_loss[-2*window:-window]) < \
+                    sum(result.dev_loss[-window:])
+            ea_acc = sum(result.dev_acc[-2*window:-window]) > \
+                    sum(result.dev_acc[-window:])
+        if self.config.early_stopping_monitor == 'dev_acc':
+            return ea_acc
+        if self.config.early_stopping_monitor == 'dev_loss':
+            return ea_loss
+        if self.config.early_stopping_monitor == 'both':
+            return ea_acc and ea_loss
+        if self.config.early_stopping_monitor == 'either':
+            return ea_acc or ea_loss
         return False
 
     def run_epoch(self, data, do_train, pass_dataset_to_forward=False,
