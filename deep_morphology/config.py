@@ -26,6 +26,7 @@ class Config:
         'attention_variant': 'general',
         'min_epochs': 0,
         'lr_decay': False,
+        'lr_decay_patience': 0,
         'early_stopping_window': 5,
         'early_stopping_monitor': 'both',
         'share_embedding': False,  # inflection

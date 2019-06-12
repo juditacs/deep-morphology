@@ -35,8 +35,10 @@ class BaseModel(nn.Module):
         saved = False
         if self.config.lr_decay is not False:
             lrd = self.config.lr_decay
-            scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-                self.optimizers[0], mode='max', factor=lrd, patience=0, verbose=True)
+            patience = self.config.lr_decay_patience
+            for opt in self.optimizers:
+                scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                    opt, mode='max', factor=lrd, patience=patience, verbose=True)
         else:
             scheduler = None
 
