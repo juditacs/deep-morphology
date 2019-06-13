@@ -920,8 +920,14 @@ class WordOnlySentencePairDataset(BaseDataset):
 
     def extract_sample_from_line(self, line):
         fd = line.rstrip("\n").split("\t")
-        lw = fd[1]
-        rw = fd[4]
+        left_sen = fd[0].split(" ")
+        right_sen = fd[3].split(" ")
+        lidx = int(fd[2])
+        ridx = int(fd[5])
+        lw = left_sen[lidx]
+        rw = right_sen[ridx]
+        assert lw == fd[1]
+        assert rw == fd[4]
         if len(fd) > 6:
             label = fd[6]
         else:
