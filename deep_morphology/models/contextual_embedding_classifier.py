@@ -145,15 +145,9 @@ class BERTPairClassifier(BaseModel):
         self.dataset = dataset
         model_name = getattr(self.config, 'bert_model',
                              'bert-base-multilingual-cased')
-        # if use_cache is defined in config, use it
-        # otherwise cache if layer != weighted_sum to avoid excessive memory use
-        if hasattr(self.config, 'use_cache'):
-            use_cache = self.config.use_cache
-        else:
-            use_cache = (self.config.layer != 'weighted_sum')
         self.dropout = nn.Dropout(self.config.dropout)
         self.bert = BERTEmbedder(model_name, self.config.layer,
-                                 use_cache=use_cache)
+                                 use_cache=False)
         if 'large' in model_name:
             hidden = 1024
         else:
@@ -167,28 +161,40 @@ class BERTPairClassifier(BaseModel):
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, batch, dataset):
-        batch_size = len(batch.left_tokens)
-        helper = to_cuda(torch.arange(batch_size))
-
-        i = dataset._start
-        id_ = id(dataset)
-        left_X = to_cuda(torch.LongTensor(batch.left_tokens))
-        left_bert = self.bert.embed(left_X, batch.left_sentence_len,
-                                    ('left', id_, i))
-        left_bert = self.dropout(left_bert)
-        left_idx = to_cuda(torch.LongTensor(batch.left_target_idx))
-        left_target = left_bert[helper, left_idx]
-
-        right_X = to_cuda(torch.LongTensor(batch.right_tokens))
-        right_bert = self.bert.embed(right_X, batch.right_sentence_len,
-                                     ('right', id_, i))
-        right_bert = self.dropout(right_bert)
-        right_idx = to_cuda(torch.LongTensor(batch.right_target_idx))
-        right_target = right_bert[helper, right_idx]
-
-        mlp_input = torch.cat((left_target, right_target), 1)
+        left = self.forward_sentence(
+            batch.left_tokens, batch.left_sentence_len,
+            batch.left_target_first, batch.left_target_last)
+        right = self.forward_sentence(
+            batch.right_tokens, batch.right_sentence_len,
+            batch.right_target_first, batch.right_target_last)
+        mlp_input = torch.cat((left, right), 1)
         mlp_out = self.mlp(mlp_input)
         return mlp_out
+
+    def forward_sentence(self, X, X_len, idx_first, idx_last):
+        X = to_cuda(torch.LongTensor(X))
+        batch_size = X.size(0)
+        Y = self.bert.embed(X, X_len)
+        Y = self.dropout(Y)
+        helper = to_cuda(torch.arange(batch_size))
+        if self.config.wp_pool == 'first':
+            idx = to_cuda(torch.LongTensor(idx_first))
+            return Y[helper, idx]
+        elif self.config.wp_pool == 'last':
+            idx = to_cuda(torch.LongTensor(idx_last))
+            return Y[helper, idx]
+        pooled = []
+        for i in range(batch_size):
+            start = idx_first[i]
+            end = idx_last[i] + 1
+            yi = Y[i, start:end]
+            if self.config.wp_pool == 'max':
+                pooled.append(torch.max(yi, 0)[0])
+            elif self.config.wp_pool == 'mean':
+                pooled.append(torch.mean(yi, 0))
+            elif self.config.wp_pool == 'sum':
+                pooled.append(torch.sum(yi, 0))
+        return torch.stack(pooled)
 
     def compute_loss(self, target, output):
         target = to_cuda(torch.LongTensor(target.label)).view(-1)

@@ -87,9 +87,9 @@ class WordOnlySentencePairFields(DataFields):
 class BERTSentencePairFields(DataFields):
     _fields = (
         'left_sentence', 'left_tokens', 'left_sentence_len',
-        'left_target_word', 'left_target_idx',
+        'left_target_word', 'left_target_first', 'left_target_last',
         'right_sentence', 'right_tokens', 'right_sentence_len',
-        'right_target_word', 'right_target_idx',
+        'right_target_word', 'right_target_first', 'right_target_last',
         'label',
     )
     _alias = {'tgt': 'label'}
@@ -441,8 +441,8 @@ class BERTSentencePairDataset(ELMOSentencePairDataset):
 
     def extract_sample_from_line(self, line):
         fd = line.rstrip("\n").split("\t")
-        left_sen, left_idx = self.parse_sentence(fd[:3])
-        right_sen, right_idx = self.parse_sentence(fd[3:6])
+        left_sen, left_first, left_last = self.parse_sentence(fd[:3])
+        right_sen, right_first, right_last = self.parse_sentence(fd[3:6])
 
         if len(fd) > 6:
             label = fd[6]
@@ -453,12 +453,14 @@ class BERTSentencePairDataset(ELMOSentencePairDataset):
             left_tokens=left_sen,
             left_sentence_len=len(left_sen),
             left_target_word=fd[1],
-            left_target_idx=left_idx,
+            left_target_first=left_first,
+            left_target_last=left_last,
             right_sentence=fd[3],
             right_tokens=right_sen,
             right_sentence_len=len(right_sen),
             right_target_word=fd[4],
-            right_target_idx=right_idx,
+            right_target_first=right_first,
+            right_target_last=right_last,
             label=label,
         )
 
@@ -469,12 +471,10 @@ class BERTSentencePairDataset(ELMOSentencePairDataset):
         for i, t in enumerate(sent.split(" ")):
             bt = self.tokenizer.tokenize(t)
             if i == idx:
-                if self.config.use_wordpiece_unit == 'first':
-                    bert_idx = len(bert_tokens)
-                elif self.config.use_wordpiece_unit == 'last':
-                    bert_idx = len(bert_tokens) + len(bt) - 1
+                first = len(bert_tokens)
+                last = len(bert_tokens) + len(bt) - 1
             bert_tokens.extend(bt)
-        return bert_tokens, bert_idx
+        return bert_tokens, first, last
 
     def to_idx(self):
         self.mtx = BERTSentencePairFields.initialize_all(list)
@@ -483,12 +483,14 @@ class BERTSentencePairDataset(ELMOSentencePairDataset):
             self.mtx.left_sentence_len.append(sample.left_sentence_len)
             tok_idx = self.tokenizer.convert_tokens_to_ids(sample.left_tokens)
             self.mtx.left_tokens.append(tok_idx)
-            self.mtx.left_target_idx.append(sample.left_target_idx)
+            self.mtx.left_target_first.append(sample.left_target_first)
+            self.mtx.left_target_last.append(sample.left_target_last)
             # right fields
             self.mtx.right_sentence_len.append(sample.right_sentence_len)
             tok_idx = self.tokenizer.convert_tokens_to_ids(sample.right_tokens)
             self.mtx.right_tokens.append(tok_idx)
-            self.mtx.right_target_idx.append(sample.right_target_idx)
+            self.mtx.right_target_first.append(sample.right_target_first)
+            self.mtx.right_target_last.append(sample.right_target_last)
             # label if labeled
             if sample.label is None:
                 self.mtx.label.append(None)
@@ -514,7 +516,8 @@ class BERTSentencePairDataset(ELMOSentencePairDataset):
                      for i in range(start, end)]
             batch.left_tokens = sents
             batch.left_sentence_len = self.mtx.left_sentence_len[start:end]
-            batch.left_target_idx = self.mtx.left_target_idx[start:end]
+            batch.left_target_first = self.mtx.left_target_first[start:end]
+            batch.left_target_last = self.mtx.left_target_last[start:end]
             # pad right sentences
             maxlen = max(self.mtx.right_sentence_len[start:end])
             sents = [self.mtx.right_tokens[i] +
@@ -522,7 +525,8 @@ class BERTSentencePairDataset(ELMOSentencePairDataset):
                      for i in range(start, end)]
             batch.right_tokens = sents
             batch.right_sentence_len = self.mtx.right_sentence_len[start:end]
-            batch.right_target_idx = self.mtx.right_target_idx[start:end]
+            batch.right_target_first = self.mtx.right_target_first[start:end]
+            batch.right_target_last = self.mtx.right_target_last[start:end]
             batch.label = self.mtx.label[start:end]
             yield batch
 
@@ -530,10 +534,10 @@ class BERTSentencePairDataset(ELMOSentencePairDataset):
         stream.write("{}\n".format("\t".join(map(str, (
             sample.left_sentence,
             sample.left_target_word,
-            sample.left_target_idx,
+            sample.left_target_start,
             sample.right_sentence,
             sample.right_target_word,
-            sample.right_target_idx,
+            sample.right_target_start,
             sample.label)
         ))))
 
