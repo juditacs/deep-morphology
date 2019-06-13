@@ -106,14 +106,14 @@ class PairSequenceClassifier(BaseModel):
         left_in = to_cuda(torch.LongTensor(batch.left_target_word))
         left_in = left_in.transpose(0, 1)
         left_len = batch.left_target_word_len
-        _, left_hidden = self.lstm(left_in, left_len)
+        left_out, (lh, lc) = self.lstm(left_in, left_len)
 
         right_in = to_cuda(torch.LongTensor(batch.right_target_word))
         right_in = right_in.transpose(0, 1)
         right_len = batch.right_target_word_len
-        _, right_hidden = self.lstm(right_in, right_len)
+        right_out, (rh, rc) = self.lstm(right_in, right_len)
 
-        mlp_in = torch.cat((left_hidden[0][-1], right_hidden[0][-1]), -1)
+        mlp_in = torch.cat((lh[-1], rh[-1]), -1)
         logits = self.mlp(mlp_in)
         return logits
 
