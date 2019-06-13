@@ -63,9 +63,14 @@ class LSTMEncoder(nn.Module):
     def forward(self, input, input_len):
         embedded = self.embedding(input)
         outputs, (h, c) = self.cell(embedded, input_len)
-        nl = self.num_layers
-        h = torch.cat((h[:nl], h[nl:]), 2)
-        c = torch.cat((c[:nl], c[nl:]), 2)
+        num_layers = self.num_layers
+        num_directions = 2
+        batch = input.size(1)
+        hidden_size = self.hidden_size
+        h = h.view(num_layers, num_directions, batch, hidden_size)
+        c = c.view(num_layers, num_directions, batch, hidden_size)
+        h = torch.cat((h[:, 0], h[:, 1]), 2)
+        c = torch.cat((c[:, 0], c[:, 1]), 2)
         return outputs, (h, c)
 
 
