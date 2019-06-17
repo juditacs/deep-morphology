@@ -130,15 +130,6 @@ class ELMOEmbedder(nn.Module):
             return elmo_out.mean(1)
         return elmo_out[:, self.layer]
 
-    def state_dictaaa(self, *args, **kwargs):
-        if self.layer == 'weighted_sum':
-            return {'weights': self.weights}
-        return {}
-
-    def load_state_dictaaaa(self, data):
-        if self.layer == 'weighted_sum':
-            self.weights = data['weights']
-
 
 class BERTPairClassifier(BaseModel):
 
