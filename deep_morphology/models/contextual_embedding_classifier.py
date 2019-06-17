@@ -121,9 +121,11 @@ class ELMOEmbedder(nn.Module):
         else:
             elmo_out = self.forward(sentence)
         if self.layer == 'weighted_sum':
-            return (self.weights[None, :, None, None] * elmo_out).sum(1)
+            weights = self.softmax(self.weights)
+            return (weights[None, :, None, None] * elmo_out).sum(1)
         elif self.layer == 'weight_contextual_layers':
-            return (self.weights[None, :, None, None] * elmo_out[:, 1:]).sum(1)
+            weights = self.softmax(self.weights)
+            return (weights[None, :, None, None] * elmo_out[:, 1:]).sum(1)
         elif self.layer == 'mean':
             return elmo_out.mean(1)
         return elmo_out[:, self.layer]
