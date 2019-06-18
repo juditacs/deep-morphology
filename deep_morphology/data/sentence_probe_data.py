@@ -474,6 +474,7 @@ class BERTSentencePairDataset(ELMOSentencePairDataset):
                 first = len(bert_tokens)
                 last = len(bert_tokens) + len(bt) - 1
             bert_tokens.extend(bt)
+        bert_tokens.append('[SEP]')
         return bert_tokens, first, last
 
     def to_idx(self):
@@ -681,6 +682,7 @@ class BERTSentenceProberDataset(BaseDataset):
             tokens.extend(bert_toks)
             if self.config.use_wordpiece_unit == 'last':
                 tok_idx.append(len(tokens)-1)
+        tokens.append('[SEP]')
 
         if not tokens[tok_idx[idx]] == '[UNK]':
             assert set(tokens[tok_idx[idx]]) & set(target)
@@ -761,7 +763,7 @@ class UnlabeledBERTSentenceProberDataset(BERTSentenceProberDataset):
             tokens.extend(bert_toks)
             if self.config.use_wordpiece_unit == 'last':
                 tok_idx.append(len(tokens)-1)
-
+        tokens.append('[SEP]')
         if not tokens[tok_idx[idx]] == '[UNK]':
             assert set(tokens[tok_idx[idx]]) & set(target)
 
