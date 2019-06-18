@@ -535,10 +535,10 @@ class BERTSentencePairDataset(ELMOSentencePairDataset):
         stream.write("{}\n".format("\t".join(map(str, (
             sample.left_sentence,
             sample.left_target_word,
-            sample.left_target_start,
+            sample.left_target_first,
             sample.right_sentence,
             sample.right_target_word,
-            sample.right_target_start,
+            sample.right_target_first,
             sample.label)
         ))))
 
