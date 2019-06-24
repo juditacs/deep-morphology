@@ -102,7 +102,11 @@ class Experiment:
             self.dev_data = dev_data
 
     def __load_train_dev_data(self, train_fn, dev_fn):
-        self.train_data = self.data_class(self.config, train_fn)
+        if hasattr(self.config, 'train_size'):
+            self.train_data = self.data_class(self.config, train_fn,
+                                              max_samples=self.config.train_size)
+        else:
+            self.train_data = self.data_class(self.config, train_fn)
         self.train_data.save_vocabs()
         self.dev_data = self.data_class(self.config, dev_fn, share_vocabs_with=self.train_data)
 

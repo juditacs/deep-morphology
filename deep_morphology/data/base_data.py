@@ -8,6 +8,7 @@
 
 import os
 import gzip
+import logging
 from sys import stdout
 import numpy as np
 from collections import OrderedDict
@@ -164,8 +165,9 @@ class DataFields:
 
 class BaseDataset:
 
-    def __init__(self, config, stream_or_file, share_vocabs_with=None):
+    def __init__(self, config, stream_or_file, max_samples=None, share_vocabs_with=None):
         self.config = config
+        self.max_samples = max_samples
         if share_vocabs_with is None:
             self.load_or_create_vocabs()
         else:
@@ -210,6 +212,10 @@ class BaseDataset:
             sample = self.extract_sample_from_line(line.rstrip('\n'))
             if not self.ignore_sample(sample):
                 self.raw.append(sample)
+            if self.max_samples is not None and len(self.raw) >= self.max_samples:
+                logging.info("Read max_samples ({}) before finishing the file.".format(
+                    self.max_samples))
+                break
 
     def extract_sample_from_line(self, line):
         raise NotImplementedError("Subclass of BaseData must define "

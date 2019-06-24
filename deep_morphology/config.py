@@ -38,6 +38,8 @@ class Config:
         'sort_data_by_length': False,
         'teacher_forcing_mode': 'always',
         'teacher_forcing_prob': 0.8,
+        # no limit for training data
+        'train_size': None,
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded
