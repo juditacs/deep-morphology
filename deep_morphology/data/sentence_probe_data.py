@@ -420,14 +420,8 @@ class UnlabeledELMOSentencePairDataset(ELMOSentencePairDataset):
 class BERTSentencePairDataset(ELMOSentencePairDataset):
     unlabeled_data_class = 'UnlabeledBERTSentencePairDataset'
 
-    def __init__(self, config, stream_or_file, share_vocabs_with=None):
-        self.config = config
-        if share_vocabs_with is None:
-            self.load_or_create_vocabs()
-        else:
-            self.vocabs = share_vocabs_with.vocabs
-        model_name = getattr(self.config, 'bert_model',
-                             'bert-base-multilingual-cased')
+    def __init__(self, config, stream_or_file, **kwargs):
+        model_name = getattr(config, 'bert_model', 'bert-base-multilingual-cased')
         if 'bert_tokenizer' in globals():
             self.tokenizer = globals()['bert_tokenizer']
 
@@ -435,9 +429,8 @@ class BERTSentencePairDataset(ELMOSentencePairDataset):
             self.tokenizer = BertTokenizer.from_pretrained(
                 model_name, do_lower_case=False)
             globals()['bert_tokenizer'] = self.tokenizer
-        self.load_stream_or_file(stream_or_file)
-        self.to_idx()
-        self.tgt_field_idx = -1
+
+        super().__init__(config, stream_or_file, **kwargs)
 
     def extract_sample_from_line(self, line):
         fd = line.rstrip("\n").split("\t")
