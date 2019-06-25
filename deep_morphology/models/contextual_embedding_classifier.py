@@ -140,7 +140,7 @@ class BERTPairClassifier(BaseModel):
                              'bert-base-multilingual-cased')
         self.dropout = nn.Dropout(self.config.dropout)
         self.bert = BERTEmbedder(model_name, self.config.layer,
-                                 use_cache=False)
+                                 use_cache=self.config.use_cache)
         if 'large' in model_name:
             hidden = 1024
         else:
@@ -154,20 +154,22 @@ class BERTPairClassifier(BaseModel):
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, batch, dataset):
+        key = ('left', id(dataset), dataset._start)
         left = self.forward_sentence(
             batch.left_tokens, batch.left_sentence_len,
-            batch.left_target_first, batch.left_target_last)
+            batch.left_target_first, batch.left_target_last, key=key)
+        key = ('right', id(dataset), dataset._start)
         right = self.forward_sentence(
             batch.right_tokens, batch.right_sentence_len,
-            batch.right_target_first, batch.right_target_last)
+            batch.right_target_first, batch.right_target_last, key=key)
         mlp_input = torch.cat((left, right), 1)
         mlp_out = self.mlp(mlp_input)
         return mlp_out
 
-    def forward_sentence(self, X, X_len, idx_first, idx_last):
+    def forward_sentence(self, X, X_len, idx_first, idx_last, key=None):
         X = to_cuda(torch.LongTensor(X))
         batch_size = X.size(0)
-        Y = self.bert.embed(X, X_len)
+        Y = self.bert.embed(X, X_len, cache_key=key)
         Y = self.dropout(Y)
         helper = to_cuda(torch.arange(batch_size))
         if self.config.wp_pool == 'first':
