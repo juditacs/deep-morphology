@@ -11,7 +11,7 @@ from recordclass import recordclass
 import numpy as np
 
 from pytorch_pretrained_bert import BertTokenizer
-from deep_morphology.data.base_data import BaseDataset, Vocab
+from deep_morphology.data.base_data import BaseDataset, Vocab, DataFields
 
 
 CoNLLSentence = recordclass(
@@ -27,6 +27,12 @@ ELMOPos = recordclass(
 BERTPos = recordclass(
     'BERTPos', ['sentence', 'sentence_len', 'token_starts', 'pos']
 )
+
+
+class CoNLLInflectionFields(DataFields):
+    _fields = ('raw', 'src', 'src_len', 'tgt_len', 'tgt')
+    _alias = {'tgt': 'label'}
+    _needs_vocab = ('src', 'tgt')
 
 
 class ELMOPosDataset(BaseDataset):
@@ -338,3 +344,101 @@ class UnlabeledBERTPosDataset(BERTPosDataset):
         sent.sentence.append(EOS)
         sent.sentence_len = len(sent.sentence)
         return [sent]
+
+
+class SRInflectionDataset(BaseDataset):
+    unlabeled_data_class = 'UnlabeledSRInflectionDataset'
+    data_recordclass = CoNLLInflectionFields
+    constants = ['SOS', 'EOS', 'PAD', 'UNK']
+
+    def load_stream(self, stream):
+        self.raw = []
+        self.sentence_boundaries = set()
+        sent = []
+        for line in stream:
+            if line.startswith('#'):
+                continue
+            if not line.strip():
+                if sent:
+                    self.raw.extend(self.extract_sample_from_line(l) for l in sent)
+                    self.sentence_boundaries.add(len(self.raw))
+                sent = []
+            else:
+                sent.append(line.rstrip("\n"))
+        if sent:
+            self.raw.extend(self.extract_sample_from_line(l) for l in sent)
+
+    def extract_sample_from_line(self, line):
+        fd = line.split("\t")
+        lemma = fd[1]
+        infl = fd[2]
+        upos = fd[3]
+        xpos = fd[4]
+        tags = []
+        # unlabeled data
+        if infl == '_' and lemma != '_':
+            infl = None
+            tgt_len = None
+        else:
+            infl = list(infl)
+            tgt_len = len(infl) + 2
+        if fd[5] != '_': 
+            for tag in fd[5].split("|"):
+                cat, val = tag.split("=")
+                if cat == 'original_id':
+                    continue
+                tags.append(tag)
+        src = ['<L>'] + list(lemma) + ['</L>', '<P>'] + ["UPOS={}".format(upos), "XPOS={}".format(xpos)] + \
+                ['</P>', '<T>'] + tags + ['</T>']
+        return CoNLLInflectionFields(
+            raw=fd,
+            src=src, tgt=infl,
+            src_len=len(src)+2, tgt_len=tgt_len,
+        )
+
+    def load_or_create_vocabs(self):
+        vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
+        if self.config.share_vocab:
+            vocab = Vocab(constants=self.constants)
+            self.vocabs = CoNLLInflectionFields(src=vocab, tgt=vocab)
+        else:
+            vocab_src = Vocab(constants=self.constants)
+            vocab_tgt = Vocab(constants=self.constants)
+            self.vocabs = CoNLLInflectionFields(src=vocab_src, tgt=vocab_tgt)
+
+    def to_idx(self):
+        self.mtx = CoNLLInflectionFields(
+            src=[], tgt=[], src_len=[], tgt_len=[])
+        for sample in self.raw:
+            src = [self.vocabs.src.SOS] + [self.vocabs.src[c] for c in sample.src] + [self.vocabs.src.EOS]
+            self.mtx.src_len.append(sample.src_len)
+            self.mtx.src.append(src)
+
+            if sample.tgt is not None:
+                tgt = [self.vocabs.tgt.SOS] + [self.vocabs.tgt[c] for c in sample.tgt] + [self.vocabs.tgt.EOS]
+                self.mtx.tgt.append(tgt)
+                self.mtx.tgt_len.append(sample.tgt_len)
+            else:
+                self.mtx.tgt = None
+                self.mtx.tgt_len = None
+
+    def print_raw(self, stream):
+        for i, raw in enumerate(self.raw):
+            self.print_sample(raw, stream)
+            if i+1 in self.sentence_boundaries:
+                stream.write("\n")
+
+    def print_sample(self, sample, stream):
+        raw = sample.raw
+        raw[2] = ''.join(sample.tgt)
+        stream.write("\t".join(raw) + "\n")
+
+
+class UnlabeledSRInflectionDataset(SRInflectionDataset):
+
+    def load_or_create_vocabs(self):
+        vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
+        self.vocabs = CoNLLInflectionFields(
+            src=Vocab(file=vocab_pre+'src', frozen=True),
+            tgt=Vocab(file=vocab_pre+'tgt', frozen=True),
+        )

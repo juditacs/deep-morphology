@@ -19,3 +19,4 @@ from deep_morphology.data.sentence_probe_data import EmbeddingPairDataset, Unlab
 from deep_morphology.data.sentence_probe_data import WordOnlySentencePairDataset, UnlabeledWordOnlySentencePairDataset
 from deep_morphology.data.conll_data import ELMOPosDataset, UnlabeledELMOPosDataset
 from deep_morphology.data.conll_data import BERTPosDataset, UnlabeledBERTPosDataset
+from deep_morphology.data.conll_data import SRInflectionDataset, UnlabeledSRInflectionDataset
