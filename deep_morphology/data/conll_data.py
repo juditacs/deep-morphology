@@ -388,7 +388,8 @@ class SRInflectionDataset(BaseDataset):
                 if cat == 'original_id':
                     continue
                 tags.append(tag)
-        src = ['<L>'] + list(lemma) + ['</L>', '<P>'] + ["UPOS={}".format(upos), "XPOS={}".format(xpos)] + \
+        src = ['<L>'] + list(lemma) + ['</L>', '<P>'] + \
+                ["UPOS={}".format(upos), "XPOS={}".format(xpos)] + \
                 ['</P>', '<T>'] + tags + ['</T>']
         return CoNLLInflectionFields(
             raw=fd,
