@@ -375,13 +375,8 @@ class SRInflectionDataset(BaseDataset):
         upos = fd[3]
         xpos = fd[4]
         tags = []
-        # unlabeled data
-        if infl == '_' and lemma != '_':
-            infl = None
-            tgt_len = None
-        else:
-            infl = list(infl)
-            tgt_len = len(infl) + 2
+        infl = list(infl)
+        tgt_len = len(infl) + 2
         if fd[5] != '_': 
             for tag in fd[5].split("|"):
                 cat, val = tag.split("=")
@@ -443,3 +438,9 @@ class UnlabeledSRInflectionDataset(SRInflectionDataset):
             src=Vocab(file=vocab_pre+'src', frozen=True),
             tgt=Vocab(file=vocab_pre+'tgt', frozen=True),
         )
+
+    def extract_sample_from_line(self, line):
+        sample = super().extract_sample_from_line(line)
+        sample.tgt = None
+        sample.tgt_len = None
+        return sample
