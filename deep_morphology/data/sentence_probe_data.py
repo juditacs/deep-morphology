@@ -636,7 +636,7 @@ class BERTSentenceProberDataset(BaseDataset):
     data_recordclass = WordPieceSentenceProbeFields
     constants = []
 
-    def __init__(self, config, stream_or_file, share_vocabs_with=None):
+    def __init__(self, config, stream_or_file, share_vocabs_with=None, **kwargs):
         self.config = config
         self.load_or_create_vocabs()
         model_name = getattr(self.config, 'bert_model',
@@ -788,7 +788,7 @@ class ELMOSentenceProberDataset(BaseDataset):
     data_recordclass = SentenceProbeFields
     constants = []
 
-    def __init__(self, config, stream_or_file, share_vocabs_with=None):
+    def __init__(self, config, stream_or_file, share_vocabs_with=None, **kwargs):
         self.config = config
         self.load_or_create_vocabs()
         self.load_stream_or_file(stream_or_file)
