@@ -636,8 +636,10 @@ class BERTSentenceProberDataset(BaseDataset):
     data_recordclass = WordPieceSentenceProbeFields
     constants = []
 
-    def __init__(self, config, stream_or_file, share_vocabs_with=None, **kwargs):
+    def __init__(self, config, stream_or_file, share_vocabs_with=None,
+                 max_samples=None, **kwargs):
         self.config = config
+        self.max_samples = max_samples
         self.load_or_create_vocabs()
         model_name = getattr(self.config, 'bert_model',
                              'bert-base-multilingual-cased')
