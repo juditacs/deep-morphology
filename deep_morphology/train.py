@@ -52,8 +52,11 @@ def main():
                     dev_data=args.dev_file,
                     override_params=override_params,
                     debug=args.debug) as e:
-        logging.info("Experiment dir: {}".format(e.config.experiment_dir))
         e.run()
+    min_ = int(e.result.running_time // 60)
+    sec = int(e.result.running_time - min_ * 60)
+    logging.info("Experiment finished, running time: {}m{}s".format(
+        min_, sec))
 
 
 if __name__ == '__main__':
