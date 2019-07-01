@@ -631,6 +631,79 @@ class UnlabeledWordOnlySentenceProberDataset(WordOnlySentenceProberDataset):
         return True
 
 
+class BERTRandomTokenizer:
+
+    def __init__(self, tokenizer, keep_until=106, mix_initial_and_cont=False):
+        self.bert_tokenizer = tokenizer
+        start_rand = keep_until
+        bert_size = len(self.bert_tokenizer.vocab)
+        self.bert2rand = {}
+        if mix_initial_and_cont:
+            rand_range = np.arange(start_rand, bert_size)
+            np.random.shuffle(rand_range)
+            full_range = np.concatenate((np.arange(start_rand), rand_range))
+            for tok, idx in self.bert_tokenizer.vocab.items():
+                j = full_range[idx]
+                self.bert2rand[tok] = self.bert_tokenizer.ids_to_tokens[j]
+        else:
+            continuation = []
+            initial = []
+            for tok, idx in self.bert_tokenizer.vocab.items():
+                if idx < start_rand:
+                    continue
+                if tok.startswith('##'):
+                    continuation.append(tok)
+                else:
+                    initial.append(tok)
+            crand = np.array(continuation)
+            np.random.shuffle(crand)
+            cmap = dict(zip(*(continuation, crand)))
+
+            irand = np.array(initial)
+            np.random.shuffle(irand)
+            imap = dict(zip(*(initial, irand)))
+            for tok, idx in self.bert_tokenizer.vocab.items():
+                if idx < start_rand:
+                    self.bert2rand[tok] = tok
+                elif tok in cmap:
+                    self.bert2rand[tok] = cmap[tok]
+                elif tok in imap:
+                    self.bert2rand[tok] = imap[tok]
+                else:
+                    raise ValueError("Token [{}] not found".format(tok))
+
+    def load(self, fn):
+        self.bert2rand = {}
+        with open(fn) as f:
+            for line in f:
+                src, tgt = line.rstrip("\n").split("\t")
+                self.bert2rand[src] = tgt
+
+    def save(self, fn):
+        with open(fn, 'w') as f:
+            for src, tgt in self.bert2rand.items():
+                f.write("{}\t{}\n".format(src, tgt))
+
+    def tokenize(self, text):
+        bert_tokens = self.bert_tokenizer.tokenize(text)
+        replaced = []
+        for b in bert_tokens:
+            replaced.append(self.bert2rand[b])
+        return replaced
+
+    def convert_tokens_to_ids(self, tokens):
+        return self.bert_tokenizer.convert_tokens_to_ids(tokens)
+
+    @property
+    def rand2bert(self):
+        if not hasattr(self, '_rand2bert'):
+            self._rand2bert = {v: k for k, v in self.bert2rand.items()}
+        return self._rand2bert
+
+    def convert_to_orig(self, tokens):
+        return [self.rand2bert[t] for t in tokens]
+
+
 class BERTSentenceProberDataset(BaseDataset):
     unlabeled_data_class = 'UnlabeledBERTSentenceProberDataset'
     data_recordclass = WordPieceSentenceProbeFields
@@ -640,7 +713,6 @@ class BERTSentenceProberDataset(BaseDataset):
                  max_samples=None, **kwargs):
         self.config = config
         self.max_samples = max_samples
-        self.load_or_create_vocabs()
         model_name = getattr(self.config, 'bert_model',
                              'bert-base-multilingual-cased')
         if 'bert_tokenizer' in globals():
@@ -650,6 +722,13 @@ class BERTSentenceProberDataset(BaseDataset):
             self.tokenizer = BertTokenizer.from_pretrained(
                 model_name, do_lower_case=False)
             globals()['bert_tokenizer'] = self.tokenizer
+        if self.config.randomize_wordpieces:
+            logging.info("Randomizing WordPiece vocabulary")
+            self.tokenizer = BERTRandomTokenizer(
+                self.tokenizer,
+                keep_until=self.config.keep_wp_unitl,
+                mix_initial_and_cont=self.config.mix_initial_and_continuation_wp)
+        self.load_or_create_vocabs()
         self.load_stream_or_file(stream_or_file)
         self.to_idx()
         self.tgt_field_idx = -1
@@ -657,6 +736,12 @@ class BERTSentenceProberDataset(BaseDataset):
 
     def load_or_create_vocabs(self):
         existing = os.path.join(self.config.experiment_dir, 'vocab_label')
+        if self.config.randomize_wordpieces is True:
+            fn = os.path.join(self.config.experiment_dir, 'random_bert_vocab')
+            if os.path.exists(fn):
+                self.tokenizer.load(fn)
+            else:
+                self.tokenizer.save(fn)
         if os.path.exists(existing):
             vocab = Vocab(file=existing, frozen=True)
         else:
@@ -679,8 +764,9 @@ class BERTSentenceProberDataset(BaseDataset):
                 tok_idx.append(len(tokens)-1)
         tokens.append('[SEP]')
 
-        if not tokens[tok_idx[idx]] == '[UNK]':
-            assert set(tokens[tok_idx[idx]]) & set(target)
+        if self.config.randomize_wordpieces is False:
+            if not tokens[tok_idx[idx]] == '[UNK]':
+                assert set(tokens[tok_idx[idx]]) & set(target)
 
         return WordPieceSentenceProbeFields(
             sentence=tokens,
@@ -759,8 +845,9 @@ class UnlabeledBERTSentenceProberDataset(BERTSentenceProberDataset):
             if self.config.use_wordpiece_unit == 'last':
                 tok_idx.append(len(tokens)-1)
         tokens.append('[SEP]')
-        if not tokens[tok_idx[idx]] == '[UNK]':
-            assert set(tokens[tok_idx[idx]]) & set(target)
+        if self.config.randomize_wordpieces is False:
+            if not tokens[tok_idx[idx]] == '[UNK]':
+                assert set(tokens[tok_idx[idx]]) & set(target)
 
         return WordPieceSentenceProbeFields(
             sentence=tokens,
@@ -778,7 +865,11 @@ class UnlabeledBERTSentenceProberDataset(BERTSentenceProberDataset):
             sample.label = self.vocabs.label.inv_lookup(output)
 
     def print_sample(self, sample, stream):
-        sentence = " ".join(sample.sentence[1:])
+        if self.config.randomize_wordpieces:
+            orig_tokens = self.tokenizer.convert_to_orig(sample.sentence)
+            sentence = " ".join(orig_tokens[1:-1])
+        else:
+            sentence = " ".join(sample.sentence[1:-1])
         sentence = sentence.replace(" ##", "")
         stream.write("{}\t{}\t{}\t{}\n".format(
             sentence, sample.target_word, sample.real_target_idx, sample.label

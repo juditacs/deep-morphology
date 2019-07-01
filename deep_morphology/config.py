@@ -40,6 +40,10 @@ class Config:
         'teacher_forcing_prob': 0.8,
         # no limit for training data
         'train_size': None,
+        # randomized wordpiece vocabulary parameters
+        'mix_initial_and_continuation_wp': False,
+        'keep_wp_until': 106,
+        'randomize_wordpieces': False,
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded
