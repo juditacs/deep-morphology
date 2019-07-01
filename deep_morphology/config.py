@@ -90,7 +90,7 @@ class Config:
             for m in var_re.finditer(v):
                 key = m.group(1)
                 v_cpy = v_cpy.replace(m.group(0), os.environ[key])
-            v_cpy = os.path.realpath(v_cpy)
+            v_cpy = os.path.abspath(v_cpy)
             setattr(self, p, v_cpy)
 
     def __derive_params(self):

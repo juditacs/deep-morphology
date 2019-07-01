@@ -90,8 +90,8 @@ class Experiment:
             dev_fn = self.config.dev_file
             self.__load_train_dev_data(train_fn, dev_fn)
         elif isinstance(train_data, str) and isinstance(dev_data, str):
-            self.config.train_file = train_data
-            self.config.dev_file = dev_data
+            self.config.train_file = os.path.abspath(train_data)
+            self.config.dev_file = os.path.abspath(dev_data)
             train_fn = train_data
             dev_fn = dev_data
             self.__load_train_dev_data(train_fn, dev_fn)
