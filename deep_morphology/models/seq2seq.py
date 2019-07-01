@@ -256,7 +256,7 @@ class Seq2seq(BaseModel):
         tf_mode = getattr(self.config, 'teacher_forcing_mode', 'always')
         tf_prob = getattr(self.config, 'teacher_forcing_prob', 0.5)
         assert tf_mode in ('always', 'batch', 'sample', 'symbol')
-        if has_target is False:
+        if has_target is False or self.training is False:
             do_tf = False
         elif tf_mode == 'batch':
             do_tf = np.random.random() < tf_prob
