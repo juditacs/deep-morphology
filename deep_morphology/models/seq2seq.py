@@ -244,10 +244,10 @@ class Seq2seq(BaseModel):
                 setattr(self, param_tgt, getattr(self.config, param_tgt))
 
     def forward(self, batch):
-        has_target = batch.tgt is not None and batch.tgt[0] is not None
+        is_train = self.training
         X = to_cuda(torch.LongTensor(batch.src)).transpose(0, 1)  # time major
         seqlen_src, batch_size = X.size()
-        if has_target:
+        if is_train:
             Y = to_cuda(torch.LongTensor(batch.tgt)).transpose(0, 1)
             seqlen_tgt = Y.size(0)
         else:
@@ -256,7 +256,7 @@ class Seq2seq(BaseModel):
         tf_mode = getattr(self.config, 'teacher_forcing_mode', 'always')
         tf_prob = getattr(self.config, 'teacher_forcing_prob', 0.5)
         assert tf_mode in ('always', 'batch', 'sample', 'symbol')
-        if has_target is False:
+        if is_train is False:
             do_tf = False
         elif tf_mode == 'batch':
             do_tf = np.random.random() < tf_prob
