@@ -54,7 +54,7 @@ def check_and_get_commit_hash(debug):
             error_msg.extend(unstaged)
             error_msg[-1] += CEND
         if len(staged) > 0:
-            error_msg.append("Staged but not commited:{}".format(CGREEN))
+            error_msg.append("Staged but not committed:{}".format(CGREEN))
             error_msg.extend(staged)
             error_msg[-1] += CEND
         error_msg = "\n".join(error_msg)
