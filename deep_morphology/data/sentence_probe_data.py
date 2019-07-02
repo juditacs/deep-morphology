@@ -726,7 +726,7 @@ class BERTSentenceProberDataset(BaseDataset):
             logging.info("Randomizing WordPiece vocabulary")
             self.tokenizer = BERTRandomTokenizer(
                 self.tokenizer,
-                keep_until=self.config.keep_wp_unitl,
+                keep_until=self.config.keep_wp_until,
                 mix_initial_and_cont=self.config.mix_initial_and_continuation_wp)
         self.load_or_create_vocabs()
         self.load_stream_or_file(stream_or_file)
