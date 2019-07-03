@@ -76,6 +76,7 @@ class LSTMPermuteProber(SequenceClassifier):
             # freeze LSTM and embedding
             for p in self.lstm.parameters():
                 p.requires_grad = False
+            self.lstm.eval()
             # retrain MLP
             result2 = Result()
             super().run_train(train_data, result2, dev_data)
@@ -89,6 +90,7 @@ class RandomLSTMProber(SequenceClassifier):
                 p.data.normal_(0, 1)
         for p in self.lstm.parameters():
             p.requires_grad = False
+        self.lstm.eval()
         super().run_train(train_data, result, dev_data)
 
 
