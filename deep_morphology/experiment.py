@@ -17,35 +17,12 @@ import torch
 
 from deep_morphology.config import Config
 from deep_morphology import data as data_module
+from deep_morphology.result import Result
 from deep_morphology import models
 from deep_morphology.utils import check_and_get_commit_hash
 
 
 use_cuda = torch.cuda.is_available()
-
-
-class Result:
-    __slots__ = ('train_loss', 'dev_loss', 'train_acc', 'dev_acc',
-                 'running_time', 'start_time', 'train_size', 'dev_size',
-                 'parameters', 'epochs_run', 'node', 'gpu', 'exception')
-
-    def __init__(self):
-        self.train_loss = []
-        self.dev_loss = []
-        self.train_acc = []
-        self.dev_acc = []
-        self.train_size = self.dev_size = None
-
-    def start(self):
-        self.start_time = datetime.now()
-
-    def end(self):
-        self.running_time = (datetime.now() - self.start_time).total_seconds()
-
-    def save(self, expdir):
-        d = {k: getattr(self, k, None) for k in self.__slots__}
-        with open(os.path.join(expdir, 'result.yaml'), 'w') as f:
-            yaml.dump(d, f, default_flow_style=False)
 
 
 class Experiment:
