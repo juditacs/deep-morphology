@@ -12,6 +12,7 @@ from deep_morphology.models import BaseModel
 from deep_morphology.models.seq2seq import LSTMEncoder
 from deep_morphology.models.cnn import Conv1DEncoder
 from deep_morphology.models.mlp import MLP
+from deep_morphology.result import Result
 
 
 use_cuda = torch.cuda.is_available()
@@ -36,7 +37,14 @@ class SequenceClassifier(BaseModel):
             embedding_size=self.config.embedding_size,
             embedding_dropout=self.config.dropout,
         )
-        self.out_proj = nn.Linear(self.config.hidden_size, output_size)
+        hidden = self.config.hidden_size
+        self.mlp = MLP(
+            input_size=hidden,
+            layers=self.config.mlp_layers,
+            nonlinearity=self.config.mlp_nonlinearity,
+            output_size=output_size,
+        )
+        # self.out_proj = nn.Linear(self.config.hidden_size, output_size)
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, batch):
@@ -44,13 +52,44 @@ class SequenceClassifier(BaseModel):
         input = input.transpose(0, 1)  # time_major
         input_len = batch.input_len
         outputs, hidden = self.lstm(input, input_len)
-        labels = self.out_proj(hidden[0][-1])
+        labels = self.mlp(hidden[0][-1])
         return labels
 
     def compute_loss(self, target, output):
         target = to_cuda(torch.LongTensor(target.label)).view(-1)
         loss = self.criterion(output, target)
         return loss
+
+
+class LSTMPermuteProber(SequenceClassifier):
+    def run_train(self, train_data, result, dev_data):
+        # train full model
+        super().run_train(train_data, result, dev_data)
+        if self.config.permute_and_retrain:
+            # permute embedding
+            w = self.lstm.embedding.weight
+            with torch.no_grad():
+                idx = to_cuda(torch.randperm(w.size(0)))
+                w = w[idx]
+                self.lstm.embedding.weight = nn.Parameter(w)
+                self.lstm.embedding.weight.requires_grad = False
+            # freeze LSTM and embedding
+            for p in self.lstm.parameters():
+                p.requires_grad = False
+            # retrain MLP
+            result2 = Result()
+            super().run_train(train_data, result2, dev_data)
+            result.merge(result2)
+
+
+class RandomLSTMProber(SequenceClassifier):
+    def run_train(self, train_data, result, dev_data):
+        with torch.no_grad():
+            for p in self.lstm.parameters():
+                p.data.normal_(0, 1)
+        for p in self.lstm.parameters():
+            p.requires_grad = False
+        super().run_train(train_data, result, dev_data)
 
 
 class CNNSequenceClassifier(BaseModel):
