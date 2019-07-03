@@ -168,6 +168,8 @@ class EmbeddingProberDataset(BaseDataset):
         self.embedding_size = self.embedding.embedding_dim
         if getattr(self.config, 'permute_embedding', False):
             self.embedding.mtx = np.random.permutation(self.embedding.mtx)
+        if getattr(self.config, 'randomize_embedding', False):
+            self.embedding.mtx = np.random.random(self.embedding.mtx.shape)
         word_vecs = []
         labels = []
         for r in self.raw:
