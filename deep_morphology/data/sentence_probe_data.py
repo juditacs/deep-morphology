@@ -166,6 +166,8 @@ class EmbeddingProberDataset(BaseDataset):
             emb_fn = self.config.embedding
         self.embedding = Embedding(emb_fn, filter=vocab)
         self.embedding_size = self.embedding.embedding_dim
+        if getattr(self.config, 'permute_embedding', False):
+            self.embedding.mtx = np.random.permutation(self.embedding.mtx)
         word_vecs = []
         labels = []
         for r in self.raw:
