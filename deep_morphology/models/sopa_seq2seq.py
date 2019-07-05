@@ -234,7 +234,7 @@ class SopaSeq2seq(BaseModel):
             )
             # all_weights[t] = weights
             all_decoder_outputs[t] = decoder_output
-            if has_target:
+            if has_target and self.training:
                 decoder_input = Y[t]
             else:
                 val, idx = decoder_output.max(-1)
