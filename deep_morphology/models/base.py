@@ -129,8 +129,9 @@ class BaseModel(nn.Module):
                 m = torch.arange(tgt_size[1]).unsqueeze(0).expand(tgt_size)
                 mask = doc_lens.unsqueeze(1).expand(tgt_size) <= \
                     to_cuda(m.long())
-                correct[mask] = 0
-                numel = doc_lens.sum().item()
+                correct[mask] = 1
+                correct = correct.min(-1)[0]
+                numel = correct.size(0)
             else:
                 numel = target.numel()
             all_correct += correct.sum().item()
