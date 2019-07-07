@@ -14,6 +14,7 @@ import torch.nn as nn
 from deep_morphology.models.base import BaseModel
 from deep_morphology.models.attention import LuongAttention
 from deep_morphology.models.sopa import Sopa
+from deep_morphology.models.embedding import OneHotEmbedding
 
 use_cuda = torch.cuda.is_available()
 
@@ -30,16 +31,21 @@ class SopaEncoder(nn.Module):
         self.config = config
         self.input_size = input_size
 
-        self.embedding_dropout = nn.Dropout(config.dropout)
-        self.embedding = nn.Embedding(input_size, config.embedding_size)
-        nn.init.xavier_uniform_(self.embedding.weight)
+        if getattr(self.config, 'use_one_hot_embedding', False):
+            self.embedding = OneHotEmbedding(input_size)
+            self.embedding_size = input_size
+        else:
+            self.embedding_dropout = nn.Dropout(config.dropout)
+            self.embedding = nn.Embedding(input_size, config.embedding_size)
+            nn.init.xavier_uniform_(self.embedding.weight)
+            self.embedding_size = config.embedding_size
 
         dropout = 0 if self.config.num_layers < 2 else self.config.dropout
         if dropout > 0:
             self.dropout = torch.nn.Dropout(dropout)
         if self.config.use_lstm:
             self.cell = nn.LSTM(
-                self.config.embedding_size, self.config.hidden_size,
+                self.embedding_size, self.config.hidden_size,
                 num_layers=self.config.num_layers,
                 bidirectional=True,
                 dropout=dropout,
@@ -48,16 +54,18 @@ class SopaEncoder(nn.Module):
         if self.config.use_lstm:
             sopa_input_size = self.config.hidden_size
         else:
-            sopa_input_size = self.config.embedding_size
+            sopa_input_size = self.embedding_size
         if self.config.use_sopa:
             self.sopa = Sopa(sopa_input_size, patterns=self.config.patterns,
                              semiring=self.config.semiring, dropout=dropout)
             self.hidden_size = sum(self.config.patterns.values())
 
     def forward(self, input, input_len):
-
-        embedded = self.embedding(input)
-        embedded = self.embedding_dropout(embedded)
+        if getattr(self.config, 'use_one_hot_embedding', False):
+            embedded = self.embedding(input)
+        else:
+            embedded = self.embedding(input)
+            embedded = self.embedding_dropout(embedded)
         if self.config.use_lstm:
             outputs, hidden = self.cell(embedded)
             outputs = outputs[:, :, :self.config.hidden_size] + \
@@ -77,17 +85,22 @@ class Decoder(nn.Module):
         super().__init__()
         self.config = config
         self.output_size = output_size
-        self.embedding_dropout = nn.Dropout(config.dropout)
         if self.config.share_embedding:
             assert embedding is not None
             self.embedding = embedding
         else:
-            self.embedding = nn.Embedding(
-                output_size, config.embedding_size)
-            nn.init.xavier_uniform_(self.embedding.weight)
+            if getattr(self.config, 'use_one_hot_embedding', False):
+                self.embedding = OneHotEmbedding(output_size)
+                self.embedding_size = output_size
+            else:
+                self.embedding_dropout = nn.Dropout(config.dropout)
+                self.embedding = nn.Embedding(
+                    output_size, config.embedding_size)
+                nn.init.xavier_uniform_(self.embedding.weight)
+                self.embedding_size = config.embedding_size
 
         hidden_size = self.config.hidden_size
-        lstm_input_size = self.config.embedding_size
+        lstm_input_size = self.embedding_size
 
         if self.config.concat_sopa_to_decoder_input:
             lstm_input_size += sum(self.config.patterns.values())
@@ -124,8 +137,11 @@ class Decoder(nn.Module):
         return size_mtx, size_vec
 
     def forward(self, input, last_hidden, encoder_outputs, encoder_lens, sopa_scores):
-        embedded = self.embedding(input)
-        embedded = self.embedding_dropout(embedded)
+        if getattr(self.config, 'use_one_hot_embedding', False):
+            embedded = self.embedding(input)
+        else:
+            embedded = self.embedding(input)
+            embedded = self.embedding_dropout(embedded)
 
         if sopa_scores is not None:
             sopa_final_score = sopa_scores[-1]
