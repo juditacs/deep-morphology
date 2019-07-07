@@ -120,15 +120,15 @@ class Decoder(nn.Module):
         self.softmax = nn.Softmax(dim=-1)
 
     def derive_attention_size(self):
-        numpat = sum(self.config.patterns.values())
-
         if self.config.use_lstm:
             enc_size = self.config.hidden_size
         else:
-            enc_size = self.config.embedding_size
+            enc_size = self.embedding_size
         if self.config.attention_on == 'sopa':
+            numpat = sum(self.config.patterns.values())
             size_mtx = numpat
         elif self.config.attention_on == 'both':
+            numpat = sum(self.config.patterns.values())
             size_mtx = enc_size + numpat
         elif self.config.attention_on == 'encoder_outputs':
             size_mtx = enc_size
@@ -198,16 +198,17 @@ class SopaSeq2seq(BaseModel):
         self.output_size = output_size
         self.criterion = nn.CrossEntropyLoss(ignore_index=self.PAD)
 
-        sumpattern = sum(self.config.patterns.values())
         if self.config.use_lstm:
             self.hidden_size = self.config.hidden_size
         else:
-            self.hidden_size = self.config.embedding_size
+            self.hidden_size = self.encoder.embedding_size
 
         if self.config.decoder_hidden == 'sopa':
+            sumpattern = sum(self.config.patterns.values())
             self.hidden_w1 = nn.Linear(sumpattern, self.config.hidden_size)
             self.hidden_w2 = nn.Linear(sumpattern, self.config.hidden_size)
         elif self.config.decoder_hidden == 'both':
+            sumpattern = sum(self.config.patterns.values())
             self.hidden_w1 = nn.Linear(sumpattern+self.config.hidden_size, self.config.hidden_size)
             self.hidden_w2 = nn.Linear(sumpattern+self.config.hidden_size, self.config.hidden_size)
 
