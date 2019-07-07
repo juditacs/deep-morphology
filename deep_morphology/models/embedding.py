@@ -11,6 +11,15 @@ import torch
 import torch.nn as nn
 
 
+use_cuda = torch.cuda.is_available()
+
+
+def to_cuda(tensor):
+    if use_cuda:
+        return tensor.cuda()
+    return tensor
+
+
 def load_embedding(embedding_fn):
     with open(embedding_fn) as f:
         embedding = []
@@ -85,3 +94,24 @@ class EmbeddingWrapper(nn.Module):
 
     def size(self, *args):
         return self.embedding.weight.size(*args)
+
+
+class OneHotEmbedding(nn.Module):
+    def __init__(self, input_size):
+        super().__init__()
+        self.input_size = input_size
+
+    def forward(self, input):
+        if input.dim() == 2:
+            batch_size = input.size(1)
+            seqlen = input.size(0)
+            one_hot = to_cuda(torch.zeros(batch_size * seqlen, self.input_size))
+            idx = input.contiguous().view(-1, 1)
+            one_hot.scatter_(1, idx, 1)
+            one_hot = one_hot.view(seqlen, batch_size, self.input_size)
+        elif input.dim() == 1:
+            batch_size = input.size(0)
+            idx = input.unsqueeze(1)
+            one_hot = to_cuda(torch.zeros(batch_size, self.input_size))
+            one_hot.scatter_(1, idx, 1)
+        return one_hot
