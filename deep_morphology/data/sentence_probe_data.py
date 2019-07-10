@@ -765,6 +765,8 @@ class BERTSentenceProberDataset(BaseDataset):
                 tok_idx.append(len(tokens))
             if self.config.mask_target and i == idx:
                 tokens.append('[MASK]')
+            elif self.config.mask_context and i != idx:
+                tokens.append('[MASK]')
             else:
                 bert_toks = self.tokenizer.tokenize(t)
                 tokens.extend(bert_toks)
