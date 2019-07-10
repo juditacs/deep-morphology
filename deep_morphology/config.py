@@ -44,6 +44,7 @@ class Config:
         'mix_initial_and_continuation_wp': False,
         'keep_wp_until': 106,
         'randomize_wordpieces': False,
+        'mask_target': False,
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded

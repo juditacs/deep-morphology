@@ -21,12 +21,6 @@ SentenceProbeFields = recordclass(
     ['sentence', 'sentence_len', 'target_idx', 'label']
 )
 
-WordPieceSentenceProbeFields = recordclass(
-    'WordPieceSentenceProbeFields',
-    ['sentence', 'sentence_len', 'token_starts', 'real_target_idx',
-     'target_idx', 'target_word', 'label']
-)
-
 
 class WordOnlyFields(DataFields):
     _fields = ('sentence', 'target_word', 'target_word_len', 'target_idx',
@@ -57,6 +51,15 @@ class EmbeddingOnlyPairFields(DataFields):
     _alias = {
         'tgt': 'label',
     }
+    _needs_vocab = ('label', )
+
+
+class BERTProberFields(DataFields):
+    _fields = (
+        'sentence', 'tokens', 'target', 'idx', 
+        'sentence_len', 'target_idx', 'label',
+    )
+    _alias = {'tgt': 'label'}
     _needs_vocab = ('label', )
 
 
@@ -710,7 +713,7 @@ class BERTRandomTokenizer:
 
 class BERTSentenceProberDataset(BaseDataset):
     unlabeled_data_class = 'UnlabeledBERTSentenceProberDataset'
-    data_recordclass = WordPieceSentenceProbeFields
+    data_recordclass = BERTProberFields
     constants = []
 
     def __init__(self, config, stream_or_file, share_vocabs_with=None,
@@ -750,9 +753,7 @@ class BERTSentenceProberDataset(BaseDataset):
             vocab = Vocab(file=existing, frozen=True)
         else:
             vocab = Vocab(constants=[])
-        self.vocabs = WordPieceSentenceProbeFields(
-            None, None, None, None, None, None, vocab
-        )
+        self.vocabs = BERTProberFields(label=vocab)
 
     def extract_sample_from_line(self, line):
         sent, target, idx, label = line.rstrip("\n").split("\t")
@@ -762,37 +763,39 @@ class BERTSentenceProberDataset(BaseDataset):
         for i, t in enumerate(sent.split(" ")):
             if self.config.use_wordpiece_unit == 'first':
                 tok_idx.append(len(tokens))
-            bert_toks = self.tokenizer.tokenize(t)
-            tokens.extend(bert_toks)
+            if self.config.mask_target and i == idx:
+                tokens.append('[MASK]')
+            else:
+                bert_toks = self.tokenizer.tokenize(t)
+                tokens.extend(bert_toks)
             if self.config.use_wordpiece_unit == 'last':
                 tok_idx.append(len(tokens)-1)
         tokens.append('[SEP]')
 
-        if self.config.randomize_wordpieces is False:
+        if self.config.mask_target is True:
+            assert tokens[tok_idx[idx]] == '[MASK]'
+        elif self.config.randomize_wordpieces is False:
             if not tokens[tok_idx[idx]] == '[UNK]':
                 assert set(tokens[tok_idx[idx]]) & set(target)
 
-        return WordPieceSentenceProbeFields(
-            sentence=tokens,
+        return BERTProberFields(
+            sentence=sent,
+            tokens=tokens,
             sentence_len=len(tokens),
-            token_starts=tok_idx,
+            idx=idx,
             target_idx=tok_idx[idx],
-            real_target_idx=idx,
-            target_word=target,
+            target=target,
             label=label,
         )
 
     def to_idx(self):
-        mtx = WordPieceSentenceProbeFields(
-            [], [], [], [], [], [], []
-        )
+        mtx = BERTProberFields.initialize_all(list)
         for sample in self.raw:
             # int fields
             mtx.sentence_len.append(sample.sentence_len)
-            mtx.token_starts.append(sample.token_starts)
             mtx.target_idx.append(sample.target_idx)
             # sentence
-            idx = self.tokenizer.convert_tokens_to_ids(sample.sentence)
+            idx = self.tokenizer.convert_tokens_to_ids(sample.tokens)
             mtx.sentence.append(idx)
             # label
             if sample.label is None:
@@ -836,47 +839,14 @@ class UnlabeledBERTSentenceProberDataset(BERTSentenceProberDataset):
     def is_unlabeled(self):
         return True
 
-    def extract_sample_from_line(self, line):
-        sent, target, idx, label = line.rstrip("\n").split("\t")
-        idx = int(idx)
-        tokens = ['[CLS]']
-        tok_idx = []
-        for i, t in enumerate(sent.split(" ")):
-            if self.config.use_wordpiece_unit == 'first':
-                tok_idx.append(len(tokens))
-            bert_toks = self.tokenizer.tokenize(t)
-            tokens.extend(bert_toks)
-            if self.config.use_wordpiece_unit == 'last':
-                tok_idx.append(len(tokens)-1)
-        tokens.append('[SEP]')
-        if self.config.randomize_wordpieces is False:
-            if not tokens[tok_idx[idx]] == '[UNK]':
-                assert set(tokens[tok_idx[idx]]) & set(target)
-
-        return WordPieceSentenceProbeFields(
-            sentence=tokens,
-            sentence_len=len(tokens),
-            token_starts=tok_idx,
-            target_idx=tok_idx[int(idx)],
-            real_target_idx=idx,
-            target_word=target,
-            label=None,
-        )
-
     def decode(self, model_output):
         for i, sample in enumerate(self.raw):
             output = model_output[i].argmax().item()
             sample.label = self.vocabs.label.inv_lookup(output)
 
     def print_sample(self, sample, stream):
-        if self.config.randomize_wordpieces:
-            orig_tokens = self.tokenizer.convert_to_orig(sample.sentence)
-            sentence = " ".join(orig_tokens[1:-1])
-        else:
-            sentence = " ".join(sample.sentence[1:-1])
-        sentence = sentence.replace(" ##", "")
         stream.write("{}\t{}\t{}\t{}\n".format(
-            sentence, sample.target_word, sample.real_target_idx, sample.label
+            sample.sentence, sample.target, sample.idx, sample.label
         ))
 
 
