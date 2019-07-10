@@ -127,6 +127,12 @@ class DataFields:
         for kw, arg in kwargs.items():
             setattr(self, kw, arg)
 
+    def __setattr__(self, attr, value):
+        if attr not in self._fields:
+            raise AttributeError("{} has no attribute {}".format(
+                self.__class__.__name__, attr))
+        return super().__setattr__(attr, value)
+
     def __getitem__(self, idx):
         return getattr(self, self._fields[idx])
 
