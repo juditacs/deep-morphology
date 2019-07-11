@@ -120,6 +120,18 @@ class Config:
     def __validate_params(self):
         pass
 
+    def __repr__(self):
+        out = []
+        for attr in dir(self):
+            if attr.startswith('__'):
+                continue
+            if attr in ('_kwargs', 'path_variables', 'defaults'):
+                continue
+            if callable(getattr(self, attr)):
+                continue
+            out.append("{}={}".format(attr, getattr(self, attr)))
+        return "{}({})".format(self.__class__.__name__, ", ".join(out))
+
     def save(self, save_fn=None):
         if save_fn is None:
             save_fn = os.path.join(self.experiment_dir, 'config.yaml')
@@ -133,7 +145,7 @@ class Config:
                 continue
             if not hasattr(self, k):
                 continue
-            if hasattr(getattr(self, k, None), '__call__'):
+            if callable(getattr(self, k, None)):
                 continue
             if k in Config.path_variables and hasattr(self, k):
                 v = os.path.abspath(getattr(self, k))
