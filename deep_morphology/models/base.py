@@ -28,6 +28,9 @@ class BaseModel(nn.Module):
         super().__init__()
         self.config = config
 
+    def check_params(self):
+        pass
+
     def run_train(self, train_data, result, dev_data):
 
         self.init_optimizers()

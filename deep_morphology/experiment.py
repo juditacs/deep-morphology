@@ -7,6 +7,7 @@
 # Distributed under terms of the MIT license.
 import yaml
 import os
+import shutil
 import logging
 from datetime import datetime
 import platform
@@ -52,6 +53,15 @@ class Experiment:
                 logging.info("Dev [{}] size: {}".format(
                     field, len(self.dev_data.mtx[i])))
         self.init_model()
+        try:
+            self.model.check_params()
+        except:
+            self.remove_experiment_dir()
+            raise
+
+    def remove_experiment_dir(self):
+        if os.path.exists(self.config.experiment_dir):
+            shutil.rmtree(self.config.experiment_dir)
 
     def set_random_seeds(self):
         if not hasattr(self.config, 'torch_random_seed'):
