@@ -183,8 +183,6 @@ class BaseDataset:
                     vocab.frozen = True
         self.load_stream_or_file(stream_or_file)
         self.to_idx()
-        # index of target field, usually the last one
-        self.tgt_field_idx = -1
 
     def load_or_create_vocabs(self):
         vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
@@ -285,13 +283,13 @@ class BaseDataset:
     def decode(self, model_output):
         for i, sample in enumerate(self.raw):
             output = list(model_output[i])
-            decoded = [self.vocabs[self.tgt_field_idx].inv_lookup(s)
+            decoded = [self.vocabs.tgt.inv_lookup(s)
                        for s in output]
             if decoded[0] == 'SOS':
                 decoded = decoded[1:]
             if 'EOS' in decoded:
                 decoded = decoded[:decoded.index('EOS')]
-            self.raw[i][self.tgt_field_idx] = decoded
+            self.raw[i].tgt = decoded
 
     def print_raw(self, stream):
         for sample in self.raw:

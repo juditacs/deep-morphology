@@ -107,7 +107,6 @@ class BaseModel(nn.Module):
                   result=None):
         epoch_loss = 0
         all_correct = all_guess = 0
-        tgt_id = data.tgt_field_idx
         for step, batch in enumerate(data.batched_iter(self.config.batch_size)):
             if pass_dataset_to_forward:
                 output = self.forward(batch, data)
@@ -123,7 +122,7 @@ class BaseModel(nn.Module):
                         self.parameters(), self.config.clip)
                 for opt in self.optimizers:
                     opt.step()
-            target = torch.LongTensor(batch[tgt_id])
+            target = torch.LongTensor(batch.tgt)
             prediction = output.max(dim=-1)[1].cpu()
             correct = torch.eq(prediction, target)
             if hasattr(batch, 'tgt_len'):
