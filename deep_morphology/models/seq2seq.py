@@ -163,8 +163,7 @@ class AttentionDecoder(nn.Module):
         embedded = self.embedding(input)
         embedded = embedded.view(1, batch_size, -1)
 
-        lstm_out, lstm_hidden = self.cell(
-            embedded, last_hidden)
+        lstm_out, lstm_hidden = self.cell(embedded, last_hidden)
         context = self.attention(
             encoder_outputs, lstm_out, encoder_lens)
         context = context.squeeze(1)
@@ -224,6 +223,12 @@ class Seq2seq(BaseModel):
             self.hidden_proj2 = nn.Linear(
                 self.hidden_size_src, self.hidden_size_tgt)
 
+    def check_params(self):
+        assert self.config.hidden_size_src % 2 == 0
+        assert self.config.teacher_forcing_mode in \
+                ('batch', 'always', 'sample', 'symbol')
+        assert 0 <= self.config.teacher_forcing_prob <= 1.0
+
     def create_shared_params(self):
         for param in ('hidden_size', 'num_layers', 'embedding_size'):
             param_src = param + '_src'
@@ -253,9 +258,8 @@ class Seq2seq(BaseModel):
         else:
             seqlen_tgt = seqlen_src * 4
 
-        tf_mode = getattr(self.config, 'teacher_forcing_mode', 'always')
-        tf_prob = getattr(self.config, 'teacher_forcing_prob', 0.5)
-        assert tf_mode in ('always', 'batch', 'sample', 'symbol')
+        tf_mode = self.config.teacher_forcing_mode
+        tf_prob = self.config.teacher_forcing_prob
         if has_target is False or self.training is False:
             do_tf = False
         elif tf_mode == 'batch':
@@ -295,8 +299,6 @@ class Seq2seq(BaseModel):
                 val, idx = decoder_output.max(-1)
                 decoder_input = idx
                 decoder_input[do_tf[t]] = Y[t, do_tf[t]].unsqueeze(0)
-            else:
-                raise ValueError("Teacher forcing issue")
         return all_decoder_outputs.transpose(0, 1)
 
     def init_decoder_hidden(self, encoder_hidden):
@@ -368,7 +370,6 @@ class VanillaSeq2seq(Seq2seq):
 
         tf_mode = getattr(self.config, 'teacher_forcing_mode', 'always')
         tf_prob = getattr(self.config, 'teacher_forcing_prob', 0.5)
-        assert tf_mode in ('always', 'batch', 'sample', 'symbol')
         if has_target is False:
             do_tf = False
         elif tf_mode == 'batch':
