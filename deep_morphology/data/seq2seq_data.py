@@ -5,26 +5,28 @@
 # Copyright © 2018 Judit Acs <judit@sch.bme.hu>
 #
 # Distributed under terms of the MIT license.
-from recordclass import recordclass
 import os
 
-from deep_morphology.data.base_data import BaseDataset, Vocab
+from deep_morphology.data.base_data import BaseDataset, Vocab, DataFields
 
 
-Seq2seqFields = recordclass('Seq2seqFields', ['src', 'tgt'])
-Seq2seqWithLenFields = recordclass('Seq2seqWithLenFields',
-                                   ['src', 'src_len', 'tgt_len', 'tgt'])
+class Seq2seqFields(DataFields):
+    _fields = ('src', 'src_len', 'tgt', 'tgt_len')
+    _needs_vocab = ('src', 'tgt')
+
+#Seq2seqFields = recordclass('Seq2seqFields', ['src', 'tgt'])
+#Seq2seqWithLenFields = recordclass('Seq2seqWithLenFields', ['src', 'src_len', 'tgt_len', 'tgt'])
 
 
 class Seq2seqDataset(BaseDataset):
 
     unlabeled_data_class = 'UnlabeledSeq2seqDataset'
-    data_recordclass = Seq2seqWithLenFields
+    data_recordclass = Seq2seqFields
     constants = ['PAD', 'UNK', 'SOS', 'EOS']
 
     def load_or_create_vocabs(self):
         vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
-        vocabs = Seq2seqWithLenFields(None, None, None, None)
+        vocabs = Seq2seqFields()
         vocab_fn = vocab_pre + 'src'
         if os.path.exists(vocab_fn):
             vocabs.src = Vocab(file=vocab_fn, frozen=True)
@@ -44,7 +46,7 @@ class Seq2seqDataset(BaseDataset):
         src, tgt = line.split("\t")[:2]
         src = src.split(" ")
         tgt = tgt.split(" ")
-        return Seq2seqWithLenFields(
+        return Seq2seqFields(
             src=src, src_len=len(src)+2, tgt=tgt, tgt_len=len(tgt)+2)
 
     def print_sample(self, sample, stream):
@@ -58,14 +60,13 @@ class UnlabeledSeq2seqDataset(Seq2seqDataset):
 
     def extract_sample_from_line(self, line):
         src = line.split("\t")[0].split(" ")
-        return Seq2seqWithLenFields(
-            src=src, src_len=len(src)+2, tgt=None, tgt_len=None)
+        return Seq2seqFields(src=src, src_len=len(src)+2)
 
 
 class NoSpaceSeq2seqDataset(Seq2seqDataset):
 
     unlabeled_data_class = 'UnlabeledNoSpaceSeq2seqDataset'
-    data_recordclass = Seq2seqWithLenFields
+    data_recordclass = Seq2seqFields
     constants = ['PAD', 'UNK', 'SOS', 'EOS']
 
     def extract_sample_from_line(self, line):
@@ -77,7 +78,7 @@ class NoSpaceSeq2seqDataset(Seq2seqDataset):
             tgt_len = len(tgt) + 2
         else:
             tgt = tgt_len = None
-        return Seq2seqWithLenFields(src, src_len, tgt_len, tgt)
+        return Seq2seqFields(src=src, src_len=src_len, tgt=tgt_len, tgt_len=tgt)
 
     def print_sample(self, sample, stream):
         stream.write("{}\t{}\n".format(
@@ -91,7 +92,7 @@ class UnlabeledNoSpaceSeq2seqDataset(UnlabeledSeq2seqDataset):
     def extract_sample_from_line(self, line):
         src = line.rstrip("\n").split("\t")[0]
         src = list(src)
-        return Seq2seqWithLenFields(src, len(src)+2, None, None)
+        return Seq2seqFields(src=src, src_len=len(src)+2)
 
     def print_sample(self, sample, stream):
         stream.write("{}\t{}\n".format(
@@ -103,12 +104,12 @@ class UnlabeledNoSpaceSeq2seqDataset(UnlabeledSeq2seqDataset):
 class InflectionDataset(BaseDataset):
 
     unlabeled_data_class = 'UnlabeledInflectionDataset'
-    data_recordclass = Seq2seqWithLenFields
+    data_recordclass = Seq2seqFields
     constants = ['PAD', 'UNK', 'SOS', 'EOS']
 
     def load_or_create_vocabs(self):
         vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
-        vocabs = Seq2seqWithLenFields(None, None, None, None)
+        vocabs = Seq2seqFields()
         vocab_fn = vocab_pre + 'src'
         if os.path.exists(vocab_fn):
             vocabs.src = Vocab(file=vocab_fn, frozen=True)
@@ -129,7 +130,7 @@ class InflectionDataset(BaseDataset):
         tags = tags.split(";")
         src = ["<L>"] + list(lemma) + ["</L>", "<T>"] + tags + ["</T>"]
         tgt = ["<I>"] + list(inflected) + ["</I>"]
-        return Seq2seqWithLenFields(src, tgt, len(src), len(tgt))
+        return Seq2seqFields(src=src, tgt=tgt, src_len=len(src), tgt_len=len(tgt))
 
     def print_sample(self, sample, stream):
         lidx = sample.src.index("</L>")
@@ -167,7 +168,7 @@ class UnlabeledInflectionDataset(InflectionDataset):
         tags = tags.split(";")
         src = ["<L>"] + list(lemma) + ["</L>", "<T>"] + tags + ["</T>"]
         tgt = None
-        return Seq2seqWithLenFields(src, tgt, len(src), None)
+        return Seq2seqFields(src=src, tgt=tgt, src_len=len(src))
 
 
 class GlobalPaddingInflectionDataset(InflectionDataset):
@@ -262,7 +263,7 @@ class UnlabeledGlobalPaddingInflectionDataset(GlobalPaddingInflectionDataset):
         tags = tags.split(";")
         src = ["<L>"] + list(lemma) + ["</L>", "<T>"] + tags + ["</T>"]
         tgt = None
-        return Seq2seqWithLenFields(src, tgt, len(src), None)
+        return Seq2seqFields(src=src, tgt=tgt, src_len=len(src))
 
 
 class GlobalPaddingSeq2seqDataset(Seq2seqDataset):
