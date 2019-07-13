@@ -14,13 +14,10 @@ class Seq2seqFields(DataFields):
     _fields = ('src', 'src_len', 'tgt', 'tgt_len')
     _needs_vocab = ('src', 'tgt')
 
-#Seq2seqFields = recordclass('Seq2seqFields', ['src', 'tgt'])
-#Seq2seqWithLenFields = recordclass('Seq2seqWithLenFields', ['src', 'src_len', 'tgt_len', 'tgt'])
-
 
 class Seq2seqDataset(BaseDataset):
 
-    unlabeled_data_class = 'UnlabeledSeq2seqDataset'
+    unlabeled_data_class = 'Seq2seqDataset'
     data_recordclass = Seq2seqFields
     constants = ['PAD', 'UNK', 'SOS', 'EOS']
 
@@ -43,11 +40,15 @@ class Seq2seqDataset(BaseDataset):
         self.vocabs = vocabs
 
     def extract_sample_from_line(self, line):
-        src, tgt = line.split("\t")[:2]
-        src = src.split(" ")
-        tgt = tgt.split(" ")
-        return Seq2seqFields(
-            src=src, src_len=len(src)+2, tgt=tgt, tgt_len=len(tgt)+2)
+        fd = line.split("\t")[:2]
+        src = fd[0].split(" ")
+        if len(fd) < 2:
+            tgt = None
+            tgt_len = None
+        else:
+            tgt = fd[1].split(" ")
+            tgt_len = len(tgt) + 2
+        return Seq2seqFields(src=src, src_len=len(src)+2, tgt=tgt, tgt_len=tgt_len)
 
     def print_sample(self, sample, stream):
         stream.write("{}\t{}\n".format(
@@ -56,16 +57,9 @@ class Seq2seqDataset(BaseDataset):
         ))
 
 
-class UnlabeledSeq2seqDataset(Seq2seqDataset):
-
-    def extract_sample_from_line(self, line):
-        src = line.split("\t")[0].split(" ")
-        return Seq2seqFields(src=src, src_len=len(src)+2)
-
-
 class NoSpaceSeq2seqDataset(Seq2seqDataset):
 
-    unlabeled_data_class = 'UnlabeledNoSpaceSeq2seqDataset'
+    unlabeled_data_class = 'NoSpaceSeq2seqDataset'
     data_recordclass = Seq2seqFields
     constants = ['PAD', 'UNK', 'SOS', 'EOS']
 
@@ -78,21 +72,7 @@ class NoSpaceSeq2seqDataset(Seq2seqDataset):
             tgt_len = len(tgt) + 2
         else:
             tgt = tgt_len = None
-        return Seq2seqFields(src=src, src_len=src_len, tgt=tgt_len, tgt_len=tgt)
-
-    def print_sample(self, sample, stream):
-        stream.write("{}\t{}\n".format(
-            "".join(sample.src),
-            "".join(sample.tgt),
-        ))
-
-
-class UnlabeledNoSpaceSeq2seqDataset(UnlabeledSeq2seqDataset):
-
-    def extract_sample_from_line(self, line):
-        src = line.rstrip("\n").split("\t")[0]
-        src = list(src)
-        return Seq2seqFields(src=src, src_len=len(src)+2)
+        return Seq2seqFields(src=src, src_len=src_len, tgt=tgt, tgt_len=tgt_len)
 
     def print_sample(self, sample, stream):
         stream.write("{}\t{}\n".format(
@@ -103,7 +83,7 @@ class UnlabeledNoSpaceSeq2seqDataset(UnlabeledSeq2seqDataset):
 
 class InflectionDataset(BaseDataset):
 
-    unlabeled_data_class = 'UnlabeledInflectionDataset'
+    unlabeled_data_class = 'InflectionDataset'
     data_recordclass = Seq2seqFields
     constants = ['PAD', 'UNK', 'SOS', 'EOS']
 
@@ -129,8 +109,13 @@ class InflectionDataset(BaseDataset):
         lemma, inflected, tags = line.strip().split("\t")
         tags = tags.split(";")
         src = ["<L>"] + list(lemma) + ["</L>", "<T>"] + tags + ["</T>"]
-        tgt = ["<I>"] + list(inflected) + ["</I>"]
-        return Seq2seqFields(src=src, tgt=tgt, src_len=len(src), tgt_len=len(tgt))
+        if len(inflected) > 0:
+            tgt = ["<I>"] + list(inflected) + ["</I>"]
+            tgt_len = len(tgt)
+        else:
+            tgt = None
+            tgt_len = None
+        return Seq2seqFields(src=src, tgt=tgt, src_len=len(src)+2, tgt_len=tgt_len)
 
     def print_sample(self, sample, stream):
         lidx = sample.src.index("</L>")
@@ -158,17 +143,6 @@ class InflectionDataset(BaseDataset):
             if 'EOS' in decoded:
                 decoded = decoded[:decoded.index('EOS')]
             self.raw[i].tgt = decoded
-
-
-class UnlabeledInflectionDataset(InflectionDataset):
-    def extract_sample_from_line(self, line):
-        fd = line.strip().split("\t")
-        lemma = fd[0]
-        tags = fd[-1]
-        tags = tags.split(";")
-        src = ["<L>"] + list(lemma) + ["</L>", "<T>"] + tags + ["</T>"]
-        tgt = None
-        return Seq2seqFields(src=src, tgt=tgt, src_len=len(src))
 
 
 class GlobalPaddingInflectionDataset(InflectionDataset):
