@@ -158,6 +158,22 @@ class DataFields:
     def __len__(self):
         return len(self._fields)
 
+    def __repr__(self):
+        out = []
+        none_fields = []
+        for field in self._fields:
+            val = getattr(self, field)
+            if val is None:
+                none_fields.append(field)
+            else:
+                out.append("{}={}".format(field, repr(val)))
+        if none_fields:
+            return "{}({}, None fields: {})".format(
+                self.__class__.__name__, ", ".join(out),
+                ", ".join(none_fields))
+        return "{}({})".format(self.__class__.__name__, ", ".join(out))
+
+
     @classmethod
     def initialize_all(cls, initializer):
         d = cls()
