@@ -57,7 +57,7 @@ class Config:
     @classmethod
     def from_yaml(cls, file_or_stream, override_params=None):
         if isinstance(file_or_stream, str):
-            with open(filename) as f:
+            with open(file_or_stream) as f:
                 params = yaml.load(f)
         else:
             params = yaml.load(file_or_stream)
