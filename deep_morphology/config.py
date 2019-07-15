@@ -21,9 +21,9 @@ class Config:
         'share_vocab': False,
         'optimizer': 'Adam',
         'optimizer_kwargs': {},
-        'dataset_class': 'Seq2seqDataset',
         'overwrite_model': True,
         'attention_variant': 'general',
+        'dropout': 0,
         'min_epochs': 0,
         'lr_decay': False,
         'lr_decay_patience': 0,
@@ -38,6 +38,7 @@ class Config:
         'sort_data_by_length': False,
         'teacher_forcing_mode': 'always',
         'teacher_forcing_prob': 0.8,
+        'use_one_hot_embedding': False,
         # no limit for training data
         'train_size': None,
         # BERT randomized wordpiece vocabulary parameters
@@ -47,6 +48,12 @@ class Config:
         # BERT-specific configuration
         'mask_target': False,
         'mask_context': False,
+        # SoPa
+        'semiring': 'LogSpaceMaxTimesSemiring',
+        'use_sopa': True,
+        'concat_sopa_to_decoder_input': False,
+        'attention_on': 'sopa',
+        'decoder_hidden': 'sopa',
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded
