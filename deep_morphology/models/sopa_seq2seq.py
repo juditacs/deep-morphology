@@ -208,6 +208,16 @@ class SopaSeq2seq(BaseModel):
             self.hidden_w1 = nn.Linear(sumpattern+self.config.hidden_size, self.config.hidden_size)
             self.hidden_w2 = nn.Linear(sumpattern+self.config.hidden_size, self.config.hidden_size)
 
+    def check_params(self):
+        assert self.config.decoder_hidden in ('encoder_hidden', 'sopa', 'both', 'zero')
+        if self.config.use_sopa is False:
+            assert self.config.decoder_hidden in ('encoder_hidden', 'zero')
+            assert self.config.concat_sopa_to_decoder_input  is False
+            assert self.config.attention_on  == 'encoder_outputs'
+        if self.config.use_lstm is False:
+            assert self.config.decoder_hidden in ('sopa', 'zero')
+            assert self.config.attention_on  == 'sopa'
+
     def compute_loss(self, target, output):
         target = to_cuda(torch.LongTensor(target.tgt))
         batch_size, seqlen, dim = output.size()
