@@ -286,8 +286,7 @@ class BaseDataset:
 
     @property
     def is_unlabeled(self):
-        return "Unlabeled" in self.__class__.__name__
-        # return self.raw[0].tgt is None
+        return self.raw[0].tgt is None or "Unlabeled" in self.__class__.__name__
 
     def create_recordclass(self, *data):
         return self.__class__.data_recordclass(*data)
