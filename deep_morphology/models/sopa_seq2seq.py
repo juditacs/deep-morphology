@@ -296,7 +296,6 @@ class SopaSeq2seq(BaseModel):
             sopa_final_score = sopa_final_score.view(1, batch_size, concat_len)
             sopa_final_score = sopa_final_score.repeat(nl, 1, 1)
             encoder_hidden = tuple(e[:nl] + e[nl:] for e in encoder_hidden)
-            sopa_final_score = sopa_final_score.squeeze(0).repeat(nl, 1, 1)
             hidden0 = torch.cat((encoder_hidden[0], sopa_final_score), -1)
             hidden1 = torch.cat((encoder_hidden[1], sopa_final_score), -1)
             return (
@@ -305,6 +304,4 @@ class SopaSeq2seq(BaseModel):
             )
         if self.config.decoder_hidden == 'zero':
             return None
-            return (torch.randn(1, batch_size, self.config.hidden_size),
-                    torch.randn(1, batch_size, self.config.hidden_size))
         raise ValueError("Unknown hidden projection option: {}".format(self.config.decoder_hidden))
