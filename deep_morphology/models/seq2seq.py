@@ -239,6 +239,7 @@ class Seq2seq(BaseModel):
         assert self.config.teacher_forcing_mode in \
                 ('batch', 'always', 'sample', 'symbol')
         assert 0 <= self.config.teacher_forcing_prob <= 1.0
+        assert self.config.num_layers_src >= self.config.num_layers_tgt
 
     def create_shared_params(self):
         for param in ('hidden_size', 'num_layers', 'embedding_size'):
