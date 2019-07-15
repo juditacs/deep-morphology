@@ -12,7 +12,6 @@ import logging
 import random
 import importlib.util
 
-from deep_morphology.config import Config
 from deep_morphology.experiment import Experiment
 
 
