@@ -14,7 +14,7 @@ import torch.nn as nn
 from deep_morphology.models.base import BaseModel
 from deep_morphology.models.attention import LuongAttention
 from deep_morphology.models.sopa import Sopa
-from deep_morphology.models.embedding import OneHotEmbedding
+from deep_morphology.models.embedding import EmbeddingWrapper, OneHotEmbedding
 
 use_cuda = torch.cuda.is_available()
 
@@ -31,14 +31,14 @@ class SopaEncoder(nn.Module):
         self.config = config
         self.input_size = input_size
 
-        if getattr(self.config, 'use_one_hot_embedding', False):
+        if self.config.use_one_hot_embedding:
+            self.embedding = EmbeddingWrapper(
+                input_size, config.embedding_size,
+                dropout=config.dropout)
+            self.embedding_size = config.embedding_size
+        else:
             self.embedding = OneHotEmbedding(input_size)
             self.embedding_size = input_size
-        else:
-            self.embedding_dropout = nn.Dropout(config.dropout)
-            self.embedding = nn.Embedding(input_size, config.embedding_size)
-            nn.init.xavier_uniform_(self.embedding.weight)
-            self.embedding_size = config.embedding_size
 
         dropout = 0 if self.config.num_layers < 2 else self.config.dropout
         if dropout > 0:
@@ -61,11 +61,7 @@ class SopaEncoder(nn.Module):
             self.hidden_size = sum(self.config.patterns.values())
 
     def forward(self, input, input_len):
-        if getattr(self.config, 'use_one_hot_embedding', False):
-            embedded = self.embedding(input)
-        else:
-            embedded = self.embedding(input)
-            embedded = self.embedding_dropout(embedded)
+        embedded = self.embedding(input)
         if self.config.use_lstm:
             outputs, hidden = self.cell(embedded)
             outputs = outputs[:, :, :self.config.hidden_size] + \
