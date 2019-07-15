@@ -13,7 +13,7 @@ import numpy as np
 from deep_morphology.models.base import BaseModel
 from deep_morphology.models.attention import LuongAttention
 from deep_morphology.models.packed_lstm import AutoPackedLSTM
-from deep_morphology.models.embedding import EmbeddingWrapper
+from deep_morphology.models.embedding import EmbeddingWrapper, OneHotEmbedding
 
 use_cuda = torch.cuda.is_available()
 
@@ -32,14 +32,20 @@ class LSTMEncoder(nn.Module):
                  lstm_cell=None,
                  lstm_num_layers=1,
                  lstm_dropout=0,
+                 use_one_hot_embedding=False,
                  embedding=None,
                  embedding_size=None,
                  embedding_dropout=None):
         super().__init__()
         self.output_size = output_size
         if embedding is None:
-            self.embedding = EmbeddingWrapper(
-                input_size, embedding_size, dropout=embedding_dropout)
+            if use_one_hot_embedding:
+                self.embedding = OneHotEmbedding(input_size)
+                self.embedding_size = input_size
+            else:
+                self.embedding = EmbeddingWrapper(
+                    input_size, embedding_size,
+                    dropout=embedding_dropout)
         else:
             self.embedding = embedding
         if embedding_dropout is not None:
@@ -88,14 +94,18 @@ class LSTMDecoder(nn.Module):
         super().__init__()
         self.output_size = output_size
         if embedding is None:
-            self.embedding = EmbeddingWrapper(input_size, embedding_size, dropout=embedding_dropout)
+            if use_one_hot_embedding:
+                self.embedding = OneHotEmbedding(input_size)
+                self.embedding_size = input_size
+            else:
+                self.embedding = EmbeddingWrapper(input_size, embedding_size, dropout=embedding_dropout)
+                embedding_size = self.embedding.weight.size(1)
         else:
             self.embedding = embedding
         if embedding_dropout is not None:
             self.embedding = nn.Embedding(
                 output_size, embedding_size)
 
-        embedding_size = self.embedding.weight.size(1)
         if lstm_cell is None:
             dropout = 0 if lstm_num_layers == 1 else lstm_dropout
             self.cell = nn.LSTM(
@@ -186,6 +196,7 @@ class Seq2seq(BaseModel):
             lstm_hidden_size=self.hidden_size_src,
             lstm_num_layers=self.config.num_layers_src,
             lstm_dropout=self.config.dropout,
+            use_one_hot_embedding=self.config.use_one_hot_embedding,
             embedding_size=self.config.embedding_size_src,
             embedding_dropout=self.config.dropout,
         )
