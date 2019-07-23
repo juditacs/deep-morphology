@@ -206,14 +206,14 @@ class BaseDataset:
         need_vocab = getattr(self.data_recordclass, '_needs_vocab', None)
         if need_vocab is None:
             need_vocab = list(self.data_recordclass._asdict().keys())
+        self.vocabs = self.data_recordclass()
         for field in need_vocab:
             vocab_fn = getattr(self.config, 'vocab_{}'.format(field),
                                vocab_pre+field)
             if os.path.exists(vocab_fn):
-                vocabs.append(Vocab(file=vocab_fn, frozen=True))
+                setattr(self.vocabs, field, Vocab(file=vocab_fn, frozen=True))
             else:
-                vocabs.append(Vocab(constants=self.constants))
-        self.vocabs = self.data_recordclass(*vocabs)
+                setattr(self.vocabs, field, Vocab(constants=self.constants))
 
     def load_stream_or_file(self, stream_or_file):
         if isinstance(stream_or_file, str):
