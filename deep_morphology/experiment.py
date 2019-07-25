@@ -132,6 +132,14 @@ class Experiment:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        self.result.end()
+        logging.info("Experiment dir: {}".format(
+            self.config.experiment_dir))
+        min_ = int(self.result.running_time // 60)
+        sec = int(self.result.running_time - min_ * 60)
+        logging.info("Experiment finished in {}m{}s, "
+                     "max dev acc: {}".format(
+                         min_, sec, max(self.result.dev_acc)))
         if exc_type is None:
             self.result.exception = None
         else:
@@ -141,7 +149,6 @@ class Experiment:
             }
         self.result.epochs_run = len(self.result.train_loss)
         self.config.save()
-        self.result.end()
         self.result.save(self.config.experiment_dir)
 
     def run(self):

@@ -53,11 +53,6 @@ def main():
                     override_params=override_params,
                     debug=args.debug) as e:
         e.run()
-    min_ = int(e.result.running_time // 60)
-    sec = int(e.result.running_time - min_ * 60)
-    logging.info("Experiment finished, running time: {}m{}s".format(
-        min_, sec))
-
 
 if __name__ == '__main__':
     log_fmt = '%(asctime)s - %(levelname)s - %(message)s'
