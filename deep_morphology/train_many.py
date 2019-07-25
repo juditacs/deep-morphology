@@ -26,6 +26,9 @@ def parse_args():
     p.add_argument("-N", "--N", type=int, required=True,
                    help="Number of experiments to run")
     p.add_argument("--params", type=str, default=None)
+    p.add_argument("--debug", action="store_true",
+                   help="Do not raise exception when the working "
+                   "directory is not clean.")
     return p.parse_args()
 
 
@@ -67,7 +70,7 @@ def main():
         for param, value in params.items():
             setattr(config, param, value)
         with Experiment(config, train_data=args.train_file,
-                        dev_data=args.dev_file) as e:
+                        dev_data=args.dev_file, debug=args.debug) as e:
             e.run()
 
 
