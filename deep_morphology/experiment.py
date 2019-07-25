@@ -95,7 +95,14 @@ class Experiment:
         else:
             self.train_data = self.data_class(self.config, train_fn)
         self.train_data.save_vocabs()
-        self.dev_data = self.data_class(self.config, dev_fn, share_vocabs_with=self.train_data)
+        if hasattr(self.config, 'dev_size'):
+            self.dev_data = self.data_class(
+                self.config, dev_fn, max_samples=self.config.dev_size,
+                share_vocabs_with=self.train_data)
+        else:
+            self.dev_data = self.data_class(
+                self.config, dev_fn,
+                share_vocabs_with=self.train_data)
 
     def init_model(self):
         model_class = getattr(models, self.config.model)
