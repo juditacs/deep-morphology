@@ -36,7 +36,7 @@ class BaseModel(nn.Module):
         self.init_optimizers()
 
         saved = False
-        if self.config.lr_decay is not False:
+        if self.config.lr_decay:
             lrd = self.config.lr_decay
             patience = self.config.lr_decay_patience
             for opt in self.optimizers:
