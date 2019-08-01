@@ -5,7 +5,6 @@
 # Copyright © 2018 Judit Acs <judit@sch.bme.hu>
 #
 # Distributed under terms of the MIT license.
-import yaml
 import os
 import shutil
 import logging
@@ -135,11 +134,14 @@ class Experiment:
         self.result.end()
         logging.info("Experiment dir: {}".format(
             self.config.experiment_dir))
-        min_ = int(self.result.running_time // 60)
-        sec = int(self.result.running_time - min_ * 60)
-        logging.info("Experiment finished in {}m{}s, "
-                     "max dev acc: {}".format(
-                         min_, sec, max(self.result.dev_acc)))
+        if len(self.result.dev_acc) > 0:
+            min_ = int(self.result.running_time // 60)
+            sec = int(self.result.running_time - min_ * 60)
+            logging.info("Experiment finished in {}m{}s, "
+                         "max dev acc: {}".format(
+                             min_, sec, max(self.result.dev_acc)))
+        else:
+            logging.info("Experiment failed, no successful training epochs.")
         if exc_type is None:
             self.result.exception = None
         else:
