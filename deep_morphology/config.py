@@ -65,9 +65,9 @@ class Config:
     def from_yaml(cls, file_or_stream, override_params=None):
         if isinstance(file_or_stream, str):
             with open(file_or_stream) as f:
-                params = yaml.load(f)
+                params = yaml.load(f, Loader=yaml.FullLoader)
         else:
-            params = yaml.load(file_or_stream)
+            params = yaml.load(file_or_stream, Loader=yaml.FullLoader)
         if override_params:
             params.update(override_params)
         return cls(**params)
@@ -171,7 +171,7 @@ class InferenceConfig(Config):
     @classmethod
     def from_yaml(cls, filename, override_params=None):
         with open(filename) as f:
-            params = yaml.load(f)
+            params = yaml.load(f, Loader=yaml.FullLoader)
         if override_params:
             params.update(override_params)
         if 'experiment_dir' not in params:
