@@ -176,6 +176,8 @@ class InferenceConfig(Config):
             params.update(override_params)
         if 'experiment_dir' not in params:
             params['experiment_dir'] = os.path.dirname(filename)
+        if 'inference_batch_size' in params:
+            params['batch_size'] = params['inference_batch_size']
         return cls(**params)
 
     def __init__(self, **kwargs):
