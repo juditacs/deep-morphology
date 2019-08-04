@@ -199,6 +199,7 @@ class BaseDataset:
                     vocab.frozen = True
         self.load_stream_or_file(stream_or_file)
         self.to_idx()
+        self.sort_data_by_length()
 
     def load_or_create_vocabs(self):
         vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
@@ -265,11 +266,11 @@ class BaseDataset:
                     mtx[i].append(idx)
         self.mtx = self.create_recordclass(*mtx)
 
-        if not self.is_unlabeled:
-            if self.config.sort_data_by_length:
-                self.sort_data_by_length()
-
     def sort_data_by_length(self, sort_field=None):
+        if self.is_unlabeled:
+            return
+        if self.config.sort_data_by_length is False:
+            return
         if sort_field is None:
             sort_field = 'src_len'
         if hasattr(self.mtx, sort_field):
