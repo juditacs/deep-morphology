@@ -410,12 +410,25 @@ class SRInflectionDataset(BaseDataset):
             src=[], tgt=[], src_len=[], tgt_len=[])
         self.type_mapping = {}
         for sample in self.raw:
-            if sample.tgt is None:
-                key = (tuple(sample.src), tuple())
+            if self.config.type_level:
+                if sample.tgt is None:
+                    key = (tuple(sample.src), tuple())
+                else:
+                    key = (tuple(sample.src), tuple(sample.tgt))
+                if key not in self.type_mapping:
+                    self.type_mapping[key] = len(self.mtx.src)
+                    src = [self.vocabs.src.SOS] + [self.vocabs.src[c] for c in sample.src] + [self.vocabs.src.EOS]
+                    self.mtx.src_len.append(sample.src_len)
+                    self.mtx.src.append(src)
+
+                    if sample.tgt is not None:
+                        tgt = [self.vocabs.tgt.SOS] + [self.vocabs.tgt[c] for c in sample.tgt] + [self.vocabs.tgt.EOS]
+                        self.mtx.tgt.append(tgt)
+                        self.mtx.tgt_len.append(sample.tgt_len)
+                    else:
+                        self.mtx.tgt = None
+                        self.mtx.tgt_len = None
             else:
-                key = (tuple(sample.src), tuple(sample.tgt))
-            if key not in self.type_mapping:
-                self.type_mapping[key] = len(self.mtx.src)
                 src = [self.vocabs.src.SOS] + [self.vocabs.src[c] for c in sample.src] + [self.vocabs.src.EOS]
                 self.mtx.src_len.append(sample.src_len)
                 self.mtx.src.append(src)
@@ -438,12 +451,15 @@ class SRInflectionDataset(BaseDataset):
             if 'EOS' in decoded:
                 decoded = decoded[:decoded.index('EOS')]
             outputs.append(decoded)
-        for sample in self.raw:
-            if sample.tgt is None:
-                key = (tuple(sample.src), tuple())
+        for si, sample in enumerate(self.raw):
+            if self.config.type_level:
+                if sample.tgt is None:
+                    key = (tuple(sample.src), tuple())
+                else:
+                    key = (tuple(sample.src), tuple(sample.tgt))
+                sample.tgt = outputs[self.type_mapping[key]]
             else:
-                key = (tuple(sample.src), tuple(sample.tgt))
-            sample.tgt = outputs[self.type_mapping[key]]
+                sample.tgt = outputs[si]
 
     def print_raw(self, stream):
         for i, raw in enumerate(self.raw):
