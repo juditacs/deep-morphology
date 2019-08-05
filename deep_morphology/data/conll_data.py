@@ -384,6 +384,8 @@ class SRInflectionDataset(BaseDataset):
             for tag in fd[5].split("|"):
                 cat, val = tag.split("=")
                 if cat == 'original_id':
+                    if self.config.include_original_id:
+                        tags.append(tag)
                     continue
                 tags.append(tag)
         src = ['<L>'] + list(lemma) + ['</L>', '<P>'] + \
@@ -405,29 +407,82 @@ class SRInflectionDataset(BaseDataset):
             vocab_tgt = Vocab(constants=self.constants)
             self.vocabs = CoNLLInflectionFields(src=vocab_src, tgt=vocab_tgt)
 
+    def add_and_cache_sample(self, sample):
+        self.add_src_tgt(sample.src, sample.tgt)
+        return
+        if sample.tgt is None:
+            key = (tuple(sample.src), tuple())
+        else:
+            key = (tuple(sample.src), tuple(sample.tgt))
+            if key not in self.type_mapping:
+                self.type_mapping[key] = len(self.mtx.src)
+                src = [self.vocabs.src.SOS] + [self.vocabs.src[c] for c in sample.src] + [self.vocabs.src.EOS]
+                self.mtx.src_len.append(sample.src_len)
+                self.mtx.src.append(src)
+
+                if sample.tgt is not None:
+                    tgt = [self.vocabs.tgt.SOS] + [self.vocabs.tgt[c] for c in sample.tgt] + [self.vocabs.tgt.EOS]
+                    self.mtx.tgt.append(tgt)
+                    self.mtx.tgt_len.append(sample.tgt_len)
+                else:
+                    self.mtx.tgt = None
+                    self.mtx.tgt_len = None
+
+    def add_with_different_casing(self, sample):
+        src = sample.src.copy()
+        lemma_end = src.index('</L>')
+        # all lowercase
+        lemma = [c.lower() for c in src[1:lemma_end]]
+        lower_src = ['<L>'] + lemma + src[lemma_end:]
+        if sample.tgt:
+            lower_tgt = [c.lower() for c in sample.tgt]
+        else:
+            lower_tgt = tuple()
+        self.add_src_tgt(lower_src, lower_tgt)
+        # all uppercase
+        lemma = [c.upper() for c in src[1:lemma_end]]
+        upper_src = ['<L>'] + lemma + src[lemma_end:]
+        if sample.tgt:
+            upper_tgt = [c.upper() for c in sample.tgt]
+        else:
+            upper_tgt = tuple()
+        self.add_src_tgt(upper_src, upper_tgt)
+        # capitalized
+        lemma = [src[1].upper()] + [c.lower() for c in src[2:lemma_end]]
+        cap_src = ['<L>'] + lemma + src[lemma_end:]
+        if sample.tgt:
+            cap_tgt = [sample.tgt[0].upper()] + [c.lower() for c in sample.tgt[1:]]
+        else:
+            cap_tgt = tuple()
+        self.add_src_tgt(cap_src, cap_tgt)
+
+    def add_src_tgt(self, src, tgt):
+        if tgt:
+            tgt = [self.vocabs.tgt.SOS] + [self.vocabs.tgt[c] for c in tgt] + [self.vocabs.tgt.EOS]
+            tgt_tuple = tuple(tgt)
+            tgt_len = len(tgt)
+        else:
+            tgt_tuple = tuple()
+            tgt_len = None
+        src = [self.vocabs.src.SOS] + [self.vocabs.src[c] for c in src] + [self.vocabs.src.EOS]
+        key = (tuple(src), tgt_tuple)
+        if key not in self.type_mapping:
+            self.type_mapping[key] = len(self.mtx.src)
+            self.mtx.src.append(src)
+            self.mtx.src_len.append(len(src))
+            self.mtx.tgt.append(tgt)
+            self.mtx.tgt_len.append(tgt_len)
+
     def to_idx(self):
         self.mtx = CoNLLInflectionFields(
             src=[], tgt=[], src_len=[], tgt_len=[])
         self.type_mapping = {}
         for sample in self.raw:
-            if self.config.type_level:
-                if sample.tgt is None:
-                    key = (tuple(sample.src), tuple())
+            if self.config.type_level and self.is_unlabeled is False:
+                if self.config.train_all_casing_options:
+                    self.add_with_different_casing(sample)
                 else:
-                    key = (tuple(sample.src), tuple(sample.tgt))
-                if key not in self.type_mapping:
-                    self.type_mapping[key] = len(self.mtx.src)
-                    src = [self.vocabs.src.SOS] + [self.vocabs.src[c] for c in sample.src] + [self.vocabs.src.EOS]
-                    self.mtx.src_len.append(sample.src_len)
-                    self.mtx.src.append(src)
-
-                    if sample.tgt is not None:
-                        tgt = [self.vocabs.tgt.SOS] + [self.vocabs.tgt[c] for c in sample.tgt] + [self.vocabs.tgt.EOS]
-                        self.mtx.tgt.append(tgt)
-                        self.mtx.tgt_len.append(sample.tgt_len)
-                    else:
-                        self.mtx.tgt = None
-                        self.mtx.tgt_len = None
+                    self.add_and_cache_sample(sample)
             else:
                 src = [self.vocabs.src.SOS] + [self.vocabs.src[c] for c in sample.src] + [self.vocabs.src.EOS]
                 self.mtx.src_len.append(sample.src_len)
@@ -452,7 +507,7 @@ class SRInflectionDataset(BaseDataset):
                 decoded = decoded[:decoded.index('EOS')]
             outputs.append(decoded)
         for si, sample in enumerate(self.raw):
-            if self.config.type_level:
+            if self.config.type_level and self.is_unlabeled is False:
                 if sample.tgt is None:
                     key = (tuple(sample.src), tuple())
                 else:
