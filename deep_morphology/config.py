@@ -54,6 +54,10 @@ class Config:
         'concat_sopa_to_decoder_input': False,
         'attention_on': 'sopa',
         'decoder_hidden': 'sopa',
+        # Surface Realization Shared Task
+        'include_original_id': False,
+        'type_level': False,
+        'add_with_different_casing': False
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded
