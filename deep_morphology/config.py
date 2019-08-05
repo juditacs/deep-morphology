@@ -61,6 +61,10 @@ class Config:
         'train_file', 'dev_file', 'experiment_dir',
     )
 
+    inference_params = (
+        'inference_batch_size',
+    )
+
     @classmethod
     def from_yaml(cls, file_or_stream, override_params=None):
         if isinstance(file_or_stream, str):
@@ -87,7 +91,14 @@ class Config:
         self.__expand_variables()
         self.__derive_params()
         self.__validate_params()
+        self.__copy_inference_params()
 
+    def __copy_inference_params(self):
+        for param in self.inference_params:
+            if param in self._kwargs:
+                # call __getattr__
+                getattr(self, param)
+                
     def __getattr__(self, attr):
         if attr in self._kwargs:
             setattr(self, attr, self._kwargs[attr])
@@ -132,7 +143,7 @@ class Config:
         for attr in dir(self):
             if attr.startswith('__'):
                 continue
-            if attr in ('_kwargs', 'path_variables', 'defaults'):
+            if attr in ('_kwargs', 'path_variables', 'defaults', 'inference_params'):
                 continue
             if callable(getattr(self, attr)):
                 continue
@@ -146,7 +157,7 @@ class Config:
         for k in dir(self):
             if k.startswith('__') and k.endswith('__'):
                 continue
-            if k in ('_kwargs', 'path_variables', 'defaults'):
+            if k in ('_kwargs', 'path_variables', 'defaults', 'inference_params'):
                 continue
             if k == 'experiment_dir':
                 continue
