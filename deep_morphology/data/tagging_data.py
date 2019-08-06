@@ -48,7 +48,7 @@ class TaggingDataset(BaseDataset):
 
 
 class Segmentation2BIDataset(BaseDataset):
-    unlabeled_data_class = 'Segmentation2BIDataset'
+    unlabeled_data_class = 'UnlabeledSegmentation2BIDataset'
     data_recordclass = TaggingFields
     constants = ['PAD', 'UNK', 'SOS', 'EOS']
 
@@ -75,6 +75,12 @@ class Segmentation2BIDataset(BaseDataset):
 
     def print_sample(self, sample, stream):
         stream.write("{}\t{}\n".format("".join(sample.src), "".join(sample.tgt)))
+
+
+class UnlabeledSegmentation2BIDataset(Segmentation2BIDataset):
+    @property
+    def is_unlabeled(self):
+        return True
 
 
 def segmentation2bi(segmentation):
