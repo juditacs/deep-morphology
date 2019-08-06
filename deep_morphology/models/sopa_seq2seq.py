@@ -32,13 +32,13 @@ class SopaEncoder(nn.Module):
         self.input_size = input_size
 
         if self.config.use_one_hot_embedding:
+            self.embedding = OneHotEmbedding(input_size)
+            self.embedding_size = input_size
+        else:
             self.embedding = EmbeddingWrapper(
                 input_size, config.embedding_size,
                 dropout=config.dropout)
             self.embedding_size = config.embedding_size
-        else:
-            self.embedding = OneHotEmbedding(input_size)
-            self.embedding_size = input_size
 
         dropout = 0 if self.config.num_layers < 2 else self.config.dropout
         if dropout > 0:
