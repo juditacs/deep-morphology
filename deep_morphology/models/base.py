@@ -41,7 +41,7 @@ class BaseModel(nn.Module):
             patience = self.config.lr_decay_patience
             for opt in self.optimizers:
                 scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-                    opt, mode='max', factor=lrd, patience=patience, verbose=True)
+                    opt, mode='min', factor=lrd, patience=patience, verbose=True)
         else:
             scheduler = None
 
@@ -72,7 +72,7 @@ class BaseModel(nn.Module):
                 self.config.save()
             result.save(self.config.experiment_dir)
             if scheduler:
-                scheduler.step(dev_acc)
+                scheduler.step(dev_loss)
         if saved is False:
             self._save(epoch)
 
