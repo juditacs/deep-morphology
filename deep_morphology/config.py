@@ -56,6 +56,7 @@ class Config:
         'decoder_hidden': 'sopa',
         # Surface Realization Shared Task
         'include_original_id': False,
+        'include_right_id': False,
         'type_level': False,
         'add_with_different_casing': False
     }

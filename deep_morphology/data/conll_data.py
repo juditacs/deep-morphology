@@ -363,15 +363,15 @@ class SRInflectionDataset(BaseDataset):
                 continue
             if not line.strip():
                 if sent:
-                    self.raw.extend(self.extract_sample_from_line(l) for l in sent)
+                    self.raw.extend(self.extract_sample_from_line(l, len(sent)) for l in sent)
                     self.sentence_boundaries.add(len(self.raw))
                 sent = []
             else:
                 sent.append(line.rstrip("\n"))
         if sent:
-            self.raw.extend(self.extract_sample_from_line(l) for l in sent)
+            self.raw.extend(self.extract_sample_from_line(l, len(sent)) for l in sent)
 
-    def extract_sample_from_line(self, line):
+    def extract_sample_from_line(self, line, sent_len):
         fd = line.split("\t")
         lemma = fd[1]
         infl = fd[2]
@@ -384,10 +384,13 @@ class SRInflectionDataset(BaseDataset):
             for tag in fd[5].split("|"):
                 cat, val = tag.split("=")
                 if cat == 'original_id':
+                    orig_id = int(val)
                     if self.config.include_original_id:
                         tags.append(tag)
                     continue
                 tags.append(tag)
+            if self.config.include_right_id:
+                tags.append('right_id={}'.format(sent_len - orig_id + 1))
         src = ['<L>'] + list(lemma) + ['</L>', '<P>'] + \
                 ["UPOS={}".format(upos), "XPOS={}".format(xpos)] + \
                 ['</P>', '<T>'] + tags + ['</T>']
@@ -537,8 +540,8 @@ class UnlabeledSRInflectionDataset(SRInflectionDataset):
             tgt=Vocab(file=vocab_pre+'tgt', frozen=True),
         )
 
-    def extract_sample_from_line(self, line):
-        sample = super().extract_sample_from_line(line)
+    def extract_sample_from_line(self, line, sent_len):
+        sample = super().extract_sample_from_line(line, sent_len)
         sample.tgt = None
         sample.tgt_len = None
         return sample
