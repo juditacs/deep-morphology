@@ -237,7 +237,7 @@ class Seq2seq(BaseModel):
     def check_params(self):
         assert self.config.hidden_size_src % 2 == 0
         assert self.config.teacher_forcing_mode in \
-                ('batch', 'always', 'sample', 'symbol')
+                ('batch', 'sample', 'symbol')
         assert 0 <= self.config.teacher_forcing_prob <= 1.0
         assert self.config.num_layers_src >= self.config.num_layers_tgt
 
@@ -276,8 +276,6 @@ class Seq2seq(BaseModel):
             do_tf = False
         elif tf_mode == 'batch':
             do_tf = np.random.random() < tf_prob
-        elif tf_mode == 'always':
-            do_tf = True
         elif tf_mode == 'sample':
             do_tf = (np.random.random(batch_size) < tf_prob).astype(np.int16)
         elif tf_mode == 'symbol':
@@ -380,14 +378,12 @@ class VanillaSeq2seq(Seq2seq):
         else:
             seqlen_tgt = seqlen_src * 4
 
-        tf_mode = getattr(self.config, 'teacher_forcing_mode', 'always')
-        tf_prob = getattr(self.config, 'teacher_forcing_prob', 0.5)
+        tf_mode = getattr(self.config, 'teacher_forcing_mode', 'symbol')
+        tf_prob = getattr(self.config, 'teacher_forcing_prob', 1.0)
         if has_target is False:
             do_tf = False
         elif tf_mode == 'batch':
             do_tf = np.random.random() < tf_prob
-        elif tf_mode == 'always':
-            do_tf = True
         elif tf_mode == 'sample':
             do_tf = (np.random.random(batch_size) < tf_prob).astype(np.int16)
         elif tf_mode == 'symbol':
