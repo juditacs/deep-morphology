@@ -6,6 +6,7 @@
 #
 # Distributed under terms of the MIT license.
 import os
+import logging
 import numpy as np
 
 import torch
@@ -36,23 +37,23 @@ class SopaEncoder(nn.Module):
             self.embedding_size = input_size
         else:
             self.embedding = EmbeddingWrapper(
-                input_size, config.embedding_size,
+                input_size, config.embedding_size_src,
                 dropout=config.dropout)
-            self.embedding_size = config.embedding_size
+            self.embedding_size = config.embedding_size_src
 
         dropout = 0 if self.config.num_layers < 2 else self.config.dropout
         if dropout > 0:
             self.dropout = torch.nn.Dropout(dropout)
         if self.config.use_lstm:
             self.cell = nn.LSTM(
-                self.embedding_size, self.config.hidden_size,
-                num_layers=self.config.num_layers,
+                self.embedding_size, self.config.hidden_size_src,
+                num_layers=self.config.num_layers_src,
                 bidirectional=True,
                 dropout=dropout,
                 batch_first=False,
             )
         if self.config.use_lstm:
-            sopa_input_size = self.config.hidden_size
+            sopa_input_size = self.config.hidden_size_src
         else:
             sopa_input_size = self.embedding_size
         if self.config.use_sopa:
@@ -64,8 +65,8 @@ class SopaEncoder(nn.Module):
         embedded = self.embedding(input)
         if self.config.use_lstm:
             outputs, hidden = self.cell(embedded)
-            outputs = outputs[:, :, :self.config.hidden_size] + \
-                outputs[:, :, self.config.hidden_size:]
+            outputs = outputs[:, :, :self.config.hidden_size_src] + \
+                outputs[:, :, self.config.hidden_size_src:]
         else:
             outputs = embedded
             hidden = None
@@ -89,13 +90,11 @@ class Decoder(nn.Module):
                 self.embedding = OneHotEmbedding(output_size)
                 self.embedding_size = output_size
             else:
-                self.embedding_dropout = nn.Dropout(config.dropout)
-                self.embedding = nn.Embedding(
-                    output_size, config.embedding_size)
-                nn.init.xavier_uniform_(self.embedding.weight)
-                self.embedding_size = config.embedding_size
+                self.embedding = EmbeddingWrapper(
+                    output_size, self.config.embedding_size_tgt, dropout=self.config.dropout)
+                self.embedding_size = config.embedding_size_tgt
 
-        hidden_size = self.config.hidden_size
+        hidden_size = self.config.hidden_size_tgt
         lstm_input_size = self.embedding_size
 
         if self.config.concat_sopa_to_decoder_input:
@@ -103,7 +102,7 @@ class Decoder(nn.Module):
 
         self.cell = nn.LSTM(
             lstm_input_size, hidden_size,
-            num_layers=self.config.num_layers,
+            num_layers=self.config.num_layers_tgt,
             bidirectional=False,
             batch_first=False,
             dropout=self.config.dropout)
@@ -117,9 +116,9 @@ class Decoder(nn.Module):
 
     def derive_attention_size(self):
         if self.config.use_lstm:
-            enc_size = self.config.hidden_size
+            enc_size = self.config.hidden_size_src
         else:
-            enc_size = self.embedding_size
+            enc_size = self.config.embedding_size_src
         if self.config.attention_on == 'sopa':
             numpat = sum(self.config.patterns.values())
             size_mtx = numpat
@@ -133,11 +132,7 @@ class Decoder(nn.Module):
         return size_mtx, size_vec
 
     def forward(self, input, last_hidden, encoder_outputs, encoder_lens, sopa_scores):
-        if getattr(self.config, 'use_one_hot_embedding', False):
-            embedded = self.embedding(input)
-        else:
-            embedded = self.embedding(input)
-            embedded = self.embedding_dropout(embedded)
+        embedded = self.embedding(input)
 
         if sopa_scores is not None:
             sopa_final_score = sopa_scores[-1]
@@ -177,6 +172,7 @@ class SopaSeq2seq(BaseModel):
 
     def __init__(self, config, dataset):
         super().__init__(config)
+        self.create_shared_params()
         input_size = len(dataset.vocabs.src)
         output_size = len(dataset.vocabs.tgt)
         self.encoder = SopaEncoder(config, input_size)
@@ -217,6 +213,31 @@ class SopaSeq2seq(BaseModel):
         if self.config.use_lstm is False:
             assert self.config.decoder_hidden in ('sopa', 'zero')
             assert self.config.attention_on  == 'sopa'
+
+    def create_shared_params(self):
+        src_params = ['embedding_size']
+        if self.config.use_lstm:
+            src_params.append('hidden_size')
+            src_params.append('num_layers')
+        for param in ('hidden_size', 'num_layers', 'embedding_size'):
+            param_src = param + '_src'
+            param_tgt = param + '_tgt'
+            if hasattr(self.config, param):
+                if hasattr(self.config, param_src) or hasattr(self.config, param_tgt):
+                    logging.warning("{} and {} are ignored because {} is defined".format(
+                        param_src, param_tgt, param))
+                value = getattr(self.config, param)
+                if param in src_params:
+                    setattr(self, param_src, value)
+                    setattr(self.config, param_src, value)
+                setattr(self, param_tgt, value)
+                setattr(self, param, value)
+                setattr(self.config, param_tgt, value)
+                setattr(self.config, param, value)
+            else:
+                if param in src_params:
+                    setattr(self, param_src, getattr(self.config, param_src))
+                setattr(self, param_tgt, getattr(self.config, param_tgt))
 
     def compute_loss(self, target, output):
         target = to_cuda(torch.LongTensor(target.tgt))
