@@ -128,8 +128,7 @@ class Decoder(nn.Module):
         elif self.config.attention_on == 'encoder_outputs':
             size_mtx = enc_size
 
-        size_vec = self.config.hidden_size
-        return size_mtx, size_vec
+        return size_mtx, self.config.hidden_size_tgt
 
     def forward(self, input, last_hidden, encoder_outputs, encoder_lens, sopa_scores):
         embedded = self.embedding(input)
@@ -197,12 +196,12 @@ class SopaSeq2seq(BaseModel):
 
         if self.config.decoder_hidden == 'sopa':
             sumpattern = sum(self.config.patterns.values())
-            self.hidden_w1 = nn.Linear(sumpattern, self.config.hidden_size)
-            self.hidden_w2 = nn.Linear(sumpattern, self.config.hidden_size)
+            self.hidden_w1 = nn.Linear(sumpattern, self.config.hidden_size_tgt)
+            self.hidden_w2 = nn.Linear(sumpattern, self.config.hidden_size_tgt)
         elif self.config.decoder_hidden == 'both':
             sumpattern = sum(self.config.patterns.values())
-            self.hidden_w1 = nn.Linear(sumpattern+self.config.hidden_size, self.config.hidden_size)
-            self.hidden_w2 = nn.Linear(sumpattern+self.config.hidden_size, self.config.hidden_size)
+            self.hidden_w1 = nn.Linear(sumpattern+self.config.hidden_size_src, self.config.hidden_size_tgt)
+            self.hidden_w2 = nn.Linear(sumpattern+self.config.hidden_size_src, self.config.hidden_size_tgt)
 
     def check_params(self):
         assert self.config.decoder_hidden in ('encoder_hidden', 'sopa', 'both', 'zero')
