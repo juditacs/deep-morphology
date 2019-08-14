@@ -41,15 +41,13 @@ class SopaEncoder(nn.Module):
                 dropout=config.dropout)
             self.embedding_size = config.embedding_size_src
 
-        dropout = 0 if self.config.num_layers < 2 else self.config.dropout
-        if dropout > 0:
-            self.dropout = torch.nn.Dropout(dropout)
         if self.config.use_lstm:
+            lstm_dropout = 0 if self.config.num_layers_src < 2 else self.config.dropout
             self.cell = nn.LSTM(
                 self.embedding_size, self.config.hidden_size_src,
                 num_layers=self.config.num_layers_src,
                 bidirectional=True,
-                dropout=dropout,
+                dropout=lstm_dropout,
                 batch_first=False,
             )
         if self.config.use_lstm:
@@ -58,7 +56,7 @@ class SopaEncoder(nn.Module):
             sopa_input_size = self.embedding_size
         if self.config.use_sopa:
             self.sopa = Sopa(sopa_input_size, patterns=self.config.patterns,
-                             semiring=self.config.semiring, dropout=dropout)
+                             semiring=self.config.semiring, dropout=self.config.dropout)
             self.hidden_size = sum(self.config.patterns.values())
 
     def forward(self, input, input_len):
@@ -298,7 +296,7 @@ class SopaSeq2seq(BaseModel):
             np.save(f, weights.cpu().data.numpy())
 
     def init_decoder_hidden(self, batch_size, encoder_hidden, sopa_scores):
-        nl = self.config.num_layers
+        nl = self.config.num_layers_tgt
         if self.config.decoder_hidden == 'encoder_hidden':
             return tuple(e[:nl] + e[nl:] for e in encoder_hidden)
         if self.config.decoder_hidden == 'sopa':
