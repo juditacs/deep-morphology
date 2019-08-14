@@ -268,7 +268,7 @@ class Seq2seq(BaseModel):
             Y = to_cuda(torch.LongTensor(batch.tgt)).transpose(0, 1)
             seqlen_tgt = Y.size(0)
         else:
-            seqlen_tgt = seqlen_src * 4
+            seqlen_tgt = max(10, seqlen_src * 2)
 
         tf_mode = self.config.teacher_forcing_mode
         tf_prob = self.config.teacher_forcing_prob
