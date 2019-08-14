@@ -36,8 +36,8 @@ class Config:
         'save_metric': 'dev_loss',
         'shuffle_batches': False,
         'sort_data_by_length': False,
-        'teacher_forcing_mode': 'always',
-        'teacher_forcing_prob': 0.8,
+        'teacher_forcing_mode': 'symbol',
+        'teacher_forcing_prob': 1.0,
         'use_one_hot_embedding': False,
         # no limit for training data
         'train_size': None,
