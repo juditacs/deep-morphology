@@ -42,12 +42,13 @@ class Config:
         # no limit for training data
         'train_size': None,
         # BERT randomized wordpiece vocabulary parameters
-        'mix_initial_and_continuation_wp': False,
+        'mix_initial_and_continuation_wp': True,
         'keep_wp_until': 106,
         'randomize_wordpieces': False,
         # BERT-specific configuration
         'mask_target': False,
-        'mask_context': False,
+        'mask_context': 0,
+        'mask_all_context': False,
         # SoPa
         'semiring': 'LogSpaceMaxTimesSemiring',
         'use_sopa': True,

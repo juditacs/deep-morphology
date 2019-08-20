@@ -761,17 +761,22 @@ class BERTSentenceProberDataset(BaseDataset):
         tokens = ['[CLS]']
         tok_idx = []
         for i, t in enumerate(sent.split(" ")):
+            bert_tokens = self.tokenizer.tokenize(t)
+
+            if i == idx:
+                if self.config.mask_target:
+                    bert_tokens = ['[MASK]']
+            else:
+                if self.config.mask_all_context:
+                    bert_tokens = ['[MASK]']
+                elif abs(i-idx) <= self.config.mask_context:
+                    bert_tokens = ['[MASK]']
+
             if self.config.use_wordpiece_unit == 'first':
                 tok_idx.append(len(tokens))
-            if self.config.mask_target and i == idx:
-                tokens.append('[MASK]')
-            elif self.config.mask_context and i != idx:
-                tokens.append('[MASK]')
             else:
-                bert_toks = self.tokenizer.tokenize(t)
-                tokens.extend(bert_toks)
-            if self.config.use_wordpiece_unit == 'last':
-                tok_idx.append(len(tokens)-1)
+                tok_idx.append(len(tokens) + len(bert_tokens)-1)
+            tokens.extend(bert_tokens)
         tokens.append('[SEP]')
 
         if self.config.mask_target is True:
