@@ -48,6 +48,8 @@ class Config:
         # BERT-specific configuration
         'mask_target': False,
         'mask_context': 0,
+        'mask_left_context': 0,
+        'mask_right_context': 0,
         'mask_all_context': False,
         # SoPa
         'semiring': 'LogSpaceMaxTimesSemiring',

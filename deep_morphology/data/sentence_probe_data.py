@@ -771,6 +771,10 @@ class BERTSentenceProberDataset(BaseDataset):
                     bert_tokens = ['[MASK]']
                 elif abs(i-idx) <= self.config.mask_context:
                     bert_tokens = ['[MASK]']
+                elif 0 < idx-i <= self.config.mask_left_context:
+                    bert_tokens = ['[MASK]']
+                elif 0 < i-idx <= self.config.mask_right_context:
+                    bert_tokens = ['[MASK]']
 
             if self.config.use_wordpiece_unit == 'first':
                 tok_idx.append(len(tokens))
