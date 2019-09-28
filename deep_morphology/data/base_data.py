@@ -277,6 +277,7 @@ class BaseDataset:
             order = np.argsort(-np.array(getattr(self.mtx, sort_field)))
         else:
             order = np.argsort([-len(m) for m in self.mtx.src])
+        self.order = order
         ordered = []
         for m in self.mtx:
             if m is None or len(m) == 0 or m[0] is None:
@@ -297,6 +298,9 @@ class BaseDataset:
         self.print_raw(stream)
 
     def decode(self, model_output):
+        if hasattr(self, 'order'):
+            new_order = np.argsort(self.order)
+            model_output = np.array(model_output)[new_order]
         for i, sample in enumerate(self.raw):
             output = list(model_output[i])
             decoded = [self.vocabs.tgt.inv_lookup(s)
