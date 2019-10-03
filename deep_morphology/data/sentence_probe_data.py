@@ -755,25 +755,56 @@ class BERTSentenceProberDataset(BaseDataset):
             vocab = Vocab(constants=[])
         self.vocabs = BERTProberFields(label=vocab)
 
-    def extract_sample_from_line(self, line):
-        sent, target, idx, label = line.rstrip("\n").split("\t")
-        idx = int(idx)
+    def load_stream(self, stream):
+        if self.is_unlabeled:
+            permutations = self.config.test_permutations
+        else:
+            permutations = self.config.train_permutations
+        if permutations == 0:
+            super().load_stream(stream)
+        else:
+            self.raw = []
+            for line in stream:
+                sent, target, tgt_idx, label = line.rstrip("\n").split("\t")
+                tgt_idx = int(tgt_idx)
+                tokens = sent.split(" ")
+                for n in range(permutations):
+                    perm_idx = np.arange(len(tokens))
+                    np.random.shuffle(perm_idx)
+                    inv_idx = np.argsort(perm_idx)
+                    perm_tokens = [tokens[inv_idx[i]] for i in range(len(tokens))]
+                    perm_tgt_idx = perm_idx[tgt_idx]
+
+                    bert_tokens, bert_tok_idx = self.perturb_sentence(
+                        perm_tokens, target, perm_tgt_idx)
+                    self.raw.append(BERTProberFields(
+                        sentence=sent,
+                        tokens=bert_tokens,
+                        sentence_len=len(bert_tokens),
+                        idx=tgt_idx,
+                        target_idx=bert_tok_idx[perm_tgt_idx],
+                        target=target,
+                        label=label,
+                    ))
+
+
+    def perturb_sentence(self, sentence, target, tgt_idx):
         tokens = ['[CLS]']
         tok_idx = []
-        for i, t in enumerate(sent.split(" ")):
+        for i, t in enumerate(sentence):
             bert_tokens = self.tokenizer.tokenize(t)
 
-            if i == idx:
+            if i == tgt_idx:
                 if self.config.mask_target:
                     bert_tokens = ['[MASK]']
             else:
                 if self.config.mask_all_context:
                     bert_tokens = ['[MASK]']
-                elif abs(i-idx) <= self.config.mask_context:
+                elif abs(i-tgt_idx) <= self.config.mask_context:
                     bert_tokens = ['[MASK]']
-                elif 0 < idx-i <= self.config.mask_left_context:
+                elif 0 < tgt_idx-i <= self.config.mask_left_context:
                     bert_tokens = ['[MASK]']
-                elif 0 < i-idx <= self.config.mask_right_context:
+                elif 0 < i-tgt_idx <= self.config.mask_right_context:
                     bert_tokens = ['[MASK]']
 
             if self.config.use_wordpiece_unit == 'first':
@@ -784,17 +815,25 @@ class BERTSentenceProberDataset(BaseDataset):
         tokens.append('[SEP]')
 
         if self.config.mask_target is True:
-            assert tokens[tok_idx[idx]] == '[MASK]'
+            assert tokens[tok_idx[tgt_idx]] == '[MASK]'
         elif self.config.randomize_wordpieces is False:
-            if not tokens[tok_idx[idx]] == '[UNK]':
-                assert set(tokens[tok_idx[idx]]) & set(target)
+            if not tokens[tok_idx[tgt_idx]] == '[UNK]':
+                assert set(tokens[tok_idx[tgt_idx]]) & set(target)
+
+        return tokens, tok_idx
+
+    def extract_sample_from_line(self, line):
+        sent, target, idx, label = line.rstrip("\n").split("\t")
+        idx = int(idx)
+        bert_tokens, bert_tok_idx = self.perturb_sentence(
+            sent.split(" "), target, idx)
 
         return BERTProberFields(
             sentence=sent,
-            tokens=tokens,
-            sentence_len=len(tokens),
+            tokens=bert_tokens,
+            sentence_len=len(bert_tokens),
             idx=idx,
-            target_idx=tok_idx[idx],
+            target_idx=bert_tok_idx[idx],
             target=target,
             label=label,
         )
