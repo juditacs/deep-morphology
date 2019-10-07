@@ -47,6 +47,7 @@ class Config:
         'randomize_wordpieces': False,
         # BERT-specific configuration
         'mask_target': False,
+        'mask_each_wordpiece': False,
         'mask_context': 0,
         'mask_left_context': 0,
         'mask_right_context': 0,

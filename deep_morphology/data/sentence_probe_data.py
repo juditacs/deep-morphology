@@ -796,7 +796,10 @@ class BERTSentenceProberDataset(BaseDataset):
 
             if i == tgt_idx:
                 if self.config.mask_target:
-                    bert_tokens = ['[MASK]']
+                    if self.config.mask_each_wordpiece:
+                        bert_tokens = ['[MASK]'] * len(bert_tokens)
+                    else:
+                        bert_tokens = ['[MASK]']
             else:
                 if self.config.mask_all_context:
                     bert_tokens = ['[MASK]']
