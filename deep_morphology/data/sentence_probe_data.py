@@ -787,7 +787,6 @@ class BERTSentenceProberDataset(BaseDataset):
                         label=label,
                     ))
 
-
     def perturb_sentence(self, sentence, target, tgt_idx):
         tokens = ['[CLS]']
         tok_idx = []
@@ -830,13 +829,27 @@ class BERTSentenceProberDataset(BaseDataset):
         idx = int(idx)
         bert_tokens, bert_tok_idx = self.perturb_sentence(
             sent.split(" "), target, idx)
+        if self.config.shift_target == -1:
+            if idx == 0:
+                # [CLS] symbol
+                bert_target_idx = 0
+            else:
+                bert_target_idx = bert_tok_idx[idx-1]
+        elif self.config.shift_target == 1:
+            if idx == len(bert_tok_idx) - 1:
+                # [SEP] symbol
+                bert_target_idx = len(bert_tokens) - 1
+            else:
+                bert_target_idx = bert_tok_idx[idx+1]
+        else:
+            bert_target_idx = bert_tok_idx[idx]
 
         return BERTProberFields(
             sentence=sent,
             tokens=bert_tokens,
             sentence_len=len(bert_tokens),
             idx=idx,
-            target_idx=bert_tok_idx[idx],
+            target_idx=bert_target_idx,
             target=target,
             label=label,
         )

@@ -54,6 +54,7 @@ class Config:
         'mask_all_context': False,
         'train_permutations': 0,
         'test_permutations': 0,
+        'shift_target': 0,
         # SoPa
         'semiring': 'LogSpaceMaxTimesSemiring',
         'use_sopa': True,
