@@ -52,6 +52,8 @@ class Config:
         'mask_left_context': 0,
         'mask_right_context': 0,
         'mask_all_context': False,
+        'mask_left_pos': {},
+        'mask_right_pos': {},
         'train_permutations': 0,
         'test_permutations': 0,
         'shift_target': 0,

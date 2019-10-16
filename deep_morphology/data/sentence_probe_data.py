@@ -10,6 +10,7 @@ import gzip
 import numpy as np
 import logging
 from recordclass import recordclass
+from collections import defaultdict
 
 from pytorch_pretrained_bert import BertTokenizer
 
@@ -898,13 +899,6 @@ class BERTSentenceProberDataset(BaseDataset):
             self._start = start
             yield self.create_recordclass(*batch)
 
-
-class UnlabeledBERTSentenceProberDataset(BERTSentenceProberDataset):
-
-    @property
-    def is_unlabeled(self):
-        return True
-
     def decode(self, model_output):
         for i, sample in enumerate(self.raw):
             output = model_output[i].argmax().item()
@@ -914,6 +908,79 @@ class UnlabeledBERTSentenceProberDataset(BERTSentenceProberDataset):
         stream.write("{}\t{}\t{}\t{}\n".format(
             sample.sentence, sample.target, sample.idx, sample.label
         ))
+
+
+class UnlabeledBERTSentenceProberDataset(BERTSentenceProberDataset):
+
+    @property
+    def is_unlabeled(self):
+        return True
+
+
+class BERTSentenceProberDatasetWithPOS(BERTSentenceProberDataset):
+    unlabeled_data_class = 'UnlabeledBERTSentenceProberDatasetWithPOS'
+
+    def extract_sample_from_line(self, line):
+        sentence, target, idx, label = line.rstrip("\n").split("\t")
+        idx = int(idx)
+        tokens = []
+        pos_list = []
+        left_mask_idx = defaultdict(list)
+        right_mask_idx = defaultdict(list)
+        sent_split = sentence.split(" ")
+        for ti, t in enumerate(sentence.split(" ")):
+            fd = t.split("_")
+            pos = fd[-1]
+            token = "_".join(fd[:-1])
+            pos_list.append(pos)
+            tokens.append(token)
+
+        for ti in range(idx-1, -1, -1):
+            pos = pos_list[ti]
+            if len(left_mask_idx[pos]) < self.config.mask_left_pos.get(pos, 0):
+                left_mask_idx[pos].append(ti)
+
+        for ti in range(idx+1, len(pos_list)):
+            pos = pos_list[ti]
+            if len(right_mask_idx[pos]) < self.config.mask_right_pos.get(pos, 0):
+                right_mask_idx[pos].append(ti)
+
+        mask_idx = set()
+        for v in left_mask_idx.values():
+            mask_idx |= set(v)
+        for v in right_mask_idx.values():
+            mask_idx |= set(v)
+
+        bert_sentence = ['[CLS]']
+        for ti, token in enumerate(tokens):
+            if ti == idx and self.config.use_wordpiece_unit == 'first':
+                bert_target_idx = len(bert_sentence)
+            if ti in mask_idx:
+                bert_sentence.append('[MASK]')
+            else:
+                bert_sentence.extend(self.tokenizer.tokenize(token))
+            if ti == idx and self.config.use_wordpiece_unit == 'last':
+                bert_target_idx = len(bert_sentence) - 1
+        bert_sentence.append('[SEP]')
+        # check the target symbol
+        if not bert_sentence[bert_target_idx] == '[UNK]':
+            assert set(bert_sentence[bert_target_idx]) & set(target)
+
+        return BERTProberFields(
+            sentence=sentence,
+            tokens=bert_sentence,
+            sentence_len=len(bert_sentence),
+            idx=idx,
+            target_idx=bert_target_idx,
+            target=target,
+            label=label,
+        )
+
+class UnlabeledBERTSentenceProberDatasetWithPOS(BERTSentenceProberDatasetWithPOS):
+
+    @property
+    def is_unlabeled(self):
+        return True
 
 
 class ELMOSentenceProberDataset(BaseDataset):
