@@ -169,7 +169,7 @@ class Sopa(nn.Module):
                 updated_docs[inactive_docs] = 0
                 updated_docs = updated_docs.nonzero()
                 scores[active_docs] = self.semiring.plus(
-                    scores[active_docs], end_state_vals[active_docs]
+                    torch.index_select(scores, 0, active_docs), end_state_vals[active_docs]
                 )
                 if updated_docs.numel() > 0:
                     # start state included
