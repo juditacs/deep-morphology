@@ -188,7 +188,7 @@ class SopaSeq2seq(BaseModel):
         self.criterion = nn.CrossEntropyLoss(ignore_index=self.PAD)
 
         if self.config.use_lstm:
-            self.hidden_size = self.config.hidden_size
+            self.hidden_size = self.config.hidden_size_src
         else:
             self.hidden_size = self.encoder.embedding_size
 
