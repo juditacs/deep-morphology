@@ -61,6 +61,20 @@ class SequenceClassifier(BaseModel):
         return loss
 
 
+class MidSequenceClassifier(SequenceClassifier):
+    def forward(self, batch):
+        input = to_cuda(torch.LongTensor(batch.input))
+        input = input.transpose(0, 1)  # time_major
+        input_len = batch.input_len
+        outputs, hidden = self.lstm(input, input_len)
+        batch_size = input.size(1)
+        helper = to_cuda(torch.arange(batch_size))
+        idx = to_cuda(torch.LongTensor(batch.target_idx))
+        out = outputs[idx, helper]
+        labels = self.mlp(out)
+        return labels
+
+
 class LSTMPermuteProber(SequenceClassifier):
     def run_train(self, train_data, result, dev_data):
         # train full model
