@@ -64,6 +64,16 @@ class BERTProberFields(DataFields):
     _needs_vocab = ('label', )
 
 
+class MidSequenceProberFields(DataFields):
+    _fields = (
+        'raw_sentence', 'raw_target', 'raw_idx',
+        'input', 'input_len', 'target_idx', 'label'
+    )
+    _alias = {'tgt': 'label', 'src_len': 'input_len'}
+    _needs_vocab = ('input', 'label')
+    _needs_constants = ('input', )
+
+
 class SentencePairFields(DataFields):
     _fields = (
         'left_sentence', 'left_sentence_len',
@@ -710,6 +720,62 @@ class BERTRandomTokenizer:
 
     def convert_to_orig(self, tokens):
         return [self.rand2bert[t] for t in tokens]
+
+
+class MidSentenceProberDataset(BaseDataset):
+    unlabeled_data_class = 'UnlabeledMidSentenceProberDataset'
+    data_recordclass = MidSequenceProberFields
+    constants = ['SOS', 'EOS', 'UNK', 'PAD']
+
+    def extract_sample_from_line(self, line):
+        raw_sent, raw_target, raw_idx, label = line.rstrip("\n").split("\t")
+        raw_idx = int(raw_idx)
+        input = list(raw_sent)
+        words = raw_sent.split(' ')
+        if self.config.probe_first_char:
+            target_idx = sum(len(w) for w in words[:raw_idx]) + raw_idx
+        else:
+            target_idx = sum(len(w) for w in words[:raw_idx]) + raw_idx + len(raw_target) - 1
+        return self.data_recordclass(
+            raw_sentence=raw_sent,
+            raw_target=raw_target,
+            raw_idx=raw_idx,
+            input=input,
+            input_len=len(input),
+            target_idx=target_idx,
+            label=label,
+        )
+
+    def to_idx(self):
+        mtx = self.data_recordclass(input=[], input_len=[],
+                                    target_idx=[], label=[])
+        SOS = self.vocabs.input['SOS']
+        EOS = self.vocabs.input['EOS']
+        for sample in self.raw:
+            mtx.label.append(self.vocabs.label[sample.label])
+            mtx.input_len.append(sample.input_len)
+            mtx.target_idx.append(sample.target_idx)
+            mtx.input.append(
+                [SOS] + [self.vocabs.input[s] for s in sample.input] + [EOS]
+            )
+        self.mtx = mtx
+
+    def decode(self, model_output):
+        for i, sample in enumerate(self.raw):
+            output = np.argmax(model_output[i])
+            self.raw[i].label = self.vocabs.label.inv_lookup(output)
+
+    def print_sample(self, sample, stream):
+        stream.write("{}\t{}\t{}\t{}\n".format(
+            sample.raw_sentence, sample.raw_target, sample.raw_idx, sample.label
+        ))
+
+
+class UnlabeledMidSentenceProberDataset(MidSentenceProberDataset):
+
+    @property
+    def is_unlabeled(self):
+        return True
 
 
 class BERTSentenceProberDataset(BaseDataset):

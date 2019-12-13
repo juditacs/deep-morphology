@@ -148,7 +148,7 @@ class DataFields:
             val = getattr(self, field)
             if val is not None:
                 yield field, val
-
+        
     def __getattr__(self, attr):
         if attr in self._alias:
             return getattr(self, self._alias[attr])
@@ -206,7 +206,10 @@ class BaseDataset:
         vocabs = []
         need_vocab = getattr(self.data_recordclass, '_needs_vocab', None)
         if need_vocab is None:
-            need_vocab = list(self.data_recordclass._asdict().keys())
+            need_vocab = list(self.data_recordclass()._asdict().keys())
+        need_constants = getattr(self.data_recordclass, '_needs_constants', None)
+        if need_constants is None:
+            need_constants = list(self.data_recordclass()._asdict().keys())
         self.vocabs = self.data_recordclass()
         for field in need_vocab:
             vocab_fn = getattr(self.config, 'vocab_{}'.format(field),
@@ -214,7 +217,10 @@ class BaseDataset:
             if os.path.exists(vocab_fn):
                 setattr(self.vocabs, field, Vocab(file=vocab_fn, frozen=True))
             else:
-                setattr(self.vocabs, field, Vocab(constants=self.constants))
+                if field in need_constants:
+                    setattr(self.vocabs, field, Vocab(constants=self.constants))
+                else:
+                    setattr(self.vocabs, field, Vocab(constants=[]))
 
     def load_stream_or_file(self, stream_or_file):
         if isinstance(stream_or_file, str):

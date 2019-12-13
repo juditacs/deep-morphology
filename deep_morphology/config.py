@@ -57,6 +57,8 @@ class Config:
         'train_permutations': 0,
         'test_permutations': 0,
         'shift_target': 0,
+        # MidSequence char prober
+        'probe_first_char': False,
         # SoPa
         'semiring': 'LogSpaceMaxTimesSemiring',
         'use_sopa': True,
