@@ -72,9 +72,9 @@ class Inference(Experiment):
         words = self.test_data.decode(model_output)
         return words
 
-    def run_and_print(self):
+    def run_and_print(self, stream=stdout):
         model_output = self.model.run_inference(self.test_data)
-        self.test_data.decode_and_print(model_output, stdout)
+        self.test_data.decode_and_print(model_output, stream)
 
 
 def parse_args():
