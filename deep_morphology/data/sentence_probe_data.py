@@ -39,6 +39,7 @@ class EmbeddingOnlyFields(DataFields):
     _fields = ('sentence', 'target_word', 'target_word_idx', 'label')
     _alias = {
         'tgt': 'label',
+        'src': 'target_word',
     }
     _needs_vocab = ('label', )
 
