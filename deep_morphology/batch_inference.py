@@ -15,6 +15,10 @@ import yaml
 from deep_morphology.inference import Inference
 
 
+class NotAnExperimentDir(ValueError):
+    pass
+
+
 def find_last_model(experiment_dir):
     model_pre = os.path.join(experiment_dir, 'model')
     if os.path.exists(model_pre):
@@ -27,6 +31,8 @@ def find_last_model(experiment_dir):
 
 def find_in_out_file_name(experiment_dir, prefix='test'):
     cfg = os.path.join(experiment_dir, 'config.yaml')
+    if not os.path.exists(cfg):
+        raise NotAnExperimentDir(f"{cfg} does not exist")
     with open(cfg) as f:
         train_fn = yaml.load(f, Loader=yaml.FullLoader)['train_file']
     inf = train_fn.replace('/train', f'/{prefix}')
@@ -72,26 +78,35 @@ def parse_args():
 def main():
     args = parse_args()
     for experiment_dir in args.experiment_dirs:
+        if not os.path.isdir(experiment_dir):
+            logging.info(f"{experiment_dir} not directory, skipping")
+            continue
         if args.run_on_test:
-            test_in, test_out, test_acc = find_in_out_file_name(experiment_dir, 'test')
-            if not skip_dir(experiment_dir, test_out):
-                inf = Inference(experiment_dir, test_in)
-                with open(test_out, 'w') as f:
-                    inf.run_and_print(f)
-                acc = compute_accuracy(test_in, test_out)
-                logging.info(f"{experiment_dir} test acc: {acc}")
-                with open(test_acc, 'w') as f:
-                    f.write(f"{acc}\n")
+            try:
+                test_in, test_out, test_acc = find_in_out_file_name(experiment_dir, 'test')
+                if not skip_dir(experiment_dir, test_out):
+                    inf = Inference(experiment_dir, test_in)
+                    with open(test_out, 'w') as f:
+                        inf.run_and_print(f)
+                    acc = compute_accuracy(test_in, test_out)
+                    logging.info(f"{experiment_dir} test acc: {acc}")
+                    with open(test_acc, 'w') as f:
+                        f.write(f"{acc}\n")
+            except NotAnExperimentDir:
+                logging.info(f"{experiment_dir}: no config.yaml, skipping")
         if args.run_on_dev:
-            dev_in, dev_out, dev_acc = find_in_out_file_name(experiment_dir, 'dev')
-            if not skip_dir(experiment_dir, dev_out):
-                inf = Inference(experiment_dir, dev_in)
-                with open(dev_out, 'w') as f:
-                    inf.run_and_print(f)
-                acc = compute_accuracy(dev_in, dev_out)
-                logging.info(f"{experiment_dir} dev acc: {acc}")
-                with open(dev_acc, 'w') as f:
-                    f.write(f"{acc}\n")
+            try:
+                dev_in, dev_out, dev_acc = find_in_out_file_name(experiment_dir, 'dev')
+                if not skip_dir(experiment_dir, dev_out):
+                    inf = Inference(experiment_dir, dev_in)
+                    with open(dev_out, 'w') as f:
+                        inf.run_and_print(f)
+                    acc = compute_accuracy(dev_in, dev_out)
+                    logging.info(f"{experiment_dir} dev acc: {acc}")
+                    with open(dev_acc, 'w') as f:
+                        f.write(f"{acc}\n")
+            except NotAnExperimentDir:
+                logging.info(f"{experiment_dir}: no config.yaml, skipping")
 
 if __name__ == '__main__':
     log_fmt = '%(asctime)s - %(levelname)s - %(message)s'
