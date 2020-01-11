@@ -12,6 +12,8 @@ import logging
 from recordclass import recordclass
 from collections import defaultdict
 
+from transformers import AutoTokenizer
+
 from pytorch_pretrained_bert import BertTokenizer
 
 from deep_morphology.data.base_data import BaseDataset, Vocab, DataFields
@@ -1287,3 +1289,105 @@ class WordOnlySentencePairDataset(BaseDataset):
 
 class UnlabeledWordOnlySentencePairDataset(WordOnlySentencePairDataset):
     pass
+
+class SentenceProberDataset(BaseDataset):
+    unlabeled_data_class = 'UnlabeledSentenceProberDataset'
+    data_recordclass = MidSequenceProberFields
+    constants = []
+
+    def __init__(self, config, stream_or_file, max_samples=None, **kwargs):
+        self.config = config
+        self.max_samples = max_samples
+        global_key = f'{self.config.model_name}_tokenizer'
+        if global_key in globals():
+            self.tokenizer = globals()[global_key]
+        else:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
+            globals()[global_key] = self.tokenizer
+        self.MASK = self.tokenizer.mask_token
+        self.mask_positions = set(self.config.mask_positions)
+        self.load_or_create_vocabs()
+        self.load_stream_or_file(stream_or_file)
+        self.to_idx()
+        self.tgt_field_idx = -1
+
+    def load_or_create_vocabs(self):
+        super().load_or_create_vocabs()
+        self.vocabs.input.PAD = self.tokenizer.convert_tokens_to_ids(
+            [self.tokenizer.pad_token])[0]
+
+    def extract_sample_from_line(self, line):
+        sent, target, idx, label = line.rstrip("\n").split("\t")
+        idx = int(idx)
+        tokenized = [self.tokenizer.cls_token]
+        target_ids = []
+        for ti, token in enumerate(sent.split(" ")):
+            if ti - idx in self.mask_positions:
+                pieces = [self.MASK]
+            else:
+                pieces = self.tokenizer.tokenize(token)
+            if self.config.probe_subword == 'first':
+                target_ids.append(len(tokenized))
+            else:
+                target_ids.append(len(tokenized)+len(pieces)-1)
+            tokenized.extend(pieces)
+        tokenized.append(self.tokenizer.sep_token)
+        return self.data_recordclass(
+            raw_sentence=sent,
+            raw_target=target,
+            raw_idx=idx,
+            input=tokenized,
+            input_len=len(tokenized),
+            target_idx=target_ids[idx],
+            label=label,
+        )
+
+    def ignore_sample(self, sample):
+        if self.config.exclude_short_sentences is False or self.is_unlabeled:
+            return False
+        sent_len = len(sample.raw_sentence.split(" "))
+        for pi in self.mask_positions:
+            if sample.raw_idx + pi < 0:
+                return True
+            if sample.raw_idx + pi >= sent_len:
+                return True
+        return False
+
+    def to_idx(self):
+        mtx = self.data_recordclass.initialize_all(list)
+        for sample in self.raw:
+            # int fields
+            mtx.input_len.append(sample.input_len)
+            mtx.target_idx.append(sample.target_idx)
+            # sentence
+            idx = self.tokenizer.convert_tokens_to_ids(sample.input)
+            mtx.input.append(idx)
+            # label
+            if sample.label is None:
+                mtx.label.append(None)
+            else:
+                mtx.label.append(self.vocabs.label[sample.label])
+        self.mtx = mtx
+        if not self.is_unlabeled:
+            if self.config.sort_data_by_length:
+                self.sort_data_by_length(sort_field='input_len')
+
+    @property
+    def is_unlabeled(self):
+        return False
+
+    def decode(self, model_output):
+        for i, sample in enumerate(self.raw):
+            output = model_output[i].argmax().item()
+            sample.label = self.vocabs.label.inv_lookup(output)
+
+    def print_sample(self, sample, stream):
+        stream.write("{}\t{}\t{}\t{}\n".format(
+            sample.raw_sentence, sample.raw_target, sample.raw_idx, sample.label
+        ))
+
+
+class UnlabeledSentenceProberDataset(SentenceProberDataset):
+    @property
+    def is_unlabeled(self):
+        return True
