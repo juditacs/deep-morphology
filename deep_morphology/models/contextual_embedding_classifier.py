@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import os
+from transformers import AutoModel
 
 from pytorch_pretrained_bert import BertModel
 from elmoformanylangs import Embedder
@@ -23,6 +24,98 @@ def to_cuda(var):
     if use_cuda:
         return var.cuda()
     return var
+
+
+class Embedder(nn.Module):
+    def __init__(self, model_name, use_cache=False):
+        super().__init__()
+        global_key = f'{model_name}_model'
+        if global_key in globals():
+            self.embedder = globals()[global_key]
+        else:
+            self.embedder = AutoModel.from_pretrained(model_name, output_hidden_states=True)
+            globals()[global_key] = self.embedder
+            for p in self.embedder.parameters():
+                p.requires_grad = False
+        self.get_sizes()
+        self.weights = nn.Parameter(torch.ones(self.n_layer, dtype=torch.float))
+        self.softmax = nn.Softmax(0)
+        if use_cache:
+            self._cache = {}
+        else:
+            self._cache = None
+
+    def forward(self, sentences, sentence_lens):
+        self.embedder.train(False)
+        with torch.no_grad():
+            mask = torch.arange(sentences.size(1)) < \
+                    torch.LongTensor(sentence_lens).unsqueeze(1)
+            mask = to_cuda(mask.long())
+            out = self.embedder(sentences, attention_mask=mask)
+            # output_hidden_states for all positions
+            return out[-1]
+
+    def embed(self, sentences, sentence_lens):
+        if self._cache is None:
+            sentences = to_cuda(sentences)
+            out = self.forward(sentences, sentence_lens)
+            w = self.softmax(self.weights)
+            return (w[:, None, None, None] * torch.stack(out)).sum(0)
+
+        cache_key = (tuple(sentences.numpy().flat), tuple(sentences.size()))
+        if cache_key not in self._cache:
+            sentences = to_cuda(sentences)
+            out = self.forward(sentences, sentence_lens)
+            self._cache[cache_key] = out
+
+        out = self._cache[cache_key]
+        w = self.softmax(self.weights)
+        return (w[:, None, None, None] * torch.stack(out)).sum(0)
+
+    def get_sizes(self):
+        with torch.no_grad():
+            d = self.embedder.dummy_inputs
+            if next(self.parameters()).is_cuda:
+                d['input_ids'] = d['input_ids'].cuda()
+            out = self.embedder(**d)[-1]
+            self.n_layer = len(out)
+            self.hidden_size = out[0].size(-1)
+
+    def state_dict(self, *args, **kwargs):
+        args[0]['{}weights'.format(args[1])] = self.weights
+        return args[0]
+
+
+class SentenceRepresentationProber(BaseModel):
+    def __init__(self, config, dataset):
+        super().__init__(config)
+        self.dataset = dataset
+        self.embedder = Embedder(self.config.model_name, use_cache=self.config.use_cache)
+        self.output_size = len(dataset.vocabs.label)
+        self.dropout = nn.Dropout(self.config.dropout)
+        self.mlp = MLP(
+            input_size=self.embedder.hidden_size,
+            layers=self.config.mlp_layers,
+            nonlinearity=self.config.mlp_nonlinearity,
+            output_size=self.output_size,
+        )
+        self.criterion = nn.CrossEntropyLoss()
+
+    def forward(self, batch):
+        X = torch.LongTensor(batch.input)
+        out = self.embedder.embed(X, batch.input_len)
+        out = self.dropout(out)
+        idx = to_cuda(torch.LongTensor(batch.target_idx))
+        batch_size = X.size(0)
+        helper = to_cuda(torch.arange(batch_size))
+        target_vecs = out[helper, idx]
+        mlp_out = self.mlp(target_vecs)
+        return mlp_out
+
+    def compute_loss(self, target, output):
+        target = to_cuda(torch.LongTensor(target.label)).view(-1)
+        loss = self.criterion(output, target)
+        return loss
 
 
 class BERTEmbedder(nn.Module):

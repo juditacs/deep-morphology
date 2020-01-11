@@ -16,5 +16,6 @@ from deep_morphology.models.contextual_embedding_classifier import ELMOPairClass
 from deep_morphology.models.contextual_embedding_classifier import BERTPairClassifier
 from deep_morphology.models.contextual_embedding_classifier import EmbeddingClassifier
 from deep_morphology.models.contextual_embedding_classifier import EmbeddingPairClassifier
+from deep_morphology.models.contextual_embedding_classifier import SentenceRepresentationProber
 from deep_morphology.models.elmo_tagger import ELMOTagger
 from deep_morphology.models.bert_tagger import BERTTagger
