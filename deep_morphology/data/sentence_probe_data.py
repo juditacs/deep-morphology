@@ -1310,6 +1310,7 @@ class SentenceProberDataset(BaseDataset):
         self.load_stream_or_file(stream_or_file)
         self.to_idx()
         self.tgt_field_idx = -1
+        self.max_seqlen = max(s.input_len for s in self.raw)
 
     def load_or_create_vocabs(self):
         super().load_or_create_vocabs()

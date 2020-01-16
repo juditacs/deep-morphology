@@ -69,7 +69,9 @@ class Config:
         'include_original_id': False,
         'include_right_id': False,
         'type_level': False,
-        'add_with_different_casing': False
+        'add_with_different_casing': False,
+        # HuggingFace Transformers
+        'cache_seqlen_limit': 0,
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded
