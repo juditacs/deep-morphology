@@ -85,6 +85,7 @@ def main():
             try:
                 test_in, test_out, test_acc = find_in_out_file_name(experiment_dir, 'test')
                 if not skip_dir(experiment_dir, test_out):
+                    logging.info(f"Running inference on {experiment_dir}")
                     inf = Inference(experiment_dir, test_in)
                     with open(test_out, 'w') as f:
                         inf.run_and_print(f)
