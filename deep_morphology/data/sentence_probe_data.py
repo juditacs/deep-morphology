@@ -595,7 +595,7 @@ class WordOnlySentenceProberDataset(BaseDataset):
         return WordOnlyFields(
             sentence=sent,
             target_word=target,
-            target_word_idx=idx,
+            target_idx=idx,
             target_word_len=len(target),
             label=label,
         )
@@ -630,7 +630,7 @@ class WordOnlySentenceProberDataset(BaseDataset):
     def print_sample(self, sample, stream):
         stream.write("{}\t{}\t{}\t{}\n".format(
             sample.sentence, sample.target_word,
-            sample.target_word_idx, sample.label
+            sample.target_idx, sample.label
         ))
 
     def decode(self, model_output):
