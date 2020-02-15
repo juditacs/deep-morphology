@@ -8,11 +8,17 @@
 from recordclass import recordclass
 import os
 
-from deep_morphology.data.base_data import BaseDataset, Vocab
+from deep_morphology.data.base_data import BaseDataset, Vocab, DataFields
 
 
-ClassificationFields = recordclass('ClassificationFields',
-                                   ['src', 'src_len', 'tgt'])
+class ClassificationFields(DataFields):
+    _fields = ('src', 'src_len', 'tgt')
+    _alias = {
+        'input': 'src',
+        'input_len': 'src_len',
+        'label': 'tgt',
+    }
+    _needs_vocab = ('src', 'tgt')
 
 
 class ClassificationDataset(BaseDataset):
