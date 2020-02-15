@@ -44,7 +44,6 @@ class SequenceClassifier(BaseModel):
             nonlinearity=self.config.mlp_nonlinearity,
             output_size=output_size,
         )
-        # self.out_proj = nn.Linear(self.config.hidden_size, output_size)
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, batch):
