@@ -148,7 +148,7 @@ class DataFields:
             val = getattr(self, field)
             if val is not None:
                 yield field, val
-        
+
     def __getattr__(self, attr):
         if attr in self._alias:
             return getattr(self, self._alias[attr])
