@@ -2,7 +2,7 @@
 
 from deep_morphology.data.seq2seq_data import Seq2seqDataset
 from deep_morphology.data.seq2seq_data import InflectionDataset
-from deep_morphology.data.seq2seq_data import NoSpaceSeq2seqDataset
+from deep_morphology.data.seq2seq_data import NoSpaceSeq2seqDataset, UnlabeledNoSpaceSeq2seqDataset
 from deep_morphology.data.seq2seq_data import GlobalPaddingInflectionDataset, UnlabeledGlobalPaddingInflectionDataset
 from deep_morphology.data.seq2seq_data import GlobalPaddingSeq2seqDataset, UnlabeledGlobalPaddingSeq2seqDataset
 from deep_morphology.data.reinflection_data import ReinflectionDataset, UnlabeledReinflectionDataset
