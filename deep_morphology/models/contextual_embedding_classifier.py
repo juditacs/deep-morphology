@@ -12,7 +12,7 @@ import os
 from transformers import AutoModel
 
 from pytorch_pretrained_bert import BertModel
-from elmoformanylangs import Embedder
+#from elmoformanylangs import Embedder
 
 from deep_morphology.models.base import BaseModel
 from deep_morphology.models.mlp import MLP
