@@ -41,7 +41,9 @@ class BaseModel(nn.Module):
             patience = self.config.lr_decay_patience
             for opt in self.optimizers:
                 scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-                    opt, mode='min', factor=lrd, patience=patience, verbose=True)
+                    opt, mode='min', factor=lrd, patience=patience,
+                    threshold=10e-6,
+                    verbose=True)
         else:
             scheduler = None
 
