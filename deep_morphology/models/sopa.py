@@ -7,6 +7,7 @@
 # Distributed under terms of the MIT license.
 import torch
 import torch.nn as nn
+import logging
 
 
 use_cuda = torch.cuda.is_available()
@@ -60,6 +61,7 @@ class Sopa(nn.Module):
         self.patterns = patterns
         if dropout is not None and dropout > 0:
             self.dropout = nn.Dropout(dropout)
+            logging.warning("Dropout breaks SoPa, will not use it")
         else:
             self.dropout = None
 
@@ -293,8 +295,6 @@ class Sopa(nn.Module):
         scores = self.semiring.from_float(
             torch.mm(self.diags, inputs.contiguous().view(b*l, self.input_size).t())
             + self.bias).t()
-        if self.dropout:
-            scores = self.dropout(scores)
         scores = scores.contiguous().view(b, l, self.num_patterns, 2, self.pattern_maxlen)
 
         batched_scores = [scores[:, n, :, :, :] for n in range(l)]
