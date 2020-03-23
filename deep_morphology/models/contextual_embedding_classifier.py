@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import os
-from transformers import AutoModel
+from transformers import AutoModel, AutoConfig
 
 from pytorch_pretrained_bert import BertModel
 #from elmoformanylangs import Embedder
@@ -33,7 +33,8 @@ class Embedder(nn.Module):
         if global_key in globals():
             self.embedder = globals()[global_key]
         else:
-            self.embedder = AutoModel.from_pretrained(model_name, output_hidden_states=True)
+            self.config = AutoConfig.from_pretrained(model_name, output_hidden_states=True)
+            self.embedder = AutoModel.from_config(self.config)
             globals()[global_key] = self.embedder
             for p in self.embedder.parameters():
                 p.requires_grad = False
