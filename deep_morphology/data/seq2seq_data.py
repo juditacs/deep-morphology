@@ -59,7 +59,7 @@ class Seq2seqDataset(BaseDataset):
 
 class NoSpaceSeq2seqDataset(Seq2seqDataset):
 
-    unlabeled_data_class = 'NoSpaceSeq2seqDataset'
+    unlabeled_data_class = 'UnlabeledNoSpaceSeq2seqDataset'
     data_recordclass = Seq2seqFields
     constants = ['PAD', 'UNK', 'SOS', 'EOS']
 
@@ -79,6 +79,13 @@ class NoSpaceSeq2seqDataset(Seq2seqDataset):
             "".join(sample.src),
             "".join(sample.tgt),
         ))
+
+
+class UnlabeledNoSpaceSeq2seqDataset(NoSpaceSeq2seqDataset):
+
+    @property
+    def is_unlabeled(self):
+        return True
 
 
 class InflectionDataset(BaseDataset):
