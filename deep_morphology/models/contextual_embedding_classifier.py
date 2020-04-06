@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import os
+import logging
 from transformers import AutoModel, AutoConfig
 
 from pytorch_pretrained_bert import BertModel
@@ -27,7 +28,7 @@ def to_cuda(var):
 
 
 class Embedder(nn.Module):
-    def __init__(self, model_name, use_cache=False):
+    def __init__(self, model_name, pool_layers, use_cache=False):
         super().__init__()
         global_key = f'{model_name}_model'
         if global_key in globals():
@@ -39,10 +40,16 @@ class Embedder(nn.Module):
             for p in self.embedder.parameters():
                 p.requires_grad = False
         self.get_sizes()
-        self.weights = nn.Parameter(torch.ones(self.n_layer, dtype=torch.float))
-        self.softmax = nn.Softmax(0)
+        self.pool_layers = pool_layers
+        if self.pool_layers == 'weighted_sum':
+            self.weights = nn.Parameter(torch.ones(self.n_layer, dtype=torch.float))
+            self.softmax = nn.Softmax(0)
         if use_cache:
-            self._cache = {}
+            if pool_layers == 'weighted_sum':
+                logging.warning("Caching not supported with weighted_sum pooling")
+                self._cache = None
+            else:
+                self._cache = {}
         else:
             self._cache = None
 
@@ -56,22 +63,29 @@ class Embedder(nn.Module):
             # output_hidden_states for all positions
             return out[-1]
 
-    def embed(self, sentences, sentence_lens):
-        if self._cache is None:
-            sentences = to_cuda(sentences)
-            out = self.forward(sentences, sentence_lens)
+    def _embed(self, sentences, sentence_lens):
+        sentences = to_cuda(sentences)
+        out = self.forward(sentences, sentence_lens)
+        if self.pool_layers == 'weighted_sum':
             w = self.softmax(self.weights)
             return (w[:, None, None, None] * torch.stack(out)).sum(0)
+        if self.pool_layers == 'sum':
+            return torch.sum(torch.stack(out), axis=0)
+        if self.pool_layers == 'last':
+            return out[-1]
+        if self.pool_layers == 'first':
+            return out[0]
+        raise ValueError(f"Unknown pooling mechanism: {self.pool_layers}")
+
+    def embed(self, sentences, sentence_lens):
+        if self._cache is None:
+            return self._embed(sentences, sentence_lens)
 
         cache_key = (tuple(sentences.numpy().flat), tuple(sentences.size()))
         if cache_key not in self._cache:
-            sentences = to_cuda(sentences)
-            out = self.forward(sentences, sentence_lens)
-            self._cache[cache_key] = out
+            self._cache[cache_key] = self._embed(sentences, sentence_lens)
 
-        out = self._cache[cache_key]
-        w = self.softmax(self.weights)
-        return (w[:, None, None, None] * torch.stack(out)).sum(0)
+        return self._cache[cache_key]
 
     def get_sizes(self):
         with torch.no_grad():
@@ -83,7 +97,8 @@ class Embedder(nn.Module):
             self.hidden_size = out[0].size(-1)
 
     def state_dict(self, *args, **kwargs):
-        args[0]['{}weights'.format(args[1])] = self.weights
+        if self.pool_layers == 'weighted_sum':
+            args[0]['{}weights'.format(args[1])] = self.weights
         return args[0]
 
 
@@ -95,7 +110,8 @@ class SentenceRepresentationProber(BaseModel):
         if self.config.cache_seqlen_limit > 0 and \
            dataset.max_seqlen >= self.config.cache_seqlen_limit:
             use_cache = False
-        self.embedder = Embedder(self.config.model_name, use_cache=use_cache)
+        self.embedder = Embedder(self.config.model_name, use_cache=use_cache,
+                                pool_layers=config.pool_layers)
         self.output_size = len(dataset.vocabs.label)
         self.dropout = nn.Dropout(self.config.dropout)
         self.mlp = MLP(

@@ -72,6 +72,7 @@ class Config:
         'add_with_different_casing': False,
         # HuggingFace Transformers
         'cache_seqlen_limit': 0,
+        'pool_layers': 'sum',
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded
