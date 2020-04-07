@@ -7,9 +7,7 @@
 # Distributed under terms of the MIT license.
 
 from argparse import ArgumentParser
-import yaml
 import logging
-import random
 import importlib.util
 
 from deep_morphology.experiment import Experiment
@@ -43,7 +41,7 @@ def main():
             with Experiment(config, train_data=args.train_file,
                             dev_data=args.dev_file, debug=args.debug) as e:
                 e.run()
-    
+
 
 if __name__ == '__main__':
     log_fmt = '%(asctime)s - %(levelname)s - %(message)s'
