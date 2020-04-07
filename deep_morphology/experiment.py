@@ -111,6 +111,8 @@ class Experiment:
         ))
         if use_cuda:
             self.model = self.model.cuda()
+        else:
+            logging.warning("CUDA not available")
 
     def __enter__(self):
         logging.info("Starting experiment: {}".format(
