@@ -91,7 +91,9 @@ class Embedder(nn.Module):
         with torch.no_grad():
             d = self.embedder.dummy_inputs
             if next(self.parameters()).is_cuda:
-                d['input_ids'] = d['input_ids'].cuda()
+                for param in d:
+                    if isinstance(d[param], torch.Tensor):
+                        d[param] = d[param].cuda()
             out = self.embedder(**d)[-1]
             self.n_layer = len(out)
             self.hidden_size = out[0].size(-1)
