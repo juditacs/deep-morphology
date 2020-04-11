@@ -65,10 +65,13 @@ class Experiment:
     def set_random_seeds(self):
         if not hasattr(self.config, 'torch_random_seed'):
             self.config.torch_random_seed = np.random.randint(0, 2**31)
-        torch.manual_seed(self.config.torch_random_seed)
         if not hasattr(self.config, 'numpy_random_seed'):
             self.config.numpy_random_seed = np.random.randint(0, 2**31)
         np.random.seed(self.config.numpy_random_seed)
+        torch.manual_seed(self.config.torch_random_seed)
+        if use_cuda:
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
 
     def __load_data(self, train_data, dev_data):
         if train_data is None and dev_data is None:
