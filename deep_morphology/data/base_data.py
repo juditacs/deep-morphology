@@ -203,7 +203,6 @@ class BaseDataset:
 
     def load_or_create_vocabs(self):
         vocab_pre = os.path.join(self.config.experiment_dir, 'vocab_')
-        vocabs = []
         need_vocab = getattr(self.data_recordclass, '_needs_vocab', None)
         if need_vocab is None:
             need_vocab = list(self.data_recordclass()._asdict().keys())
