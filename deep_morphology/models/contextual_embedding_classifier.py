@@ -40,6 +40,10 @@ class Embedder(nn.Module):
             for p in self.embedder.parameters():
                 p.requires_grad = False
         self.get_sizes()
+        try:
+            pool_layers = int(pool_layers)
+        except ValueError:
+            pass
         self.pool_layers = pool_layers
         if self.pool_layers == 'weighted_sum':
             self.weights = nn.Parameter(torch.ones(self.n_layer, dtype=torch.float))
@@ -75,6 +79,8 @@ class Embedder(nn.Module):
             return out[-1]
         if self.pool_layers == 'first':
             return out[0]
+        if isinstance(self.pool_layers, int):
+            return out[self.pool_layers]
         raise ValueError(f"Unknown pooling mechanism: {self.pool_layers}")
 
     def embed(self, sentences, sentence_lens):
@@ -113,7 +119,7 @@ class SentenceRepresentationProber(BaseModel):
            dataset.max_seqlen >= self.config.cache_seqlen_limit:
             use_cache = False
         self.embedder = Embedder(self.config.model_name, use_cache=use_cache,
-                                pool_layers=config.pool_layers)
+                                 pool_layers=config.pool_layers)
         self.output_size = len(dataset.vocabs.label)
         self.dropout = nn.Dropout(self.config.dropout)
         self.mlp = MLP(
