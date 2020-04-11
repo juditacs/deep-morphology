@@ -60,7 +60,7 @@ class EmbeddingOnlyPairFields(DataFields):
 
 class BERTProberFields(DataFields):
     _fields = (
-        'sentence', 'tokens', 'target', 'idx', 
+        'sentence', 'tokens', 'target', 'idx',
         'sentence_len', 'target_idx', 'label',
     )
     _alias = {'tgt': 'label'}
@@ -1289,6 +1289,7 @@ class WordOnlySentencePairDataset(BaseDataset):
 
 class UnlabeledWordOnlySentencePairDataset(WordOnlySentencePairDataset):
     pass
+
 
 class SentenceProberDataset(BaseDataset):
     unlabeled_data_class = 'UnlabeledSentenceProberDataset'
