@@ -117,7 +117,7 @@ class Config:
             if param in self._kwargs:
                 # call __getattr__
                 getattr(self, param)
-                
+
     def __getattr__(self, attr):
         if attr in self._kwargs:
             setattr(self, attr, self._kwargs[attr])
