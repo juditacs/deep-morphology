@@ -35,7 +35,7 @@ class Embedder(nn.Module):
             self.embedder = globals()[global_key]
         else:
             self.config = AutoConfig.from_pretrained(model_name, output_hidden_states=True)
-            self.embedder = AutoModel.from_config(self.config)
+            self.embedder = AutoModel.from_pretrained(model_name, config=self.config)
             globals()[global_key] = self.embedder
             for p in self.embedder.parameters():
                 p.requires_grad = False
