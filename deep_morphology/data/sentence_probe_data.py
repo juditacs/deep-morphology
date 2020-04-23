@@ -70,10 +70,10 @@ class BERTProberFields(DataFields):
 class MidSequenceProberFields(DataFields):
     _fields = (
         'raw_sentence', 'raw_target', 'raw_idx',
-        'input', 'input_len', 'target_idx', 'label'
+        'input', 'input_len', 'target_idx', 'label', 'target_ids',
     )
     _alias = {'tgt': 'label', 'src_len': 'input_len'}
-    _needs_vocab = ('input', 'label')
+    _needs_vocab = ('input', 'label', 'target_ids')
     _needs_constants = ('input', )
 
 
@@ -1317,6 +1317,12 @@ class SentenceProberDataset(BaseDataset):
         super().load_or_create_vocabs()
         self.vocabs.input.PAD = self.tokenizer.convert_tokens_to_ids(
             [self.tokenizer.pad_token])[0]
+        self.vocabs.target_ids.PAD = 1000
+
+    def batched_iter(self, batch_size):
+        for batch in super().batched_iter(batch_size):
+            batch.target_ids = np.array(batch.target_ids)
+            yield batch
 
     def extract_sample_from_line(self, line):
         sent, target, idx, label = line.rstrip("\n").split("\t")
@@ -1328,11 +1334,14 @@ class SentenceProberDataset(BaseDataset):
                 pieces = [self.MASK]
             else:
                 pieces = self.tokenizer.tokenize(token)
-            if self.config.probe_subword == 'first':
-                target_ids.append(len(tokenized))
-            else:
-                target_ids.append(len(tokenized)+len(pieces)-1)
+            target_ids.append(len(tokenized))
+            #if self.config.probe_subword == 'first':
+            #    target_ids.append(len(tokenized))
+            #else:
+            #    target_ids.append(len(tokenized)+len(pieces)-1)
             tokenized.extend(pieces)
+        # add [SEP] token start
+        target_ids.append(len(tokenized))
         tokenized.append(self.tokenizer.sep_token)
         return self.data_recordclass(
             raw_sentence=sent,
@@ -1341,6 +1350,7 @@ class SentenceProberDataset(BaseDataset):
             input=tokenized,
             input_len=len(tokenized),
             target_idx=target_ids[idx],
+            target_ids=target_ids,
             label=label,
         )
 
@@ -1361,6 +1371,9 @@ class SentenceProberDataset(BaseDataset):
             # int fields
             mtx.input_len.append(sample.input_len)
             mtx.target_idx.append(sample.target_idx)
+            mtx.raw_idx.append(sample.raw_idx)
+            # int list
+            mtx.target_ids.append(sample.target_ids)
             # sentence
             idx = self.tokenizer.convert_tokens_to_ids(sample.input)
             mtx.input.append(idx)

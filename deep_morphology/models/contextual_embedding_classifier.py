@@ -130,14 +130,59 @@ class SentenceRepresentationProber(BaseModel):
         )
         self.criterion = nn.CrossEntropyLoss()
 
+        if self.config.probe_subword == 'first_last_mix':
+            self.subword_w = nn.Parameter(torch.ones(1, dtype=torch.float) / 2)
+        if self.config.probe_subword == 'lstm':
+            self.pool_lstm = nn.LSTM(
+                self.embedder.hidden_size,
+                int(self.embedder.hidden_size / 2),
+                num_layers=1,
+                batch_first=True,
+                bidirectional=True,
+            )
+
     def forward(self, batch):
+        probe_subword = self.config.probe_subword
         X = torch.LongTensor(batch.input)
         out = self.embedder.embed(X, batch.input_len)
         out = self.dropout(out)
-        idx = to_cuda(torch.LongTensor(batch.target_idx))
         batch_size = X.size(0)
-        helper = to_cuda(torch.arange(batch_size))
-        target_vecs = out[helper, idx]
+        helper = np.arange(batch_size)
+        if probe_subword == 'first':
+            idx = batch.target_ids[helper, batch.raw_idx]
+            target_vecs = out[helper, idx]
+        elif probe_subword == 'last':
+            rawi = np.array(batch.raw_idx) + 1
+            idx = batch.target_ids[helper, rawi] - 1
+            target_vecs = out[helper, idx]
+        elif probe_subword in ('max', 'avg'):
+            rawi = np.array(batch.raw_idx)
+            last = batch.target_ids[helper, rawi+1]
+            first = batch.target_ids[helper, rawi]
+            target_vecs = []
+            for wi in range(batch_size):
+                if probe_subword == 'max':
+                    o = out[wi, first[wi]:last[wi]].max(axis=0).values
+                else:
+                    o = out[wi, first[wi]:last[wi]].mean(axis=0)
+                target_vecs.append(o)
+            target_vecs = to_cuda(torch.stack(target_vecs))
+        elif probe_subword == 'first_last_mix':
+            w = self.subword_w
+            rawi = np.array(batch.raw_idx)
+            last = out[helper, batch.target_ids[helper, rawi+1] - 1]
+            first = out[helper, batch.target_ids[helper, rawi]]
+            target_vecs = w * first + (1 - w) * last
+        elif probe_subword == 'lstm':
+            rawi = np.array(batch.raw_idx)
+            last = batch.target_ids[helper, rawi+1]
+            first = batch.target_ids[helper, rawi]
+            target_vecs = []
+            for wi in range(batch_size):
+                lstm_in = out[wi, first[wi]:last[wi]].unsqueeze(0)
+                lstm_out = self.pool_lstm(lstm_in)[0]
+                target_vecs.append(lstm_out[0, 0])
+            target_vecs = torch.stack(target_vecs)
         mlp_out = self.mlp(target_vecs)
         return mlp_out
 
