@@ -155,7 +155,7 @@ class SentenceRepresentationProber(BaseModel):
             rawi = np.array(batch.raw_idx) + 1
             idx = batch.target_ids[helper, rawi] - 1
             target_vecs = out[helper, idx]
-        elif probe_subword in ('max', 'avg'):
+        elif probe_subword in ('max', 'avg', 'sum'):
             rawi = np.array(batch.raw_idx)
             last = batch.target_ids[helper, rawi+1]
             first = batch.target_ids[helper, rawi]
@@ -163,6 +163,8 @@ class SentenceRepresentationProber(BaseModel):
             for wi in range(batch_size):
                 if probe_subword == 'max':
                     o = out[wi, first[wi]:last[wi]].max(axis=0).values
+                if probe_subword == 'sum':
+                    o = out[wi, first[wi]:last[wi]].sum(axis=0)
                 else:
                     o = out[wi, first[wi]:last[wi]].mean(axis=0)
                 target_vecs.append(o)
@@ -174,6 +176,7 @@ class SentenceRepresentationProber(BaseModel):
             first = out[helper, batch.target_ids[helper, rawi]]
             target_vecs = w * first + (1 - w) * last
         elif probe_subword == 'lstm':
+            target_vecs = []
             rawi = np.array(batch.raw_idx)
             last = batch.target_ids[helper, rawi+1]
             first = batch.target_ids[helper, rawi]
