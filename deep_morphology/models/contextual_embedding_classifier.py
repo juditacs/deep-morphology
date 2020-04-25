@@ -140,6 +140,14 @@ class SentenceRepresentationProber(BaseModel):
                 batch_first=True,
                 bidirectional=True,
             )
+        elif self.config.probe_subword == 'mlp':
+            self.subword_mlp = MLP(
+                input_size=self.embedder.hidden_size,
+                layers=[self.config.subword_mlp_size],
+                nonlinearity='ReLU',
+                output_size=1
+            )
+            self.softmax = nn.Softmax(dim=0)
 
     def forward(self, batch):
         probe_subword = self.config.probe_subword
@@ -180,12 +188,24 @@ class SentenceRepresentationProber(BaseModel):
             rawi = np.array(batch.raw_idx)
             last = batch.target_ids[helper, rawi+1]
             first = batch.target_ids[helper, rawi]
-            target_vecs = []
             for wi in range(batch_size):
                 lstm_in = out[wi, first[wi]:last[wi]].unsqueeze(0)
                 lstm_out = self.pool_lstm(lstm_in)[0]
                 target_vecs.append(lstm_out[0, 0])
             target_vecs = torch.stack(target_vecs)
+        elif probe_subword == 'mlp':
+            target_vecs = []
+            rawi = np.array(batch.raw_idx)
+            last = batch.target_ids[helper, rawi+1]
+            first = batch.target_ids[helper, rawi]
+            for wi in range(batch_size):
+                mlp_in = out[wi, first[wi]:last[wi]]
+                weights = self.subword_mlp(mlp_in)
+                weights = self.softmax(weights).transpose(0, 1)
+                target = weights.mm(mlp_in).squeeze(0)
+                target_vecs.append(target)
+            target_vecs = torch.stack(target_vecs)
+
         mlp_out = self.mlp(target_vecs)
         return mlp_out
 

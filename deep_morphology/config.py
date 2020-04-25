@@ -57,6 +57,9 @@ class Config:
         'train_permutations': 0,
         'test_permutations': 0,
         'shift_target': 0,
+        # transformers model configuration
+        'mask_posiions': [],
+        'subword_mlp_size': 50,
         # MidSequence char prober
         'probe_first_char': False,
         # SoPa
