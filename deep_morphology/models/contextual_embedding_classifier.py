@@ -215,6 +215,46 @@ class SentenceRepresentationProber(BaseModel):
         return loss
 
 
+class TransformerForSequenceClassification(BaseModel):
+    def __init__(self, config, dataset):
+        super().__init__(config)
+        self.dataset = dataset
+        self.embedder = Embedder(
+            self.config.model_name, use_cache=self.config.use_cache,
+            pool_layers=self.config.pool_layers)
+        self.output_size = len(dataset.vocabs.labels)
+        self.dropout = nn.Dropout(self.config.dropout)
+        self.mlp = MLP(
+            input_size=self.embedder.hidden_size,
+            layers=self.config.mlp_layers,
+            nonlinearity=self.config.mlp_nonlinearity,
+            output_size=self.output_size,
+        )
+        #self.PAD = self.dataset.vocabs.labels['PAD']
+        self.criterion = nn.CrossEntropyLoss()
+
+    def forward(self, batch):
+        probe_subword = self.config.probe_subword
+        X = torch.LongTensor(batch.input)
+        out = self.embedder.embed(X, batch.sentence_subword_len)
+        out = self.dropout(out)
+        batch_size = X.size(0)
+        batch_ids = []
+        token_ids = []
+        for bi in range(batch_size):
+            batch_ids.append(np.repeat(bi, batch.sentence_len[bi]))
+            token_ids.append(batch.token_starts[bi][1:-1])
+        batch_ids = np.concatenate(batch_ids)
+        token_ids = np.concatenate(token_ids)
+        pred = self.mlp(out[batch_ids, token_ids])
+        return pred
+
+    def compute_loss(self, target, output):
+        target = to_cuda(torch.LongTensor(target.labels)).view(-1)
+        loss = self.criterion(output, target)
+        return loss
+
+
 class BERTEmbedder(nn.Module):
 
     def __init__(self, model_name, layer, use_cache=False):

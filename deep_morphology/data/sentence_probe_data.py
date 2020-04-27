@@ -77,6 +77,17 @@ class MidSequenceProberFields(DataFields):
     _needs_constants = ('input', )
 
 
+class SequenceClassificationWithSubwordsDataFields(DataFields):
+    _fields = (
+        'raw_sentence', 'labels',
+        'sentence_len', 'subwords', 'sentence_subword_len', 'token_starts',
+    )
+    _alias = {'input': 'subwords',
+              'input_len': 'sentence_subword_len',
+              'tgt': 'labels'}
+    _needs_vocab = ('labels', )
+
+
 class SentencePairFields(DataFields):
     _fields = (
         'left_sentence', 'left_sentence_len',
@@ -1291,6 +1302,134 @@ class UnlabeledWordOnlySentencePairDataset(WordOnlySentencePairDataset):
     pass
 
 
+class SequenceClassificationWithSubwords(BaseDataset):
+    unlabeled_data_class = 'UnlabeledSequenceClassificationWithSubwords'
+    data_recordclass = SequenceClassificationWithSubwordsDataFields
+    constants = []
+
+    def __init__(self, config, stream_or_file, max_samples=None, **kwargs):
+        self.config = config
+        self.max_samples = max_samples
+        global_key = f'{self.config.model_name}_tokenizer'
+        if global_key in globals():
+            self.tokenizer = globals()[global_key]
+        else:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
+            globals()[global_key] = self.tokenizer
+        self.load_or_create_vocabs()
+        self.load_stream_or_file(stream_or_file)
+        self.to_idx()
+        self.PAD = self.tokenizer.convert_tokens_to_ids([self.tokenizer.pad_token])[0]
+
+    def load_stream(self, stream):
+        self.raw = []
+        sent = []
+        for line in stream:
+            if not line.strip():
+                if sent:
+                    self.raw.append(self.create_sentence_from_lines(sent))
+                    if self.max_samples and len(self.raw) >= self.max_samples:
+                        break
+                sent = []
+            else:
+                sent.append(line.rstrip("\n"))
+        if sent:
+            if self.max_samples is None or len(self.raw) < self.max_samples:
+                self.raw.append(self.create_sentence_from_lines(sent))
+
+    def create_sentence_from_lines(self, lines):
+        sent = []
+        labels = []
+        token_starts = [0]
+        subwords = [self.tokenizer.cls_token]
+        for line in lines:
+            fd = line.rstrip("\n").split("\t")
+            sent.append(fd[0])
+            if len(fd) > 1:
+                labels.append(fd[1])
+            token_starts.append(len(subwords))
+            pieces = self.tokenizer.tokenize(fd[0])
+            subwords.extend(pieces)
+        token_starts.append(len(subwords))
+        subwords.append(self.tokenizer.sep_token)
+        if len(labels) == 0:
+            labels = None
+        return self.data_recordclass(
+            raw_sentence=sent, labels=labels,
+            sentence_len=len(sent),
+            subwords=subwords,
+            sentence_subword_len=len(subwords),
+            token_starts=token_starts,
+        )
+
+    def to_idx(self):
+        mtx = self.data_recordclass.initialize_all(list)
+        for sample in self.raw:
+            mtx.sentence_len.append(sample.sentence_len)
+            mtx.sentence_subword_len.append(sample.sentence_subword_len)
+            mtx.token_starts.append(sample.token_starts)
+            mtx.subwords.append(self.tokenizer.convert_tokens_to_ids(sample.subwords))
+            if sample.labels is None:
+                mtx.labels.append(None)
+            else:
+                mtx.labels.append([self.vocabs.labels[l] for l in sample.labels])
+        self.mtx = mtx
+        if not self.is_unlabeled:
+            if self.config.sort_data_by_length:
+                self.sort_data_by_length(sort_field='sentence_subword_len')
+
+    def batched_iter(self, batch_size):
+        starts = list(range(0, len(self), batch_size))
+        if self.is_unlabeled is False and self.config.shuffle_batches:
+            np.random.shuffle(starts)
+        for start in starts:
+            self._start = start
+            end = start + batch_size
+            batch = self.data_recordclass()
+            maxlen = max(self.mtx.sentence_subword_len[start:end])
+            subwords = [
+                s + [self.PAD] * (maxlen-len(s))
+                for s in self.mtx.subwords[start:end]]
+            batch.subwords = subwords
+            if self.mtx.labels[0] is not None:
+                batch.labels = np.concatenate(self.mtx.labels[start:end])
+            else:
+                batch.labels = None
+            batch.token_starts = self.mtx.token_starts[start:end]
+            batch.sentence_len = self.mtx.sentence_len[start:end]
+            batch.sentence_subword_len = self.mtx.sentence_subword_len[start:end]
+            yield batch
+
+    def decode(self, model_output):
+        offset = 0
+        for si, sample in enumerate(self.raw):
+            labels = []
+            for ti in range(sample.sentence_len):
+                label_idx = model_output[offset + ti].argmax()
+                labels.append(self.vocabs.labels.inv_lookup(label_idx))
+            sample.labels = labels
+            offset += sample.sentence_len
+
+    def print_sample(self, sample, stream):
+        stream.write("\n".join(
+            "{}\t{}".format(sample.raw_sentence[i], sample.labels[i])
+            for i in range(sample.sentence_len)
+        ))
+        stream.write("\n")
+
+    def print_raw(self, stream):
+        for si, sample in enumerate(self.raw):
+            self.print_sample(sample, stream)
+            if si < len(self.raw) - 1:
+                stream.write("\n")
+
+
+class UnlabeledSequenceClassificationWithSubwords(SequenceClassificationWithSubwords):
+    @property
+    def is_unlabeled(self):
+        return True
+
+
 class SentenceProberDataset(BaseDataset):
     unlabeled_data_class = 'UnlabeledSentenceProberDataset'
     data_recordclass = MidSequenceProberFields
@@ -1335,10 +1474,6 @@ class SentenceProberDataset(BaseDataset):
             else:
                 pieces = self.tokenizer.tokenize(token)
             target_ids.append(len(tokenized))
-            #if self.config.probe_subword == 'first':
-            #    target_ids.append(len(tokenized))
-            #else:
-            #    target_ids.append(len(tokenized)+len(pieces)-1)
             tokenized.extend(pieces)
         # add [SEP] token start
         target_ids.append(len(tokenized))
