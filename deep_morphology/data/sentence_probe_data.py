@@ -1305,11 +1305,19 @@ class UnlabeledWordOnlySentencePairDataset(WordOnlySentencePairDataset):
 class SequenceClassificationWithSubwords(BaseDataset):
     unlabeled_data_class = 'UnlabeledSequenceClassificationWithSubwords'
     data_recordclass = SequenceClassificationWithSubwordsDataFields
-    constants = []
+    constants = ['UNK']
 
-    def __init__(self, config, stream_or_file, max_samples=None, **kwargs):
+    def __init__(self, config, stream_or_file, max_samples=None,
+                 share_vocabs_with=None, **kwargs):
         self.config = config
         self.max_samples = max_samples
+        if share_vocabs_with is None:
+            self.load_or_create_vocabs()
+        else:
+            self.vocabs = share_vocabs_with.vocabs
+            for vocab in self.vocabs:
+                if vocab:
+                    vocab.frozen = True
         global_key = f'{self.config.model_name}_tokenizer'
         if global_key in globals():
             self.tokenizer = globals()[global_key]
