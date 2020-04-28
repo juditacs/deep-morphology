@@ -64,7 +64,6 @@ class Embedder(nn.Module):
                     torch.LongTensor(sentence_lens).unsqueeze(1)
             mask = to_cuda(mask.long())
             out = self.embedder(sentences, attention_mask=mask)
-            # output_hidden_states for all positions
             return out[-1]
 
     def _embed(self, sentences, sentence_lens):
@@ -220,7 +219,7 @@ class TransformerForSequenceClassification(BaseModel):
         super().__init__(config)
         self.dataset = dataset
         self.embedder = Embedder(
-            self.config.model_name, use_cache=self.config.use_cache,
+            self.config.model_name, use_cache=False,
             pool_layers=self.config.pool_layers)
         self.output_size = len(dataset.vocabs.labels)
         self.dropout = nn.Dropout(self.config.dropout)
@@ -230,23 +229,46 @@ class TransformerForSequenceClassification(BaseModel):
             nonlinearity=self.config.mlp_nonlinearity,
             output_size=self.output_size,
         )
-        #self.PAD = self.dataset.vocabs.labels['PAD']
+        self._cache = {}
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, batch):
         probe_subword = self.config.probe_subword
         X = torch.LongTensor(batch.input)
-        out = self.embedder.embed(X, batch.sentence_subword_len)
+        cache_key = tuple(np.array(batch.input).flat)
+        if cache_key not in self._cache:
+            batch_size = X.size(0)
+            batch_ids = []
+            token_ids = []
+            embedded = self.embedder.embed(X, batch.sentence_subword_len)
+            if probe_subword in ('first', 'last'):
+                for bi in range(batch_size):
+                    batch_ids.append(np.repeat(bi, batch.sentence_len[bi]))
+                    if probe_subword == 'first':
+                        token_ids.append(batch.token_starts[bi][1:-1])
+                    elif probe_subword == 'last':
+                        token_ids.append(np.array(batch.token_starts[bi][2:]) - 1)
+                batch_ids = np.concatenate(batch_ids)
+                token_ids = np.concatenate(token_ids)
+                out = embedded[batch_ids, token_ids]
+            elif probe_subword in ('max', 'avg', 'sum'):
+                outs = []
+                for bi in range(batch_size):
+                    for ti in range(batch.sentence_len[bi]):
+                        first = batch.token_starts[bi][ti+1]
+                        last = batch.token_starts[bi][ti+2]
+                        if probe_subword == 'sum':
+                            vec = embedded[bi, first:last].sum(axis=0)
+                        elif probe_subword == 'avg':
+                            vec = embedded[bi, first:last].mean(axis=0)
+                        elif probe_subword == 'max':
+                            vec = embedded[bi, first:last].max(axis=0).values
+                        outs.append(vec)
+                out = torch.stack(outs)
+            self._cache[cache_key] = out
+        out = self._cache[cache_key]
         out = self.dropout(out)
-        batch_size = X.size(0)
-        batch_ids = []
-        token_ids = []
-        for bi in range(batch_size):
-            batch_ids.append(np.repeat(bi, batch.sentence_len[bi]))
-            token_ids.append(batch.token_starts[bi][1:-1])
-        batch_ids = np.concatenate(batch_ids)
-        token_ids = np.concatenate(token_ids)
-        pred = self.mlp(out[batch_ids, token_ids])
+        pred = self.mlp(out)
         return pred
 
     def compute_loss(self, target, output):
