@@ -1335,7 +1335,9 @@ class SequenceClassificationWithSubwords(BaseDataset):
         for line in stream:
             if not line.strip():
                 if sent:
-                    self.raw.append(self.create_sentence_from_lines(sent))
+                    sample = self.create_sentence_from_lines(sent)
+                    if not self.ignore_sample(sample):
+                        self.raw.append(sample)
                     if self.max_samples and len(self.raw) >= self.max_samples:
                         break
                 sent = []
@@ -1343,7 +1345,9 @@ class SequenceClassificationWithSubwords(BaseDataset):
                 sent.append(line.rstrip("\n"))
         if sent:
             if self.max_samples is None or len(self.raw) < self.max_samples:
-                self.raw.append(self.create_sentence_from_lines(sent))
+                sample = self.create_sentence_from_lines(sent)
+                if not self.ignore_sample(sample):
+                    self.raw.append(sample)
 
     def create_sentence_from_lines(self, lines):
         sent = []
@@ -1369,6 +1373,9 @@ class SequenceClassificationWithSubwords(BaseDataset):
             sentence_subword_len=len(subwords),
             token_starts=token_starts,
         )
+
+    def ignore_sample(self, sample):
+        return sample.sentence_subword_len > 500
 
     def to_idx(self):
         mtx = self.data_recordclass.initialize_all(list)
