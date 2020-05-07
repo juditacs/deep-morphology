@@ -24,6 +24,16 @@ SentenceProbeFields = recordclass(
     ['sentence', 'sentence_len', 'target_idx', 'label']
 )
 
+class SentenceTokenPairFields(DataFields):
+    _fields = ('raw_sentence', 'idx1', 'idx2', 'token_starts',
+               'subwords', 'sentence_subword_len', 'label')
+    _alias = {
+        'tgt': 'label',
+        'input': 'subwords',
+        'input_len': 'sentence_subword_len'
+    }
+    _needs_vocab = ('label', 'subwords', )
+
 
 class WordOnlyFields(DataFields):
     _fields = ('sentence', 'target_word', 'target_word_len', 'target_idx',
@@ -1553,6 +1563,133 @@ class SentenceProberDataset(BaseDataset):
 
 
 class UnlabeledSentenceProberDataset(SentenceProberDataset):
+    @property
+    def is_unlabeled(self):
+        return True
+
+
+class SentenceRepresentationTokenPairProberDataset(BaseDataset):
+    unlabeled_data_class = 'UnlabeledSentenceRepresentationTokenPairProberDataset'
+    data_recordclass = SentenceTokenPairFields
+    constants = []
+
+    def __init__(self, config, stream_or_file, max_samples=None, **kwargs):
+        self.config = config
+        self.max_samples = max_samples
+        global_key = f'{self.config.model_name}_tokenizer'
+        if global_key in globals():
+            self.tokenizer = globals()[global_key]
+        else:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
+            globals()[global_key] = self.tokenizer
+        self.load_or_create_vocabs()
+        self.load_stream_or_file(stream_or_file)
+        self.to_idx()
+        self.tgt_field_idx = -1
+        self.max_seqlen = max(s.input_len for s in self.raw)
+
+    def load_or_create_vocabs(self):
+        super().load_or_create_vocabs()
+        self.vocabs.input.PAD = self.tokenizer.convert_tokens_to_ids(
+            [self.tokenizer.pad_token])[0]
+
+    def extract_sample_from_line(self, line):
+        fd = line.rstrip("\n").split("\t")
+        raw_sent = fd[0]
+        raw_tokens = raw_sent.split(" ")
+        idx1 = int(fd[3])
+        idx2 = int(fd[4])
+        tok1 = fd[1]
+        tok2 = fd[2]
+        assert raw_tokens[idx1] == tok1
+        assert raw_tokens[idx2] == tok2
+        subwords = [self.tokenizer.cls_token]
+        token_starts = [0]
+        if len(fd) > 5:
+            label = fd[5]
+        else:
+            label = None
+        for ti, token in enumerate(raw_tokens):
+            token_starts.append(len(subwords))
+            pieces = self.tokenizer.tokenize(token)
+            subwords.extend(pieces)
+        token_starts.append(len(subwords))
+        subwords.append(self.tokenizer.sep_token)
+        return self.data_recordclass(
+            raw_sentence=raw_sent,
+            idx1=idx1,
+            idx2=idx2,
+            token_starts=token_starts,
+            subwords=subwords,
+            sentence_subword_len=len(subwords),
+            label=label,
+        )
+
+    def to_idx(self):
+        mtx = self.data_recordclass.initialize_all(list)
+        for sample in self.raw:
+            # integer fields
+            for field in ('idx1', 'idx2', 'sentence_subword_len'):
+                getattr(mtx, field).append(getattr(sample, field))
+            mtx.subwords.append(
+                self.tokenizer.convert_tokens_to_ids(sample.subwords)
+            )
+            mtx.token_starts.append(sample.token_starts)
+            if sample.label is None:
+                mtx.label.append(None)
+            else:
+                mtx.label.append(self.vocabs.label[sample.label])
+        self.mtx = mtx
+        if not self.is_unlabeled:
+            if self.config.sort_data_by_length:
+                self.sort_data_by_length(sort_field='sentence_subword_len')
+
+    def batched_iter(self, batch_size):
+        starts = list(range(0, len(self), batch_size))
+        if self.is_unlabeled is False and self.config.shuffle_batches:
+            np.random.shuffle(starts)
+        for start in starts:
+            self._start = start
+            end = start + batch_size
+            batch = self.data_recordclass.initialize_all(list)
+            for field in ('idx1', 'idx2', 'sentence_subword_len'):
+                setattr(batch, field, np.array(getattr(self.mtx, field)[start:end]))
+            token_starts = self.mtx.token_starts[start:end]
+            max_ts = max(len(s) for s in token_starts)
+            token_starts = [
+                toks + [1000] * (max_ts - len(toks))
+                for toks in token_starts
+            ]
+            batch.token_starts = np.array(token_starts)
+            subwords = self.mtx.subwords[start:end]
+            maxlen = max(len(s) for s in subwords)
+            PAD = self.vocabs.input.PAD
+            subwords = [
+                subw + [PAD] * (maxlen - len(subw))
+                for subw in subwords
+            ]
+            batch.subwords = subwords
+            batch.label = self.mtx.label[start:end]
+            yield batch
+
+    @property
+    def is_unlabeled(self):
+        return False
+
+    def decode(self, model_output):
+        for i, sample in enumerate(self.raw):
+            output = model_output[i].argmax().item()
+            sample.label = self.vocabs.label.inv_lookup(output)
+
+    def print_sample(self, sample, stream):
+        toks = sample.raw_sentence.split(" ")
+        stream.write("\t".join(map(str, (
+            sample.raw_sentence, toks[sample.idx1], toks[sample.idx2],
+            sample.idx1, sample.idx2, sample.label
+        ))))
+
+
+class UnlabeledSentenceRepresentationTokenPairProberDataset(SentenceProberDataset):
     @property
     def is_unlabeled(self):
         return True

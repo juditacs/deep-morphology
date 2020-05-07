@@ -214,6 +214,83 @@ class SentenceRepresentationProber(BaseModel):
         return loss
 
 
+class SentenceTokenPairRepresentationProber(BaseModel):
+
+    def __init__(self, config, dataset):
+        super().__init__(config)
+        self.dataset = dataset
+        self.embedder = Embedder(self.config.model_name, use_cache=False,
+                                 pool_layers=config.pool_layers)
+        self.output_size = len(dataset.vocabs.label)
+        self.dropout = nn.Dropout(self.config.dropout)
+        self.mlp = MLP(
+            input_size=2*self.embedder.hidden_size,
+            layers=self.config.mlp_layers,
+            nonlinearity=self.config.mlp_nonlinearity,
+            output_size=self.output_size,
+        )
+        self.criterion = nn.CrossEntropyLoss()
+        self._cache = {}
+
+    def compute_loss(self, target, output):
+        target = to_cuda(torch.LongTensor(target.label)).view(-1)
+        loss = self.criterion(output, target)
+        return loss
+
+    def forward(self, batch):
+        cache_key = (
+            tuple(np.array(batch.subwords).flat),
+            tuple(batch.idx1.flat),
+            tuple(batch.idx2.flat),
+        )
+        if cache_key not in self._cache:
+            self._cache[cache_key] = self._forward(batch)
+        out = self._cache[cache_key]
+        out = self.dropout(out)
+        pred = self.mlp(out)
+        return pred
+
+    def _forward(self, batch):
+        probe_subword = self.config.probe_subword
+        X = torch.LongTensor(batch.subwords)
+        batch_size = X.size(0)
+        batch_ids = np.arange(batch_size)
+        embedded = self.embedder.embed(X, batch.input_len)
+        if probe_subword == 'first':
+            first1 = batch.token_starts[batch_ids, batch.idx1+1]
+            first2 = batch.token_starts[batch_ids, batch.idx2+1]
+            out1 = embedded[batch_ids, first1]
+            out2 = embedded[batch_ids, first2]
+            return torch.cat((out1, out2), dim=1)
+        if probe_subword == 'last':
+            last1 = batch.token_starts[batch_ids, batch.idx1+2] - 1
+            last2 = batch.token_starts[batch_ids, batch.idx2+2] - 1
+            out1 = embedded[batch_ids, last1]
+            out2 = embedded[batch_ids, last2]
+            return torch.cat((out1, out2), dim=1)
+        first1 = batch.token_starts[batch_ids, batch.idx1+1]
+        first2 = batch.token_starts[batch_ids, batch.idx2+1]
+        last1 = batch.token_starts[batch_ids, batch.idx1+2]
+        last2 = batch.token_starts[batch_ids, batch.idx2+2]
+        out1 = []
+        out2 = []
+        for bi in range(batch_size):
+            if probe_subword == 'sum':
+                o1 = embedded[bi, first1[bi]:last1[bi]].sum(axis=0)
+                o2 = embedded[bi, first2[bi]:last2[bi]].sum(axis=0)
+            elif probe_subword == 'avg':
+                o1 = embedded[bi, first1[bi]:last1[bi]].mean(axis=0)
+                o2 = embedded[bi, first2[bi]:last2[bi]].mean(axis=0)
+            elif probe_subword == 'max':
+                o1 = embedded[bi, first1[bi]:last1[bi]].max(axis=0).values
+                o2 = embedded[bi, first2[bi]:last2[bi]].max(axis=0).values
+            out1.append(o1)
+            out2.append(o2)
+        out1 = torch.stack(out1)
+        out2 = torch.stack(out2)
+        return torch.cat((out1, out2), dim=1)
+
+
 class TransformerForSequenceClassification(BaseModel):
     def __init__(self, config, dataset):
         super().__init__(config)
