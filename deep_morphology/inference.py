@@ -38,6 +38,7 @@ def parse_param_str(params):
 
 class Inference(Experiment):
     def __init__(self, experiment_dir, stream_or_file,
+                 max_samples=None,
                  save_attention_weights=None,
                  param_str=None,
                  model_file=None):
@@ -45,7 +46,7 @@ class Inference(Experiment):
             os.path.join(experiment_dir, 'config.yaml'))
         dc = getattr(data_module, self.config.dataset_class)
         self.test_data = getattr(data_module, dc.unlabeled_data_class)(
-            self.config, stream_or_file)
+            self.config, stream_or_file, max_samples=max_samples)
         self.set_random_seeds()
         self.init_model(model_file)
 
