@@ -58,7 +58,9 @@ def compute_accuracy(reference, prediction):
             except StopIteration:
                 logging.error(f"Prediction file {prediction} shorter "
                               "than reference {reference}")
-                return
+                return acc / samples
+            if not rline.strip() and not pline.strip():
+                continue
             rlabel = rline.rstrip("\n").split("\t")[-1]
             plabel = pline.rstrip("\n").split("\t")[-1]
             acc += (rlabel == plabel)
@@ -72,6 +74,7 @@ def parse_args():
                    help="Experiment directory")
     p.add_argument("--run-on-dev", action="store_true")
     p.add_argument("--run-on-test", action="store_true")
+    p.add_argument("--max-samples", default=None, type=int)
     return p.parse_args()
 
 
@@ -86,7 +89,7 @@ def main():
                 test_in, test_out, test_acc = find_in_out_file_name(experiment_dir, 'test')
                 if not skip_dir(experiment_dir, test_out):
                     logging.info(f"Running inference on {experiment_dir}")
-                    inf = Inference(experiment_dir, test_in)
+                    inf = Inference(experiment_dir, test_in, max_samples=args.max_samples)
                     with open(test_out, 'w') as f:
                         inf.run_and_print(f)
                     acc = compute_accuracy(test_in, test_out)
@@ -99,7 +102,7 @@ def main():
             try:
                 dev_in, dev_out, dev_acc = find_in_out_file_name(experiment_dir, 'dev')
                 if not skip_dir(experiment_dir, dev_out):
-                    inf = Inference(experiment_dir, dev_in)
+                    inf = Inference(experiment_dir, dev_in, max_samples=args.max_samples)
                     with open(dev_out, 'w') as f:
                         inf.run_and_print(f)
                     acc = compute_accuracy(dev_in, dev_out)
