@@ -1686,10 +1686,10 @@ class SentenceRepresentationTokenPairProberDataset(BaseDataset):
         stream.write("\t".join(map(str, (
             sample.raw_sentence, toks[sample.idx1], toks[sample.idx2],
             sample.idx1, sample.idx2, sample.label
-        ))))
+        ))) + "\n")
 
 
-class UnlabeledSentenceRepresentationTokenPairProberDataset(SentenceProberDataset):
+class UnlabeledSentenceRepresentationTokenPairProberDataset(SentenceRepresentationTokenPairProberDataset):
     @property
     def is_unlabeled(self):
         return True
