@@ -231,6 +231,24 @@ class SentenceTokenPairRepresentationProber(BaseModel):
         )
         self.criterion = nn.CrossEntropyLoss()
         self._cache = {}
+        if self.config.probe_subword == 'first_last_mix':
+            self.subword_w = nn.Parameter(torch.ones(1, dtype=torch.float) / 2)
+        if self.config.probe_subword == 'lstm':
+            self.pool_lstm = nn.LSTM(
+                self.embedder.hidden_size,
+                int(self.embedder.hidden_size / 2),
+                num_layers=1,
+                batch_first=True,
+                bidirectional=True,
+            )
+        elif self.config.probe_subword == 'mlp':
+            self.subword_mlp = MLP(
+                input_size=self.embedder.hidden_size,
+                layers=[self.config.subword_mlp_size],
+                nonlinearity='ReLU',
+                output_size=1
+            )
+            self.softmax = nn.Softmax(dim=0)
 
     def compute_loss(self, target, output):
         target = to_cuda(torch.LongTensor(target.label)).view(-1)
@@ -244,30 +262,74 @@ class SentenceTokenPairRepresentationProber(BaseModel):
             tuple(batch.idx2.flat),
         )
         if cache_key not in self._cache:
-            self._cache[cache_key] = self._forward(batch)
-        out = self._cache[cache_key]
+            X = torch.LongTensor(batch.subwords)
+            self._cache[cache_key] = self.embedder.embed(X, batch.input_len)
+        embedded = self._cache[cache_key]
+        out = self._forward(embedded, batch)
+
         out = self.dropout(out)
         pred = self.mlp(out)
         return pred
 
-    def _forward(self, batch):
+    def _forward(self, embedded, batch):
         probe_subword = self.config.probe_subword
-        X = torch.LongTensor(batch.subwords)
-        batch_size = X.size(0)
+        batch_size = embedded.size(0)
         batch_ids = np.arange(batch_size)
-        embedded = self.embedder.embed(X, batch.input_len)
         if probe_subword == 'first':
             first1 = batch.token_starts[batch_ids, batch.idx1+1]
             first2 = batch.token_starts[batch_ids, batch.idx2+1]
             out1 = embedded[batch_ids, first1]
             out2 = embedded[batch_ids, first2]
             return torch.cat((out1, out2), dim=1)
-        if probe_subword == 'last':
+        elif probe_subword == 'last':
             last1 = batch.token_starts[batch_ids, batch.idx1+2] - 1
             last2 = batch.token_starts[batch_ids, batch.idx2+2] - 1
             out1 = embedded[batch_ids, last1]
             out2 = embedded[batch_ids, last2]
             return torch.cat((out1, out2), dim=1)
+        elif probe_subword == 'first_last_mix':
+            w = self.subword_w
+            first1 = batch.token_starts[batch_ids, batch.idx1+1]
+            first2 = batch.token_starts[batch_ids, batch.idx2+1]
+            last1 = batch.token_starts[batch_ids, batch.idx1+2] - 1
+            last2 = batch.token_starts[batch_ids, batch.idx2+2] - 1
+            first1 = embedded[batch_ids, first1]
+            last1 = embedded[batch_ids, last1]
+            first2 = embedded[batch_ids, first2]
+            last2 = embedded[batch_ids, last2]
+            tgt1 = w * first1 + (1-w) * last1
+            tgt2 = w * first2 + (1-w) * last2
+            return torch.cat((tgt1, tgt2), dim=1)
+        elif probe_subword == 'lstm':
+            tgt = []
+            first1 = batch.token_starts[batch_ids, batch.idx1+1]
+            first2 = batch.token_starts[batch_ids, batch.idx2+1]
+            last1 = batch.token_starts[batch_ids, batch.idx1+2]
+            last2 = batch.token_starts[batch_ids, batch.idx2+2]
+            for bi in range(batch_size):
+                lstm_in1 = embedded[bi, first1[bi]:last1[bi]].unsqueeze(0)
+                lstm_out1 = self.pool_lstm(lstm_in1)[0]
+                lstm_in2 = embedded[bi, first2[bi]:last2[bi]].unsqueeze(0)
+                lstm_out2 = self.pool_lstm(lstm_in2)[0]
+                tgt.append(torch.cat((lstm_out1[0, 0], lstm_out2[0, 0]), dim=-1))
+            return torch.stack(tgt)
+        elif probe_subword == 'mlp':
+            tgt = []
+            first1 = batch.token_starts[batch_ids, batch.idx1+1]
+            first2 = batch.token_starts[batch_ids, batch.idx2+1]
+            last1 = batch.token_starts[batch_ids, batch.idx1+2]
+            last2 = batch.token_starts[batch_ids, batch.idx2+2]
+            for bi in range(batch_size):
+                mlp_in1 = embedded[bi, first1[bi]:last1[bi]]
+                w1 = self.subword_mlp(mlp_in1)
+                w1 = self.softmax(w1).transpose(0, 1)
+                t1 = w1.mm(mlp_in1).squeeze(0)
+                mlp_in2 = embedded[bi, first2[bi]:last2[bi]]
+                w2 = self.subword_mlp(mlp_in2)
+                w2 = self.softmax(w2).transpose(0, 1)
+                t2 = w2.mm(mlp_in2).squeeze(0)
+                tgt.append(torch.cat((t1, t2)))
+            return torch.stack(tgt)
         first1 = batch.token_starts[batch_ids, batch.idx1+1]
         first2 = batch.token_starts[batch_ids, batch.idx2+1]
         last1 = batch.token_starts[batch_ids, batch.idx1+2]
