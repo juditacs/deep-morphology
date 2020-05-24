@@ -121,32 +121,35 @@ class SentenceRepresentationProber(BaseModel):
                                  pool_layers=config.pool_layers)
         self.output_size = len(dataset.vocabs.label)
         self.dropout = nn.Dropout(self.config.dropout)
-        self.mlp = MLP(
-            input_size=self.embedder.hidden_size,
-            layers=self.config.mlp_layers,
-            nonlinearity=self.config.mlp_nonlinearity,
-            output_size=self.output_size,
-        )
         self.criterion = nn.CrossEntropyLoss()
 
+        mlp_input_size = self.embedder.hidden_size
         if self.config.probe_subword == 'first_last_mix':
             self.subword_w = nn.Parameter(torch.ones(1, dtype=torch.float) / 2)
         if self.config.probe_subword == 'lstm':
+            sw_lstm_size = getattr(self.config, 'subword_lstm_size', self.embedder.hidden_size)
+            mlp_input_size = sw_lstm_size
             self.pool_lstm = nn.LSTM(
                 self.embedder.hidden_size,
-                int(self.embedder.hidden_size / 2),
+                sw_lstm_size // 2,
                 num_layers=1,
                 batch_first=True,
                 bidirectional=True,
             )
         elif self.config.probe_subword == 'mlp':
             self.subword_mlp = MLP(
-                input_size=self.embedder.hidden_size,
+                self.embedder.hidden_size,
                 layers=[self.config.subword_mlp_size],
                 nonlinearity='ReLU',
                 output_size=1
             )
             self.softmax = nn.Softmax(dim=0)
+        self.mlp = MLP(
+            input_size=mlp_input_size,
+            layers=self.config.mlp_layers,
+            nonlinearity=self.config.mlp_nonlinearity,
+            output_size=self.output_size,
+        )
 
     def forward(self, batch):
         probe_subword = self.config.probe_subword
@@ -223,20 +226,16 @@ class SentenceTokenPairRepresentationProber(BaseModel):
                                  pool_layers=config.pool_layers)
         self.output_size = len(dataset.vocabs.label)
         self.dropout = nn.Dropout(self.config.dropout)
-        self.mlp = MLP(
-            input_size=2*self.embedder.hidden_size,
-            layers=self.config.mlp_layers,
-            nonlinearity=self.config.mlp_nonlinearity,
-            output_size=self.output_size,
-        )
         self.criterion = nn.CrossEntropyLoss()
         self._cache = {}
         if self.config.probe_subword == 'first_last_mix':
             self.subword_w = nn.Parameter(torch.ones(1, dtype=torch.float) / 2)
+        mlp_input_size = 2 * self.embedder.hidden_size
         if self.config.probe_subword == 'lstm':
+            mlp_input_size = 2 * self.config.subword_lstm_size
             self.pool_lstm = nn.LSTM(
                 self.embedder.hidden_size,
-                int(self.embedder.hidden_size / 2),
+                self.config.subword_lstm_size // 2,
                 num_layers=1,
                 batch_first=True,
                 bidirectional=True,
@@ -249,6 +248,12 @@ class SentenceTokenPairRepresentationProber(BaseModel):
                 output_size=1
             )
             self.softmax = nn.Softmax(dim=0)
+        self.mlp = MLP(
+            input_size=mlp_input_size,
+            layers=self.config.mlp_layers,
+            nonlinearity=self.config.mlp_nonlinearity,
+            output_size=self.output_size,
+        )
 
     def compute_loss(self, target, output):
         target = to_cuda(torch.LongTensor(target.label)).view(-1)
