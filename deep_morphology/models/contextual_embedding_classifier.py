@@ -129,7 +129,7 @@ class SentenceRepresentationProber(BaseModel):
         mlp_input_size = self.embedder.hidden_size
         if self.config.probe_subword == 'first_last_mix':
             self.subword_w = nn.Parameter(torch.ones(1, dtype=torch.float) / 2)
-        if self.config.probe_subword == 'lstm':
+        elif self.config.probe_subword == 'lstm':
             sw_lstm_size = getattr(self.config, 'subword_lstm_size',
                                    self.embedder.hidden_size)
             mlp_input_size = sw_lstm_size
@@ -148,6 +148,8 @@ class SentenceRepresentationProber(BaseModel):
                 output_size=1
             )
             self.softmax = nn.Softmax(dim=0)
+        elif self.config.probe_subword == 'last2':
+            mlp_input_size *= 2
         self.mlp = MLP(
             input_size=mlp_input_size,
             layers=self.config.mlp_layers,
@@ -185,6 +187,19 @@ class SentenceRepresentationProber(BaseModel):
                     o = out[wi, first[wi]:last[wi]].mean(axis=0)
                 target_vecs.append(o)
             target_vecs = to_cuda(torch.stack(target_vecs))
+        elif probe_subword == 'last2':
+            target_vecs = []
+            rawi = np.array(batch.raw_idx)
+            last = batch.target_ids[helper, rawi+1] - 1
+            first = batch.target_ids[helper, rawi]
+            for wi in range(batch_size):
+                last1 = out[wi, last[wi]]
+                if first[wi] == last[wi]:
+                    last2 = to_cuda(torch.zeros_like(last1))
+                else:
+                    last2 = out[wi, last[wi]-1]
+                target_vecs.append(torch.cat((last1, last2), 0))
+            target_vecs = torch.stack(target_vecs)
         elif probe_subword == 'first_last_mix':
             w = self.subword_w
             rawi = np.array(batch.raw_idx)
