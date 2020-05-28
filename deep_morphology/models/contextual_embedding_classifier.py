@@ -197,8 +197,9 @@ class SentenceRepresentationProber(BaseModel):
             first = batch.target_ids[helper, rawi]
             for wi in range(batch_size):
                 lstm_in = out[wi, first[wi]:last[wi]].unsqueeze(0)
-                lstm_out = self.pool_lstm(lstm_in)[0]
-                target_vecs.append(lstm_out[0, 0])
+                lstm_out, (h, c) = self.pool_lstm(lstm_in)
+                h = torch.cat((h[0], h[1]), dim=-1)
+                target_vecs.append(h[0])
             target_vecs = torch.stack(target_vecs)
         elif probe_subword == 'mlp':
             target_vecs = []
@@ -329,10 +330,12 @@ class SentenceTokenPairRepresentationProber(BaseModel):
             last2 = batch.token_starts[batch_ids, batch.idx2+2]
             for bi in range(batch_size):
                 lstm_in1 = embedded[bi, first1[bi]:last1[bi]].unsqueeze(0)
-                lstm_out1 = self.pool_lstm(lstm_in1)[0]
+                lstm_out1, (h, c) = self.pool_lstm(lstm_in1)
+                h1 = torch.cat((h[0], h[1]), dim=-1)
                 lstm_in2 = embedded[bi, first2[bi]:last2[bi]].unsqueeze(0)
-                lstm_out2 = self.pool_lstm(lstm_in2)[0]
-                tgt.append(torch.cat((lstm_out1[0, 0], lstm_out2[0, 0]), dim=-1))
+                lstm_out2, (h, c) = self.pool_lstm(lstm_in2)
+                h2 = torch.cat((h[0], h[1]), dim=-1)
+                tgt.append(torch.cat((h1[0], h2[0])))
             return torch.stack(tgt)
         elif probe_subword == 'mlp':
             tgt = []
