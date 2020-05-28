@@ -7,6 +7,7 @@
 # Distributed under terms of the MIT license.
 import torch
 import torch.nn as nn
+from torch.nn.utils.rnn import pack_padded_sequence
 import numpy as np
 import os
 import logging
@@ -386,8 +387,27 @@ class TransformerForSequenceClassification(BaseModel):
             pool_layers=self.config.pool_layers)
         self.output_size = len(dataset.vocabs.labels)
         self.dropout = nn.Dropout(self.config.dropout)
+        mlp_input_size = self.embedder.hidden_size
+        if self.config.probe_subword == 'lstm':
+            sw_lstm_size = self.config.subword_lstm_size
+            mlp_input_size = sw_lstm_size
+            self.subword_lstm = nn.LSTM(
+                self.embedder.hidden_size,
+                sw_lstm_size // 2,
+                num_layers=1,
+                batch_first=True,
+                bidirectional=True,
+            )
+        elif self.config.probe_subword == 'mlp':
+            self.subword_mlp = MLP(
+                input_size=self.embedder.hidden_size,
+                layers=[self.config.subword_mlp_size],
+                nonlinearity='ReLU',
+                output_size=1
+            )
+            self.softmax = nn.Softmax(dim=0)
         self.mlp = MLP(
-            input_size=self.embedder.hidden_size,
+            input_size=mlp_input_size,
             layers=self.config.mlp_layers,
             nonlinearity=self.config.mlp_nonlinearity,
             output_size=self.output_size,
@@ -396,6 +416,53 @@ class TransformerForSequenceClassification(BaseModel):
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, batch):
+        probe_subword = self.config.probe_subword
+        if probe_subword in ('first', 'last', 'max', 'avg', 'sum'):
+            out = self._forward_with_cache(batch)
+        elif probe_subword == 'mlp':
+            out = self._forward_mlp(batch)
+        elif probe_subword == 'lstm':
+            out = self._forward_lstm(batch)
+        out = self.dropout(out)
+        pred = self.mlp(out)
+        return pred
+
+    def _forward_lstm(self, batch):
+        X = torch.LongTensor(batch.input)
+        embedded = self.embedder.embed(X, batch.sentence_subword_len)
+        batch_size, seqlen, hidden = embedded.size()
+        out = []
+        for bi in range(batch_size):
+            for ti in range(batch.sentence_len[bi]):
+                first = batch.token_starts[bi][ti+1]
+                last = batch.token_starts[bi][ti+2]
+                tok_vecs = embedded[bi:bi+1, first:last]
+                _, (h, c) = self.subword_lstm(tok_vecs)
+                h = torch.cat((h[0], h[1]), dim=-1)
+                out.append(h[0])
+        return torch.stack(out)
+
+    def _forward_mlp(self, batch):
+        X = torch.LongTensor(batch.input)
+        embedded = self.embedder.embed(X, batch.sentence_subword_len)
+        batch_size, seqlen, hidden = embedded.size()
+        mlp_weights = self.subword_mlp(embedded).view(batch_size, seqlen)
+        outputs = []
+        for bi in range(batch_size):
+            for ti in range(batch.sentence_len[bi]):
+                first = batch.token_starts[bi][ti+1]
+                last = batch.token_starts[bi][ti+2]
+                if last - 1 == first:
+                    outputs.append(embedded[bi, first])
+                else:
+                    weights = mlp_weights[bi][first:last]
+                    weights = self.softmax(weights).unsqueeze(1)
+                    v = weights * embedded[bi, first:last]
+                    v = v.sum(axis=0)
+                    outputs.append(v)
+        return torch.stack(outputs)
+
+    def _forward_with_cache(self, batch):
         probe_subword = self.config.probe_subword
         X = torch.LongTensor(batch.input)
         cache_key = tuple(np.array(batch.input).flat)
@@ -429,10 +496,7 @@ class TransformerForSequenceClassification(BaseModel):
                         outs.append(vec)
                 out = torch.stack(outs)
             self._cache[cache_key] = out
-        out = self._cache[cache_key]
-        out = self.dropout(out)
-        pred = self.mlp(out)
-        return pred
+        return self._cache[cache_key]
 
     def compute_loss(self, target, output):
         target = to_cuda(torch.LongTensor(target.labels)).view(-1)
