@@ -246,10 +246,12 @@ class SentenceTokenPairRepresentationProber(BaseModel):
             self.subword_w = nn.Parameter(torch.ones(1, dtype=torch.float) / 2)
         mlp_input_size = 2 * self.embedder.hidden_size
         if self.config.probe_subword == 'lstm':
-            mlp_input_size = 2 * self.config.subword_lstm_size
+            sw_lstm_size = getattr(self.config, 'subword_lstm_size',
+                                   self.embedder.hidden_size)
+            mlp_input_size = 2 * sw_lstm_size
             self.pool_lstm = nn.LSTM(
                 self.embedder.hidden_size,
-                self.config.subword_lstm_size // 2,
+                sw_lstm_size // 2,
                 num_layers=1,
                 batch_first=True,
                 bidirectional=True,
