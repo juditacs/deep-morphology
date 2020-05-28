@@ -20,6 +20,8 @@ from deep_morphology.models.mlp import MLP
 
 use_cuda = torch.cuda.is_available()
 
+import pickle
+
 
 def to_cuda(var):
     if use_cuda:
@@ -127,7 +129,8 @@ class SentenceRepresentationProber(BaseModel):
         if self.config.probe_subword == 'first_last_mix':
             self.subword_w = nn.Parameter(torch.ones(1, dtype=torch.float) / 2)
         if self.config.probe_subword == 'lstm':
-            sw_lstm_size = getattr(self.config, 'subword_lstm_size', self.embedder.hidden_size)
+            sw_lstm_size = getattr(self.config, 'subword_lstm_size',
+                                   self.embedder.hidden_size)
             mlp_input_size = sw_lstm_size
             self.pool_lstm = nn.LSTM(
                 self.embedder.hidden_size,
@@ -150,6 +153,8 @@ class SentenceRepresentationProber(BaseModel):
             nonlinearity=self.config.mlp_nonlinearity,
             output_size=self.output_size,
         )
+        if self.config.save_mlp_weights:
+            self.all_weights = []
 
     def forward(self, batch):
         probe_subword = self.config.probe_subword
@@ -203,8 +208,17 @@ class SentenceRepresentationProber(BaseModel):
             for wi in range(batch_size):
                 mlp_in = out[wi, first[wi]:last[wi]]
                 weights = self.subword_mlp(mlp_in)
-                weights = self.softmax(weights).transpose(0, 1)
-                target = weights.mm(mlp_in).squeeze(0)
+                sweights = self.softmax(weights).transpose(0, 1)
+                if self.config.save_mlp_weights:
+                    self.all_weights.append({
+                        'input': batch.input[wi],
+                        'idx': batch.raw_idx[wi],
+                        'starts': batch.target_ids[wi],
+                        'weights': weights.data.cpu().numpy(),
+                        'probs': sweights.data.cpu().numpy(),
+                        'label': batch.label[wi],
+                    })
+                target = sweights.mm(mlp_in).squeeze(0)
                 target_vecs.append(target)
             target_vecs = torch.stack(target_vecs)
 

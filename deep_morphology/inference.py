@@ -10,6 +10,7 @@ from argparse import ArgumentParser
 import os
 import logging
 from sys import stdin, stdout
+import pickle
 
 import torch
 
@@ -77,6 +78,9 @@ class Inference(Experiment):
     def run_and_print(self, stream=stdout):
         model_output = self.model.run_inference(self.test_data)
         self.test_data.decode_and_print(model_output, stream)
+        if hasattr(self.model, 'all_weights'):
+            with open(self.config.experiment_dir + '/mlp_weights', 'wb') as f:
+                pickle.dump(self.model.all_weights, f)
 
 
 def parse_args():
