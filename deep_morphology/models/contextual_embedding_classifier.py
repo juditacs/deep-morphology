@@ -127,7 +127,7 @@ class SentenceRepresentationProber(BaseModel):
         self.criterion = nn.CrossEntropyLoss()
 
         mlp_input_size = self.embedder.hidden_size
-        if self.config.probe_subword == 'first_last_mix':
+        if self.config.probe_subword == 'f+l':
             self.subword_w = nn.Parameter(torch.ones(1, dtype=torch.float) / 2)
         elif self.config.probe_subword == 'lstm':
             sw_lstm_size = getattr(self.config, 'subword_lstm_size',
@@ -158,87 +158,120 @@ class SentenceRepresentationProber(BaseModel):
         )
         if self.config.save_mlp_weights:
             self.all_weights = []
+        self.pooling_func = {
+            'first': self._forward_first,
+            'last': self._forward_last,
+            'max': self._forward_elementwise_pool,
+            'sum': self._forward_elementwise_pool,
+            'avg': self._forward_elementwise_pool,
+            'last2': self._forward_last2,
+            'f+l': self._forward_first_plus_last,
+            'lstm': self._forward_lstm,
+            'mlp': self._forward_mlp,
+        }
+
+    def _forward_first(self, embedded, batch):
+        batch_size = embedded.size(0)
+        helper = np.arange(batch_size)
+        idx = batch.target_ids[helper, batch.raw_idx]
+        return embedded[helper, idx]
+
+    def _forward_last(self, embedded, batch):
+        batch_size = embedded.size(0)
+        helper = np.arange(batch_size)
+        rawi = np.array(batch.raw_idx) + 1
+        idx = batch.target_ids[helper, rawi] - 1
+        return embedded[helper, idx]
+
+    def _forward_elementwise_pool(self, embedded, batch):
+        probe_subword = self.config.probe_subword
+        batch_size = embedded.size(0)
+        helper = np.arange(batch_size)
+        rawi = np.array(batch.raw_idx)
+        last = batch.target_ids[helper, rawi+1]
+        first = batch.target_ids[helper, rawi]
+        target_vecs = []
+        for wi in range(batch_size):
+            if probe_subword == 'max':
+                o = embedded[wi, first[wi]:last[wi]].max(axis=0).values
+            if probe_subword == 'sum':
+                o = embedded[wi, first[wi]:last[wi]].sum(axis=0)
+            else:
+                o = embedded[wi, first[wi]:last[wi]].mean(axis=0)
+            target_vecs.append(o)
+        return torch.stack(target_vecs)
+
+    def _forward_last2(self, embedded, batch):
+        target_vecs = []
+        batch_size = embedded.size(0)
+        helper = np.arange(batch_size)
+        rawi = np.array(batch.raw_idx)
+        last = batch.target_ids[helper, rawi+1] - 1
+        first = batch.target_ids[helper, rawi]
+        for wi in range(batch_size):
+            last1 = embedded[wi, last[wi]]
+            if first[wi] == last[wi]:
+                last2 = to_cuda(torch.zeros_like(last1))
+            else:
+                last2 = embedded[wi, last[wi]-1]
+            target_vecs.append(torch.cat((last1, last2), 0))
+        return torch.stack(target_vecs)
+
+    def _forward_first_plus_last(self, embedded, batch):
+        batch_size = embedded.size(0)
+        helper = np.arange(batch_size)
+        w = self.subword_w
+        rawi = np.array(batch.raw_idx)
+        last = embedded[helper, batch.target_ids[helper, rawi+1] - 1]
+        first = embedded[helper, batch.target_ids[helper, rawi]]
+        target_vecs = w * first + (1 - w) * last
+        return target_vecs
+
+    def _forward_lstm(self, embedded, batch):
+        batch_size = embedded.size(0)
+        helper = np.arange(batch_size)
+        target_vecs = []
+        rawi = np.array(batch.raw_idx)
+        last = batch.target_ids[helper, rawi+1]
+        first = batch.target_ids[helper, rawi]
+        for wi in range(batch_size):
+            lstm_in = embedded[wi, first[wi]:last[wi]].unsqueeze(0)
+            _, (h, c) = self.pool_lstm(lstm_in)
+            h = torch.cat((h[0], h[1]), dim=-1)
+            target_vecs.append(h[0])
+        return torch.stack(target_vecs)
+
+    def _forward_mlp(self, embedded, batch):
+        batch_size = embedded.size(0)
+        helper = np.arange(batch_size)
+        target_vecs = []
+        rawi = np.array(batch.raw_idx)
+        last = batch.target_ids[helper, rawi+1]
+        first = batch.target_ids[helper, rawi]
+        for wi in range(batch_size):
+            mlp_in = embedded[wi, first[wi]:last[wi]]
+            weights = self.subword_mlp(mlp_in)
+            sweights = self.softmax(weights).transpose(0, 1)
+            if self.config.save_mlp_weights:
+                self.all_weights.append({
+                    'input': batch.input[wi],
+                    'idx': batch.raw_idx[wi],
+                    'starts': batch.target_ids[wi],
+                    'weights': weights.data.cpu().numpy(),
+                    'probs': sweights.data.cpu().numpy(),
+                    'label': batch.label[wi],
+                })
+            target = sweights.mm(mlp_in).squeeze(0)
+            target_vecs.append(target)
+        return torch.stack(target_vecs)
 
     def forward(self, batch):
         probe_subword = self.config.probe_subword
         X = torch.LongTensor(batch.input)
-        out = self.embedder.embed(X, batch.input_len)
-        out = self.dropout(out)
-        batch_size = X.size(0)
-        helper = np.arange(batch_size)
-        if probe_subword == 'first':
-            idx = batch.target_ids[helper, batch.raw_idx]
-            target_vecs = out[helper, idx]
-        elif probe_subword == 'last':
-            rawi = np.array(batch.raw_idx) + 1
-            idx = batch.target_ids[helper, rawi] - 1
-            target_vecs = out[helper, idx]
-        elif probe_subword in ('max', 'avg', 'sum'):
-            rawi = np.array(batch.raw_idx)
-            last = batch.target_ids[helper, rawi+1]
-            first = batch.target_ids[helper, rawi]
-            target_vecs = []
-            for wi in range(batch_size):
-                if probe_subword == 'max':
-                    o = out[wi, first[wi]:last[wi]].max(axis=0).values
-                if probe_subword == 'sum':
-                    o = out[wi, first[wi]:last[wi]].sum(axis=0)
-                else:
-                    o = out[wi, first[wi]:last[wi]].mean(axis=0)
-                target_vecs.append(o)
-            target_vecs = to_cuda(torch.stack(target_vecs))
-        elif probe_subword == 'last2':
-            target_vecs = []
-            rawi = np.array(batch.raw_idx)
-            last = batch.target_ids[helper, rawi+1] - 1
-            first = batch.target_ids[helper, rawi]
-            for wi in range(batch_size):
-                last1 = out[wi, last[wi]]
-                if first[wi] == last[wi]:
-                    last2 = to_cuda(torch.zeros_like(last1))
-                else:
-                    last2 = out[wi, last[wi]-1]
-                target_vecs.append(torch.cat((last1, last2), 0))
-            target_vecs = torch.stack(target_vecs)
-        elif probe_subword == 'first_last_mix':
-            w = self.subword_w
-            rawi = np.array(batch.raw_idx)
-            last = out[helper, batch.target_ids[helper, rawi+1] - 1]
-            first = out[helper, batch.target_ids[helper, rawi]]
-            target_vecs = w * first + (1 - w) * last
-        elif probe_subword == 'lstm':
-            target_vecs = []
-            rawi = np.array(batch.raw_idx)
-            last = batch.target_ids[helper, rawi+1]
-            first = batch.target_ids[helper, rawi]
-            for wi in range(batch_size):
-                lstm_in = out[wi, first[wi]:last[wi]].unsqueeze(0)
-                lstm_out, (h, c) = self.pool_lstm(lstm_in)
-                h = torch.cat((h[0], h[1]), dim=-1)
-                target_vecs.append(h[0])
-            target_vecs = torch.stack(target_vecs)
-        elif probe_subword == 'mlp':
-            target_vecs = []
-            rawi = np.array(batch.raw_idx)
-            last = batch.target_ids[helper, rawi+1]
-            first = batch.target_ids[helper, rawi]
-            for wi in range(batch_size):
-                mlp_in = out[wi, first[wi]:last[wi]]
-                weights = self.subword_mlp(mlp_in)
-                sweights = self.softmax(weights).transpose(0, 1)
-                if self.config.save_mlp_weights:
-                    self.all_weights.append({
-                        'input': batch.input[wi],
-                        'idx': batch.raw_idx[wi],
-                        'starts': batch.target_ids[wi],
-                        'weights': weights.data.cpu().numpy(),
-                        'probs': sweights.data.cpu().numpy(),
-                        'label': batch.label[wi],
-                    })
-                target = sweights.mm(mlp_in).squeeze(0)
-                target_vecs.append(target)
-            target_vecs = torch.stack(target_vecs)
-
+        embedded = self.embedder.embed(X, batch.input_len)
+        # FIXME older exps were trained with this dropout enable, rerun?
+        # out = self.dropout(out)
+        target_vecs = self.pooling_func[probe_subword](embedded, batch)
         mlp_out = self.mlp(target_vecs)
         return mlp_out
 
@@ -259,7 +292,7 @@ class SentenceTokenPairRepresentationProber(BaseModel):
         self.dropout = nn.Dropout(self.config.dropout)
         self.criterion = nn.CrossEntropyLoss()
         self._cache = {}
-        if self.config.probe_subword == 'first_last_mix':
+        if self.config.probe_subword == 'f+l':
             self.subword_w = nn.Parameter(torch.ones(1, dtype=torch.float) / 2)
         mlp_input_size = 2 * self.embedder.hidden_size
         if self.config.probe_subword == 'lstm':
@@ -281,12 +314,25 @@ class SentenceTokenPairRepresentationProber(BaseModel):
                 output_size=1
             )
             self.softmax = nn.Softmax(dim=0)
+        elif self.config.probe_subword == 'last2':
+            mlp_input_size *= 2
         self.mlp = MLP(
             input_size=mlp_input_size,
             layers=self.config.mlp_layers,
             nonlinearity=self.config.mlp_nonlinearity,
             output_size=self.output_size,
         )
+        self.pooling_func = {
+            'first': self._forward_first,
+            'last': self._forward_last,
+            'max': self._forward_elementwise_pool,
+            'sum': self._forward_elementwise_pool,
+            'avg': self._forward_elementwise_pool,
+            #'last2': self._forward_last2,
+            'f+l': self._forward_first_plus_last,
+            'lstm': self._forward_lstm,
+            'mlp': self._forward_mlp,
+        }
 
     def compute_loss(self, target, output):
         target = to_cuda(torch.LongTensor(target.label)).view(-1)
@@ -303,73 +349,34 @@ class SentenceTokenPairRepresentationProber(BaseModel):
             X = torch.LongTensor(batch.subwords)
             self._cache[cache_key] = self.embedder.embed(X, batch.input_len)
         embedded = self._cache[cache_key]
-        out = self._forward(embedded, batch)
-
-        out = self.dropout(out)
+        probe_subword = self.config.probe_subword
+        target_vecs = self.pooling_func[probe_subword](embedded, batch)
+        out = self.dropout(target_vecs)
         pred = self.mlp(out)
         return pred
 
-    def _forward(self, embedded, batch):
+    def _forward_first(self, embedded, batch):
+        batch_size = embedded.size(0)
+        batch_ids = np.arange(batch_size)
+        first1 = batch.token_starts[batch_ids, batch.idx1+1]
+        first2 = batch.token_starts[batch_ids, batch.idx2+1]
+        out1 = embedded[batch_ids, first1]
+        out2 = embedded[batch_ids, first2]
+        return torch.cat((out1, out2), dim=1)
+
+    def _forward_last(self, embedded, batch):
+        batch_size = embedded.size(0)
+        batch_ids = np.arange(batch_size)
+        last1 = batch.token_starts[batch_ids, batch.idx1+2] - 1
+        last2 = batch.token_starts[batch_ids, batch.idx2+2] - 1
+        out1 = embedded[batch_ids, last1]
+        out2 = embedded[batch_ids, last2]
+        return torch.cat((out1, out2), dim=1)
+
+    def _forward_elementwise_pool(self, embedded, batch):
         probe_subword = self.config.probe_subword
         batch_size = embedded.size(0)
         batch_ids = np.arange(batch_size)
-        if probe_subword == 'first':
-            first1 = batch.token_starts[batch_ids, batch.idx1+1]
-            first2 = batch.token_starts[batch_ids, batch.idx2+1]
-            out1 = embedded[batch_ids, first1]
-            out2 = embedded[batch_ids, first2]
-            return torch.cat((out1, out2), dim=1)
-        elif probe_subword == 'last':
-            last1 = batch.token_starts[batch_ids, batch.idx1+2] - 1
-            last2 = batch.token_starts[batch_ids, batch.idx2+2] - 1
-            out1 = embedded[batch_ids, last1]
-            out2 = embedded[batch_ids, last2]
-            return torch.cat((out1, out2), dim=1)
-        elif probe_subword == 'first_last_mix':
-            w = self.subword_w
-            first1 = batch.token_starts[batch_ids, batch.idx1+1]
-            first2 = batch.token_starts[batch_ids, batch.idx2+1]
-            last1 = batch.token_starts[batch_ids, batch.idx1+2] - 1
-            last2 = batch.token_starts[batch_ids, batch.idx2+2] - 1
-            first1 = embedded[batch_ids, first1]
-            last1 = embedded[batch_ids, last1]
-            first2 = embedded[batch_ids, first2]
-            last2 = embedded[batch_ids, last2]
-            tgt1 = w * first1 + (1-w) * last1
-            tgt2 = w * first2 + (1-w) * last2
-            return torch.cat((tgt1, tgt2), dim=1)
-        elif probe_subword == 'lstm':
-            tgt = []
-            first1 = batch.token_starts[batch_ids, batch.idx1+1]
-            first2 = batch.token_starts[batch_ids, batch.idx2+1]
-            last1 = batch.token_starts[batch_ids, batch.idx1+2]
-            last2 = batch.token_starts[batch_ids, batch.idx2+2]
-            for bi in range(batch_size):
-                lstm_in1 = embedded[bi, first1[bi]:last1[bi]].unsqueeze(0)
-                lstm_out1, (h, c) = self.pool_lstm(lstm_in1)
-                h1 = torch.cat((h[0], h[1]), dim=-1)
-                lstm_in2 = embedded[bi, first2[bi]:last2[bi]].unsqueeze(0)
-                lstm_out2, (h, c) = self.pool_lstm(lstm_in2)
-                h2 = torch.cat((h[0], h[1]), dim=-1)
-                tgt.append(torch.cat((h1[0], h2[0])))
-            return torch.stack(tgt)
-        elif probe_subword == 'mlp':
-            tgt = []
-            first1 = batch.token_starts[batch_ids, batch.idx1+1]
-            first2 = batch.token_starts[batch_ids, batch.idx2+1]
-            last1 = batch.token_starts[batch_ids, batch.idx1+2]
-            last2 = batch.token_starts[batch_ids, batch.idx2+2]
-            for bi in range(batch_size):
-                mlp_in1 = embedded[bi, first1[bi]:last1[bi]]
-                w1 = self.subword_mlp(mlp_in1)
-                w1 = self.softmax(w1).transpose(0, 1)
-                t1 = w1.mm(mlp_in1).squeeze(0)
-                mlp_in2 = embedded[bi, first2[bi]:last2[bi]]
-                w2 = self.subword_mlp(mlp_in2)
-                w2 = self.softmax(w2).transpose(0, 1)
-                t2 = w2.mm(mlp_in2).squeeze(0)
-                tgt.append(torch.cat((t1, t2)))
-            return torch.stack(tgt)
         first1 = batch.token_starts[batch_ids, batch.idx1+1]
         first2 = batch.token_starts[batch_ids, batch.idx2+1]
         last1 = batch.token_starts[batch_ids, batch.idx1+2]
@@ -391,6 +398,60 @@ class SentenceTokenPairRepresentationProber(BaseModel):
         out1 = torch.stack(out1)
         out2 = torch.stack(out2)
         return torch.cat((out1, out2), dim=1)
+
+    def _forward_first_plus_last(self, embedded, batch):
+        batch_size = embedded.size(0)
+        batch_ids = np.arange(batch_size)
+        w = self.subword_w
+        first1 = batch.token_starts[batch_ids, batch.idx1+1]
+        first2 = batch.token_starts[batch_ids, batch.idx2+1]
+        last1 = batch.token_starts[batch_ids, batch.idx1+2] - 1
+        last2 = batch.token_starts[batch_ids, batch.idx2+2] - 1
+        first1 = embedded[batch_ids, first1]
+        last1 = embedded[batch_ids, last1]
+        first2 = embedded[batch_ids, first2]
+        last2 = embedded[batch_ids, last2]
+        tgt1 = w * first1 + (1-w) * last1
+        tgt2 = w * first2 + (1-w) * last2
+        return torch.cat((tgt1, tgt2), dim=1)
+
+    def _forward_lstm(self, embedded, batch):
+        batch_size = embedded.size(0)
+        batch_ids = np.arange(batch_size)
+        target_vecs = []
+        first1 = batch.token_starts[batch_ids, batch.idx1+1]
+        first2 = batch.token_starts[batch_ids, batch.idx2+1]
+        last1 = batch.token_starts[batch_ids, batch.idx1+2]
+        last2 = batch.token_starts[batch_ids, batch.idx2+2]
+        for bi in range(batch_size):
+            lstm_in1 = embedded[bi, first1[bi]:last1[bi]].unsqueeze(0)
+            _, (h, c) = self.pool_lstm(lstm_in1)
+            h1 = torch.cat((h[0], h[1]), dim=-1)
+            lstm_in2 = embedded[bi, first2[bi]:last2[bi]].unsqueeze(0)
+            _, (h, c) = self.pool_lstm(lstm_in2)
+            h2 = torch.cat((h[0], h[1]), dim=-1)
+            target_vecs.append(torch.cat((h1[0], h2[0])))
+        return torch.stack(target_vecs)
+
+    def _forward_mlp(self, embedded, batch):
+        batch_size = embedded.size(0)
+        batch_ids = np.arange(batch_size)
+        target_vecs = []
+        first1 = batch.token_starts[batch_ids, batch.idx1+1]
+        first2 = batch.token_starts[batch_ids, batch.idx2+1]
+        last1 = batch.token_starts[batch_ids, batch.idx1+2]
+        last2 = batch.token_starts[batch_ids, batch.idx2+2]
+        for bi in range(batch_size):
+            mlp_in1 = embedded[bi, first1[bi]:last1[bi]]
+            w1 = self.subword_mlp(mlp_in1)
+            w1 = self.softmax(w1).transpose(0, 1)
+            t1 = w1.mm(mlp_in1).squeeze(0)
+            mlp_in2 = embedded[bi, first2[bi]:last2[bi]]
+            w2 = self.subword_mlp(mlp_in2)
+            w2 = self.softmax(w2).transpose(0, 1)
+            t2 = w2.mm(mlp_in2).squeeze(0)
+            target_vecs.append(torch.cat((t1, t2)))
+        return torch.stack(target_vecs)
 
 
 class TransformerForSequenceClassification(BaseModel):
