@@ -215,6 +215,7 @@ class SentenceRepresentationProber(BaseModel):
             else:
                 last2 = embedded[wi, last[wi]-1]
             target_vecs.append(torch.cat((last1, last2), 0))
+
         return torch.stack(target_vecs)
 
     def _forward_first_plus_last(self, embedded, batch):
@@ -328,7 +329,7 @@ class SentenceTokenPairRepresentationProber(BaseModel):
             'max': self._forward_elementwise_pool,
             'sum': self._forward_elementwise_pool,
             'avg': self._forward_elementwise_pool,
-            #'last2': self._forward_last2,
+            'last2': self._forward_last2,
             'f+l': self._forward_first_plus_last,
             'lstm': self._forward_lstm,
             'mlp': self._forward_mlp,
@@ -453,6 +454,30 @@ class SentenceTokenPairRepresentationProber(BaseModel):
             target_vecs.append(torch.cat((t1, t2)))
         return torch.stack(target_vecs)
 
+    def _forward_last2(self, embedded, batch):
+        batch_size = embedded.size(0)
+        hidden_size = embedded.size(2)
+        batch_ids = np.arange(batch_size)
+        target_vecs = []
+        last1 = batch.token_starts[batch_ids, batch.idx1+2] - 1
+        last2 = batch.token_starts[batch_ids, batch.idx2+2] - 1
+        pad = to_cuda(torch.zeros(hidden_size))
+        for bi in range(batch_size):
+            if batch.token_starts[bi, batch.idx1[bi]+1]+1 == \
+               batch.token_starts[bi, batch.idx1[bi]+2]:
+                tgt1 = torch.cat((embedded[bi, last1[bi]], pad), 0)
+            else:
+                tgt1 = torch.cat((embedded[bi, last1[bi]],
+                                  embedded[bi, last1[bi]-1]), 0)
+            if batch.token_starts[bi, batch.idx2[bi]+1]+1 == \
+               batch.token_starts[bi, batch.idx2[bi]+2]:
+                tgt2 = torch.cat((embedded[bi, last2[bi]], pad), 0)
+            else:
+                tgt2 = torch.cat((embedded[bi, last2[bi]],
+                                  embedded[bi, last2[bi]-1]), 0)
+            target_vecs.append(torch.cat((tgt1, tgt2)))
+        return torch.stack(target_vecs)
+
 
 class TransformerForSequenceClassification(BaseModel):
     def __init__(self, config, dataset):
@@ -482,23 +507,33 @@ class TransformerForSequenceClassification(BaseModel):
                 output_size=1
             )
             self.softmax = nn.Softmax(dim=0)
+        elif self.config.probe_subword == 'last2':
+            mlp_input_size *= 2
         self.mlp = MLP(
             input_size=mlp_input_size,
             layers=self.config.mlp_layers,
             nonlinearity=self.config.mlp_nonlinearity,
             output_size=self.output_size,
         )
+        if self.config.probe_subword == 'f+l':
+            self.subword_w = nn.Parameter(torch.ones(1, dtype=torch.float) / 2)
         self._cache = {}
         self.criterion = nn.CrossEntropyLoss()
+        self.pooling_func = {
+            'first': self._forward_with_cache,
+            'last': self._forward_with_cache,
+            'max': self._forward_with_cache,
+            'sum': self._forward_with_cache,
+            'avg': self._forward_with_cache,
+            'last2': self._forward_last2,
+            'f+l': self._forward_first_plus_last,
+            'lstm': self._forward_lstm,
+            'mlp': self._forward_mlp,
+        }
 
     def forward(self, batch):
         probe_subword = self.config.probe_subword
-        if probe_subword in ('first', 'last', 'max', 'avg', 'sum'):
-            out = self._forward_with_cache(batch)
-        elif probe_subword == 'mlp':
-            out = self._forward_mlp(batch)
-        elif probe_subword == 'lstm':
-            out = self._forward_lstm(batch)
+        out = self.pooling_func[probe_subword](batch)
         out = self.dropout(out)
         pred = self.mlp(out)
         return pred
@@ -536,6 +571,39 @@ class TransformerForSequenceClassification(BaseModel):
                     v = weights * embedded[bi, first:last]
                     v = v.sum(axis=0)
                     outputs.append(v)
+        return torch.stack(outputs)
+
+    def _forward_first_plus_last(self, batch):
+        X = torch.LongTensor(batch.input)
+        embedded = self.embedder.embed(X, batch.sentence_subword_len)
+        batch_size, seqlen, hidden = embedded.size()
+        w = self.subword_w
+        outputs = []
+        for bi in range(batch_size):
+            for ti in range(batch.sentence_len[bi]):
+                first = batch.token_starts[bi][ti+1]
+                last = batch.token_starts[bi][ti+2] - 1
+                f = embedded[bi, first]
+                la = embedded[bi, last]
+                outputs.append(w * f + (1-w) * la)
+        return torch.stack(outputs)
+
+    def _forward_last2(self, batch):
+        X = torch.LongTensor(batch.input)
+        embedded = self.embedder.embed(X, batch.sentence_subword_len)
+        batch_size, seqlen, hidden_size = embedded.size()
+        outputs = []
+        pad = to_cuda(torch.zeros(hidden_size))
+        for bi in range(batch_size):
+            for ti in range(batch.sentence_len[bi]):
+                first = batch.token_starts[bi][ti+1]
+                last = batch.token_starts[bi][ti+2] - 1
+                if first == last:
+                    vec = torch.cat((embedded[bi, last], pad), 0)
+                else:
+                    vec = torch.cat(
+                        (embedded[bi, last], embedded[bi, last-1]), 0)
+                outputs.append(vec)
         return torch.stack(outputs)
 
     def _forward_with_cache(self, batch):
