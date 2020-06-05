@@ -348,8 +348,8 @@ class SentenceTokenPairRepresentationProber(BaseModel):
         )
         if cache_key not in self._cache:
             X = torch.LongTensor(batch.subwords)
-            self._cache[cache_key] = self.embedder.embed(X, batch.input_len)
-        embedded = self._cache[cache_key]
+            self._cache[cache_key] = self.embedder.embed(X, batch.input_len).cpu()
+        embedded = self._cache[cache_key].cuda()
         probe_subword = self.config.probe_subword
         target_vecs = self.pooling_func[probe_subword](embedded, batch)
         out = self.dropout(target_vecs)
