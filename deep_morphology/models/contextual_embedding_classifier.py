@@ -7,21 +7,20 @@
 # Distributed under terms of the MIT license.
 import torch
 import torch.nn as nn
-from torch.nn.utils.rnn import pack_padded_sequence
 import numpy as np
 import os
 import logging
 from transformers import AutoModel, AutoConfig
 
 from pytorch_pretrained_bert import BertModel
-#from elmoformanylangs import Embedder
 
 from deep_morphology.models.base import BaseModel
 from deep_morphology.models.mlp import MLP
 
 use_cuda = torch.cuda.is_available()
 
-import pickle
+
+# TODO remove old classes
 
 
 def to_cuda(var):
@@ -37,8 +36,10 @@ class Embedder(nn.Module):
         if global_key in globals():
             self.embedder = globals()[global_key]
         else:
-            self.config = AutoConfig.from_pretrained(model_name, output_hidden_states=True)
-            self.embedder = AutoModel.from_pretrained(model_name, config=self.config)
+            self.config = AutoConfig.from_pretrained(
+                model_name, output_hidden_states=True)
+            self.embedder = AutoModel.from_pretrained(
+                model_name, config=self.config)
             globals()[global_key] = self.embedder
             for p in self.embedder.parameters():
                 p.requires_grad = False
@@ -49,11 +50,13 @@ class Embedder(nn.Module):
             pass
         self.pool_layers = pool_layers
         if self.pool_layers == 'weighted_sum':
-            self.weights = nn.Parameter(torch.ones(self.n_layer, dtype=torch.float))
+            self.weights = nn.Parameter(
+                torch.ones(self.n_layer, dtype=torch.float))
             self.softmax = nn.Softmax(0)
         if use_cache:
             if pool_layers == 'weighted_sum':
-                logging.warning("Caching not supported with weighted_sum pooling")
+                logging.warning(
+                    "Caching not supported with weighted_sum pooling")
                 self._cache = None
             else:
                 self._cache = {}
@@ -270,8 +273,6 @@ class SentenceRepresentationProber(BaseModel):
         probe_subword = self.config.probe_subword
         X = torch.LongTensor(batch.input)
         embedded = self.embedder.embed(X, batch.input_len)
-        # FIXME older exps were trained with this dropout enable, rerun?
-        # out = self.dropout(out)
         target_vecs = self.pooling_func[probe_subword](embedded, batch)
         mlp_out = self.mlp(target_vecs)
         return mlp_out
@@ -348,7 +349,8 @@ class SentenceTokenPairRepresentationProber(BaseModel):
         )
         if cache_key not in self._cache:
             X = torch.LongTensor(batch.subwords)
-            self._cache[cache_key] = self.embedder.embed(X, batch.input_len).cpu()
+            self._cache[cache_key] = self.embedder.embed(
+                X, batch.input_len).cpu()
         embedded = self._cache[cache_key].cuda()
         probe_subword = self.config.probe_subword
         target_vecs = self.pooling_func[probe_subword](embedded, batch)
@@ -621,7 +623,8 @@ class TransformerForSequenceClassification(BaseModel):
                     if probe_subword == 'first':
                         token_ids.append(batch.token_starts[bi][1:-1])
                     elif probe_subword == 'last':
-                        token_ids.append(np.array(batch.token_starts[bi][2:]) - 1)
+                        token_ids.append(
+                            np.array(batch.token_starts[bi][2:]) - 1)
                 batch_ids = np.concatenate(batch_ids)
                 token_ids = np.concatenate(token_ids)
                 out = embedded[batch_ids, token_ids]
@@ -894,7 +897,8 @@ class ELMOClassifier(BaseModel):
         self.dropout = nn.Dropout(self.config.dropout)
         if self.config.elmo_model == 'discover':
             language = self.config.train_file.split("/")[-2]
-            elmo_model = os.path.join(os.environ['HOME'], 'resources', 'elmo', language)
+            elmo_model = os.path.join(
+                os.environ['HOME'], 'resources', 'elmo', language)
             self.config.elmo_model = elmo_model
         else:
             elmo_model = self.config.elmo_model
@@ -946,7 +950,8 @@ class ELMOPairClassifier(BaseModel):
             use_cache = (self.config.layer != 'weighted_sum')
         if self.config.elmo_model == 'discover':
             language = self.config.train_file.split("/")[-2]
-            elmo_model = os.path.join(os.environ['HOME'], 'resources', 'elmo', language)
+            elmo_model = os.path.join(
+                os.environ['HOME'], 'resources', 'elmo', language)
             self.config.elmo_model = elmo_model
         else:
             elmo_model = self.config.elmo_model
@@ -970,7 +975,8 @@ class ELMOPairClassifier(BaseModel):
         batch_size = len(batch[0])
 
         left_key = (id(dataset), 'left', dataset._start)
-        left_out = self.left_elmo.embed(batch.left_sentence, cache_key=left_key)
+        left_out = self.left_elmo.embed(
+            batch.left_sentence, cache_key=left_key)
         left_out = self.dropout(left_out)
         right_key = (id(dataset), 'right', dataset._start)
         right_out = self.right_elmo.embed(batch.right_sentence,
