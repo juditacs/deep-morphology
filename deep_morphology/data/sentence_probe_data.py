@@ -77,6 +77,20 @@ class BERTProberFields(DataFields):
     _needs_vocab = ('label', )
 
 
+class TokenInSequenceProberFields(DataFields):
+    _fields = (
+        'raw_sentence', 'raw_target', 'raw_idx',
+        'tokens', 'num_tokens', 'target_idx', 'label', 'token_starts',
+    )
+    _alias = {
+        'tgt': 'label',
+        # 'src_len': 'num_tokens',
+        'input_len': 'num_tokens'}
+    # token_starts needs a vocabulary because we manually set PAD=1000
+    _needs_vocab = ('tokens', 'label', 'token_starts')
+    _needs_constants = ('tokens', )
+
+
 class MidSequenceProberFields(DataFields):
     _fields = (
         'raw_sentence', 'raw_target', 'raw_idx',
@@ -746,6 +760,7 @@ class BERTRandomTokenizer:
         return [self.rand2bert[t] for t in tokens]
 
 
+# TODO replace MidSentenceProberDataset with TokenInSequenceProberFields
 class MidSentenceProberDataset(BaseDataset):
     unlabeled_data_class = 'UnlabeledMidSentenceProberDataset'
     data_recordclass = MidSequenceProberFields
@@ -1457,7 +1472,7 @@ class UnlabeledSequenceClassificationWithSubwords(SequenceClassificationWithSubw
 
 class SentenceProberDataset(BaseDataset):
     unlabeled_data_class = 'UnlabeledSentenceProberDataset'
-    data_recordclass = MidSequenceProberFields
+    data_recordclass = TokenInSequenceProberFields
     constants = []
 
     def __init__(self, config, stream_or_file, max_samples=None, **kwargs):
@@ -1467,7 +1482,8 @@ class SentenceProberDataset(BaseDataset):
         if global_key in globals():
             self.tokenizer = globals()[global_key]
         else:
-            self.tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.config.model_name)
             globals()[global_key] = self.tokenizer
         self.MASK = self.tokenizer.mask_token
         self.mask_positions = set(self.config.mask_positions)
@@ -1479,38 +1495,54 @@ class SentenceProberDataset(BaseDataset):
 
     def load_or_create_vocabs(self):
         super().load_or_create_vocabs()
-        self.vocabs.input.PAD = self.tokenizer.convert_tokens_to_ids(
+        self.vocabs.tokens.PAD = self.tokenizer.convert_tokens_to_ids(
             [self.tokenizer.pad_token])[0]
-        self.vocabs.target_ids.PAD = 1000
+        self.vocabs.token_starts.PAD = 1000
 
     def batched_iter(self, batch_size):
         for batch in super().batched_iter(batch_size):
-            batch.target_ids = np.array(batch.target_ids)
+            batch.token_starts = np.array(batch.token_starts)
             yield batch
 
     def extract_sample_from_line(self, line):
-        sent, target, idx, label = line.rstrip("\n").split("\t")
-        idx = int(idx)
-        tokenized = [self.tokenizer.cls_token]
-        target_ids = []
-        for ti, token in enumerate(sent.split(" ")):
-            if ti - idx in self.mask_positions:
+        raw_sent, raw_target, raw_idx, label = line.rstrip("\n").split("\t")
+        raw_idx = int(raw_idx)
+        # Build a list-of-lists from the tokenized words.
+        # This allows shuffling it later.
+        tokenized = [[self.tokenizer.cls_token]]
+        for ti, token in enumerate(raw_sent.split(" ")):
+            if ti - raw_idx in self.mask_positions:
                 pieces = [self.MASK]
             else:
                 pieces = self.tokenizer.tokenize(token)
-            target_ids.append(len(tokenized))
-            tokenized.extend(pieces)
-        # add [SEP] token start
-        target_ids.append(len(tokenized))
-        tokenized.append(self.tokenizer.sep_token)
+            tokenized.append(pieces)
+        # Add [SEP] token start.
+        tokenized.append([self.tokenizer.sep_token])
+        # Perform BOW.
+        if self.config.bow:
+            all_idx = np.arange(1, len(tokenized) - 1)
+            np.random.shuffle(all_idx)
+            all_idx = np.concatenate(([0], all_idx, [len(tokenized)-1]))
+            tokenized = [tokenized[i] for i in all_idx]
+            target_map = np.argsort(all_idx)
+            # Add 1 to include [CLS].
+            target_idx = target_map[raw_idx + 1]
+        else:
+            # Add 1 to include [CLS].
+            target_idx = raw_idx + 1
+        merged = []
+        token_starts = []
+        for pieces in tokenized:
+            token_starts.append(len(merged))
+            merged.extend(pieces)
         return self.data_recordclass(
-            raw_sentence=sent,
-            raw_target=target,
-            raw_idx=idx,
-            input=tokenized,
-            input_len=len(tokenized),
-            target_idx=target_ids[idx],
-            target_ids=target_ids,
+            raw_sentence=raw_sent,
+            raw_target=raw_target,
+            raw_idx=raw_idx,
+            tokens=merged,
+            num_tokens=len(merged),
+            target_idx=target_idx,
+            token_starts=token_starts,
             label=label,
         )
 
@@ -1529,14 +1561,15 @@ class SentenceProberDataset(BaseDataset):
         mtx = self.data_recordclass.initialize_all(list)
         for sample in self.raw:
             # int fields
-            mtx.input_len.append(sample.input_len)
+            mtx.num_tokens.append(sample.num_tokens)
             mtx.target_idx.append(sample.target_idx)
             mtx.raw_idx.append(sample.raw_idx)
             # int list
-            mtx.target_ids.append(sample.target_ids)
+            mtx.token_starts.append(sample.token_starts)
             # sentence
-            idx = self.tokenizer.convert_tokens_to_ids(sample.input)
-            mtx.input.append(idx)
+            encoded_tokens = self.tokenizer.convert_tokens_to_ids(
+                sample.tokens)
+            mtx.tokens.append(encoded_tokens)
             # label
             if sample.label is None:
                 mtx.label.append(None)

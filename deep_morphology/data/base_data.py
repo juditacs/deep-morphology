@@ -346,9 +346,9 @@ class BaseDataset:
             end = start + batch_size
             batch = []
             for i, mtx in enumerate(self.mtx):
-                if mtx is None or len(mtx)==0:
+                if mtx is None or len(mtx) == 0:
                     batch.append(None)
-                elif isinstance(mtx[0], int):
+                elif isinstance(mtx[0], (int, np.integer)):
                     batch.append(mtx[start:end])
                 else:
                     PAD = self.vocabs[i].PAD

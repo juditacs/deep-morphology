@@ -77,6 +77,7 @@ class Config:
         'cache_seqlen_limit': 0,
         'pool_layers': 'sum',
         'save_mlp_weights': False,
+        'bow': False,
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded

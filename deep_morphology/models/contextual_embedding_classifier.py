@@ -176,23 +176,24 @@ class SentenceRepresentationProber(BaseModel):
     def _forward_first(self, embedded, batch):
         batch_size = embedded.size(0)
         helper = np.arange(batch_size)
-        idx = batch.target_ids[helper, batch.raw_idx]
+        target_idx = np.array(batch.target_idx)
+        idx = batch.token_starts[helper, target_idx]
         return embedded[helper, idx]
 
     def _forward_last(self, embedded, batch):
         batch_size = embedded.size(0)
         helper = np.arange(batch_size)
-        rawi = np.array(batch.raw_idx) + 1
-        idx = batch.target_ids[helper, rawi] - 1
+        target_idx = np.array(batch.target_idx)
+        idx = batch.token_starts[helper, target_idx + 1] - 1
         return embedded[helper, idx]
 
     def _forward_elementwise_pool(self, embedded, batch):
         probe_subword = self.config.probe_subword
         batch_size = embedded.size(0)
         helper = np.arange(batch_size)
-        rawi = np.array(batch.raw_idx)
-        last = batch.target_ids[helper, rawi+1]
-        first = batch.target_ids[helper, rawi]
+        target_idx = np.array(batch.target_idx)
+        last = batch.token_starts[helper, target_idx + 1]
+        first = batch.token_starts[helper, target_idx]
         target_vecs = []
         for wi in range(batch_size):
             if probe_subword == 'max':
@@ -208,9 +209,9 @@ class SentenceRepresentationProber(BaseModel):
         target_vecs = []
         batch_size = embedded.size(0)
         helper = np.arange(batch_size)
-        rawi = np.array(batch.raw_idx)
-        last = batch.target_ids[helper, rawi+1] - 1
-        first = batch.target_ids[helper, rawi]
+        target_idx = np.array(batch.target_idx)
+        last = batch.token_starts[helper, target_idx + 1] - 1
+        first = batch.token_starts[helper, target_idx]
         for wi in range(batch_size):
             last1 = embedded[wi, last[wi]]
             if first[wi] == last[wi]:
@@ -218,16 +219,17 @@ class SentenceRepresentationProber(BaseModel):
             else:
                 last2 = embedded[wi, last[wi]-1]
             target_vecs.append(torch.cat((last1, last2), 0))
-
         return torch.stack(target_vecs)
 
     def _forward_first_plus_last(self, embedded, batch):
         batch_size = embedded.size(0)
         helper = np.arange(batch_size)
         w = self.subword_w
-        rawi = np.array(batch.raw_idx)
-        last = embedded[helper, batch.target_ids[helper, rawi+1] - 1]
-        first = embedded[helper, batch.target_ids[helper, rawi]]
+        target_idx = np.array(batch.target_idx)
+        last_idx = batch.token_starts[helper, target_idx + 1] - 1
+        first_idx = batch.token_starts[helper, target_idx]
+        first = embedded[helper, first_idx]
+        last = embedded[helper, last_idx]
         target_vecs = w * first + (1 - w) * last
         return target_vecs
 
@@ -235,11 +237,13 @@ class SentenceRepresentationProber(BaseModel):
         batch_size = embedded.size(0)
         helper = np.arange(batch_size)
         target_vecs = []
-        rawi = np.array(batch.raw_idx)
-        last = batch.target_ids[helper, rawi+1]
-        first = batch.target_ids[helper, rawi]
+
+        target_idx = np.array(batch.target_idx)
+        last_idx = batch.token_starts[helper, target_idx + 1]
+        first_idx = batch.token_starts[helper, target_idx]
+
         for wi in range(batch_size):
-            lstm_in = embedded[wi, first[wi]:last[wi]].unsqueeze(0)
+            lstm_in = embedded[wi, first_idx[wi]:last_idx[wi]].unsqueeze(0)
             _, (h, c) = self.pool_lstm(lstm_in)
             h = torch.cat((h[0], h[1]), dim=-1)
             target_vecs.append(h[0])
@@ -248,12 +252,14 @@ class SentenceRepresentationProber(BaseModel):
     def _forward_mlp(self, embedded, batch):
         batch_size = embedded.size(0)
         helper = np.arange(batch_size)
+
+        target_idx = np.array(batch.target_idx)
+        last_idx = batch.token_starts[helper, target_idx + 1]
+        first_idx = batch.token_starts[helper, target_idx]
+
         target_vecs = []
-        rawi = np.array(batch.raw_idx)
-        last = batch.target_ids[helper, rawi+1]
-        first = batch.target_ids[helper, rawi]
         for wi in range(batch_size):
-            mlp_in = embedded[wi, first[wi]:last[wi]]
+            mlp_in = embedded[wi, first_idx[wi]:last_idx[wi]]
             weights = self.subword_mlp(mlp_in)
             sweights = self.softmax(weights).transpose(0, 1)
             if self.config.save_mlp_weights:
@@ -271,8 +277,8 @@ class SentenceRepresentationProber(BaseModel):
 
     def forward(self, batch):
         probe_subword = self.config.probe_subword
-        X = torch.LongTensor(batch.input)
-        embedded = self.embedder.embed(X, batch.input_len)
+        X = torch.LongTensor(batch.tokens)
+        embedded = self.embedder.embed(X, batch.num_tokens)
         target_vecs = self.pooling_func[probe_subword](embedded, batch)
         mlp_out = self.mlp(target_vecs)
         return mlp_out
