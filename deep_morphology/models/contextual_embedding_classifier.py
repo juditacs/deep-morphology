@@ -487,7 +487,7 @@ class SentenceTokenPairRepresentationProber(BaseModel):
         return torch.stack(target_vecs)
 
 
-class TransformerForSequenceClassification(BaseModel):
+class TransformerForSequenceTagging(BaseModel):
     def __init__(self, config, dataset):
         super().__init__(config)
         self.dataset = dataset
@@ -549,17 +549,32 @@ class TransformerForSequenceClassification(BaseModel):
     def _forward_lstm(self, batch):
         X = torch.LongTensor(batch.input)
         embedded = self.embedder.embed(X, batch.sentence_subword_len)
-        batch_size, seqlen, hidden = embedded.size()
-        out = []
+        batch_size, seqlen, hidden_size = embedded.size()
+        token_lens = batch.token_starts[:, 1:] - batch.token_starts[:, :-1]
+        token_maxlen = token_lens.max()
+        pad = to_cuda(torch.zeros((1, hidden_size)))
+        all_token_vectors = []
+        all_token_lens = []
         for bi in range(batch_size):
             for ti in range(batch.sentence_len[bi]):
                 first = batch.token_starts[bi][ti+1]
                 last = batch.token_starts[bi][ti+2]
-                tok_vecs = embedded[bi:bi+1, first:last]
-                _, (h, c) = self.subword_lstm(tok_vecs)
-                h = torch.cat((h[0], h[1]), dim=-1)
-                out.append(h[0])
-        return torch.stack(out)
+                tok_vecs = embedded[bi, first:last]
+                this_size = tok_vecs.size(0)
+                if this_size < token_maxlen:
+                    this_pad = pad.repeat((token_maxlen - this_size, 1))
+                    tok_vecs = torch.cat((tok_vecs, this_pad))
+                all_token_vectors.append(tok_vecs)
+                all_token_lens.append(this_size)
+                # _, (h, c) = self.subword_lstm(tok_vecs)
+                # h = torch.cat((h[0], h[1]), dim=-1)
+                # out.append(h[0])
+        lstm_in = torch.stack(all_token_vectors)
+        seq = torch.nn.utils.rnn.pack_padded_sequence(
+            lstm_in, all_token_lens, enforce_sorted=False, batch_first=True)
+        _, (h, c) = self.subword_lstm(seq)
+        h = torch.cat((h[0], h[1]), dim=-1)
+        return h
 
     def _forward_mlp(self, batch):
         X = torch.LongTensor(batch.input)
@@ -655,6 +670,10 @@ class TransformerForSequenceClassification(BaseModel):
         target = to_cuda(torch.LongTensor(target.labels)).view(-1)
         loss = self.criterion(output, target)
         return loss
+
+
+# TODO Remove this alias, it's kept for backward compatibility.
+TransformerForSequenceClassification = TransformerForSequenceTagging
 
 
 class BERTEmbedder(nn.Module):

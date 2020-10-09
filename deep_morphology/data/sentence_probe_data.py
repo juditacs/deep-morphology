@@ -1435,8 +1435,16 @@ class SequenceClassificationWithSubwords(BaseDataset):
                 batch.labels = np.concatenate(self.mtx.labels[start:end])
             else:
                 batch.labels = None
-            batch.token_starts = self.mtx.token_starts[start:end]
             batch.sentence_len = self.mtx.sentence_len[start:end]
+            padded_token_starts = []
+            # Include [CLS] and [SEP].
+            token_maxcount = max(batch.sentence_len) + 2
+            for si in range(start, min(len(self.mtx.token_starts), end)):
+                starts = self.mtx.token_starts[si]
+                pad_count = token_maxcount - len(starts)
+                starts.extend([0 for _ in range(pad_count)])
+                padded_token_starts.append(starts)
+            batch.token_starts = np.array(padded_token_starts)
             batch.sentence_subword_len = self.mtx.sentence_subword_len[start:end]
             yield batch
 
