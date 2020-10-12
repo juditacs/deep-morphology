@@ -640,12 +640,13 @@ class TransformerForSequenceTagging(BaseModel):
             embedded = self.embedder.embed(X, batch.sentence_subword_len)
             if probe_subword in ('first', 'last'):
                 for bi in range(batch_size):
-                    batch_ids.append(np.repeat(bi, batch.sentence_len[bi]))
+                    sentence_len = batch.sentence_len[bi]
+                    batch_ids.append(np.repeat(bi, sentence_len))
                     if probe_subword == 'first':
-                        token_ids.append(batch.token_starts[bi][1:-1])
+                        token_ids.append(batch.token_starts[bi][1:sentence_len + 1])
                     elif probe_subword == 'last':
                         token_ids.append(
-                            np.array(batch.token_starts[bi][2:]) - 1)
+                            np.array(batch.token_starts[bi][2:sentence_len + 2]) - 1)
                 batch_ids = np.concatenate(batch_ids)
                 token_ids = np.concatenate(token_ids)
                 out = embedded[batch_ids, token_ids]
