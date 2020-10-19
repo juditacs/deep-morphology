@@ -58,7 +58,7 @@ class Config:
         'test_permutations': 0,
         'shift_target': 0,
         # transformers model configuration
-        'mask_posiions': [],
+        'mask_positions': [],
         'subword_mlp_size': 50,
         # MidSequence char prober
         'probe_first_char': False,
@@ -75,9 +75,10 @@ class Config:
         'add_with_different_casing': False,
         # HuggingFace Transformers
         'cache_seqlen_limit': 0,
-        'pool_layers': 'sum',
+        'layer_pooling': 'sum',
         'save_mlp_weights': False,
         'bow': False,
+        'exclude_short_sentences': False,
     }
     # path variables support environment variable
     # ${MYVAR} will be manually expanded
