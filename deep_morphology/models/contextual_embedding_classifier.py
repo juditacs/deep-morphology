@@ -178,6 +178,23 @@ class SentenceRepresentationProber(BaseModel):
             self.softmax = nn.Softmax(0)
         self._cache = {}
 
+    def check_params(self):
+        if self.config.subword_pooling not in ('first', 'last'):
+            raise ValueError("Subword pooling other than first and "
+                             "last don't work atm.")
+        if self.config.shift_target != 0:
+            if self.config.subword_pooling not in ('first', 'last'):
+                raise ValueError(
+                    "Shift target is only supported for first and "
+                    "last subword pooling."
+                )
+        if self.config.subword_pooling not in ('first', 'last') and \
+           self.config.layer_pooling == 'weighted_sum':
+            raise ValueError(
+                "Weighted sum of layers is only supported for first and "
+                "last subword pooling."
+            )
+
     def _forward_elementwise_pool(self, embedded, batch):
         subword_pooling = self.config.subword_pooling
         batch_size = embedded.size(0)
