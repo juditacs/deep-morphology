@@ -122,11 +122,6 @@ class SentenceRepresentationProber(BaseModel):
     def __init__(self, config, dataset):
         super().__init__(config)
         self.dataset = dataset
-        use_cache = self.config.use_cache
-        # TODO Remove or change use_cache according to new design
-        if self.config.cache_seqlen_limit > 0 and \
-           dataset.max_seqlen >= self.config.cache_seqlen_limit:
-            use_cache = False
         self.embedder = Embedder(self.config.model_name, use_cache=False,
                                  layer_pooling='all')
         self.output_size = len(dataset.vocabs.label)
