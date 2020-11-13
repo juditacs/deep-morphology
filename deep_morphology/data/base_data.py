@@ -55,6 +55,9 @@ class Vocab:
     def __iter__(self):
         return iter(self.vocab)
 
+    def items(self):
+        return self.vocab.items()
+
     def keys(self):
         return self.vocab.keys()
 
