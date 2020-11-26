@@ -42,8 +42,20 @@ class LSTMTagger(BaseModel):
                                    num_layers=self.config.num_layers,
                                    bidirectional=True)
         self.out_proj = nn.Linear(self.hidden_size, output_size)
-        self.criterion = nn.CrossEntropyLoss(
-            ignore_index=dataset.vocabs.tgt['PAD'])
+        if hasattr(self.config, 'loss_weights'):
+            lw = {}
+            for label, w in self.config.loss_weights.items():
+                lw[str(label)] = w
+            weights = []
+            for label, idx in dataset.vocabs.tgt.items():
+                weights.append(lw.get(str(label), 0))
+            weights = to_cuda(torch.FloatTensor(weights))
+            self.criterion = nn.CrossEntropyLoss(
+                weight=weights,
+                ignore_index=dataset.vocabs.tgt['PAD'])
+        else:
+            self.criterion = nn.CrossEntropyLoss(
+                ignore_index=dataset.vocabs.tgt['PAD'])
 
     def forward(self, batch):
         input = to_cuda(torch.LongTensor(batch.src))
