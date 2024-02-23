@@ -1491,7 +1491,7 @@ class SentenceProberDataset(BaseDataset):
             self.tokenizer = globals()[global_key]
         else:
             self.tokenizer = AutoTokenizer.from_pretrained(
-                self.config.model_name)
+                self.config.model_name, do_lower_case=False)
             globals()[global_key] = self.tokenizer
         self.MASK = self.tokenizer.mask_token
         self.mask_positions = set(self.config.mask_positions)

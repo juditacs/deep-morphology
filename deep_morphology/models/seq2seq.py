@@ -421,6 +421,65 @@ class VanillaSeq2seq(Seq2seq):
         return all_decoder_outputs.transpose(0, 1)
 
 
+
+class MidSequenceFocusSeq2seq(Seq2seq):
+
+    def forward(self, batch):
+        has_target = batch.tgt is not None and batch.tgt[0] is not None
+        X = to_cuda(torch.LongTensor(batch.src)).transpose(0, 1)  # time major
+        seqlen_src, batch_size = X.size()
+        if has_target:
+            Y = to_cuda(torch.LongTensor(batch.tgt)).transpose(0, 1)
+            seqlen_tgt = Y.size(0)
+        else:
+            seqlen_tgt = max(10, seqlen_src * 2)
+
+        tf_mode = self.config.teacher_forcing_mode
+        tf_prob = self.config.teacher_forcing_prob
+        if has_target is False or self.training is False:
+            do_tf = False
+        elif tf_mode == 'batch':
+            do_tf = np.random.random() < tf_prob
+        elif tf_mode == 'sample':
+            do_tf = (np.random.random(batch_size) < tf_prob).astype(np.int16)
+        elif tf_mode == 'symbol':
+            do_tf = (np.random.random((seqlen_tgt, batch_size))
+                     < tf_prob).astype(np.int16)
+
+        all_decoder_outputs = to_cuda(
+            torch.zeros(seqlen_tgt, batch_size, self.output_size)
+        )
+
+        encoder_lens = to_cuda(torch.LongTensor(batch.src_len))
+        encoder_lens.requires_grad = False
+        encoder_outputs, encoder_hidden = self.encoder(X, batch.src_len)
+        decoder_input = to_cuda(torch.LongTensor([self.SOS] * batch_size))
+        decoder_hidden = self.init_decoder_hidden(encoder_hidden)
+        helper = np.arange(batch_size)
+        decoder_hidden = (
+            encoder_outputs[batch.mid_sequence_focus_id, helper].unsqueeze(0),
+            decoder_hidden[1])
+        for t in range(seqlen_tgt):
+            decoder_output, decoder_hidden, attn_weights = self.decoder(
+                decoder_input, decoder_hidden, encoder_outputs, encoder_lens
+            )
+            all_decoder_outputs[t] = decoder_output
+            if do_tf is True:
+                decoder_input = Y[t]
+            elif do_tf is False:
+                val, idx = decoder_output.max(-1)
+                decoder_input = idx
+            elif tf_mode == 'sample':
+                val, idx = decoder_output.max(-1)
+                decoder_input = idx
+                decoder_input[do_tf] = Y[t, do_tf].unsqueeze(0)
+            elif tf_mode == 'symbol':
+                val, idx = decoder_output.max(-1)
+                decoder_input = idx
+                decoder_input[do_tf[t]] = Y[t, do_tf[t]].unsqueeze(0)
+        return all_decoder_outputs.transpose(0, 1)
+
+
 def compute_sequence_loss(target, output, criterion):
     try:
         target = target.tgt

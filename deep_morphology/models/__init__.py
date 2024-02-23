@@ -3,7 +3,7 @@ from deep_morphology.models.cnn_seq2seq import CNNSeq2seq
 from deep_morphology.models.hard_monotonic_attention import HardMonotonicAttentionSeq2seq
 from deep_morphology.models.luong_attention import LuongAttentionSeq2seq
 from deep_morphology.models.lstm_tagger import LSTMTagger
-from deep_morphology.models.seq2seq import Seq2seq, AttentionOnlySeq2seq, VanillaSeq2seq
+from deep_morphology.models.seq2seq import Seq2seq, AttentionOnlySeq2seq, VanillaSeq2seq, MidSequenceFocusSeq2seq
 from deep_morphology.models.sequence_classifier import SequenceClassifier, MidSequenceClassifier, CNNSequenceClassifier, LSTMPermuteProber, RandomLSTMProber
 from deep_morphology.models.sequence_classifier import PairSequenceClassifier, PairCNNSequenceClassifier
 from deep_morphology.models.sopa_classifier import SopaClassifier, MultiLayerSopaClassifier

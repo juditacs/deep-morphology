@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 
 from deep_morphology.data.seq2seq_data import Seq2seqDataset
+from deep_morphology.data.seq2seq_data import MidSequenceFocusSeq2seqDataset
 from deep_morphology.data.seq2seq_data import InflectionDataset
 from deep_morphology.data.seq2seq_data import NoSpaceSeq2seqDataset, UnlabeledNoSpaceSeq2seqDataset
 from deep_morphology.data.seq2seq_data import GlobalPaddingInflectionDataset, UnlabeledGlobalPaddingInflectionDataset

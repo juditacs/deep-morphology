@@ -15,6 +15,11 @@ class Seq2seqFields(DataFields):
     _needs_vocab = ('src', 'tgt')
 
 
+class MidSequenceFocusSeq2seqFields(DataFields):
+    _fields = ('src', 'src_len', 'tgt', 'tgt_len', 'mid_sequence_focus_id')
+    _needs_vocab = ('src', 'tgt')
+
+
 class Seq2seqDataset(BaseDataset):
 
     unlabeled_data_class = 'Seq2seqDataset'
@@ -55,6 +60,29 @@ class Seq2seqDataset(BaseDataset):
             " ".join(sample.src),
             " ".join(sample.tgt),
         ))
+
+
+class MidSequenceFocusSeq2seqDataset(Seq2seqDataset):
+    data_recordclass = MidSequenceFocusSeq2seqFields
+    constants = ['PAD', 'UNK', 'SOS', 'EOS']
+    unlabeled_data_class = 'MidSequenceFocusSeq2seqDataset'
+
+    def extract_sample_from_line(self, line):
+        fd = line.split("\t")[:2]
+        src = fd[0].split(" ")
+        if len(fd) < 2:
+            tgt = None
+            tgt_len = None
+        else:
+            tgt = fd[1].split(" ")
+            tgt_len = len(tgt) + 2
+        if '</E>' not in src:
+            raise ValueError("Input sequence must contain an <E>entity</E>.")
+        focus_id = src.index('<E>')
+        return self.data_recordclass(
+            src=src, src_len=len(src)+2, tgt=tgt, tgt_len=tgt_len,
+            mid_sequence_focus_id=focus_id,
+        )
 
 
 class NoSpaceSeq2seqDataset(Seq2seqDataset):
