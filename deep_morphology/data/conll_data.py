@@ -10,7 +10,7 @@ import os
 from recordclass import recordclass
 import numpy as np
 
-from pytorch_pretrained_bert import BertTokenizer
+from transformers import AutoTokenizer
 from deep_morphology.data.base_data import BaseDataset, Vocab, DataFields
 
 
@@ -191,7 +191,7 @@ class BERTPosDataset(ELMOPosDataset):
         self.config = config
         self.load_or_create_vocabs()
         model_name = getattr(self.config, 'bert_model', 'bert-base-multilingual-cased')
-        self.tokenizer = BertTokenizer.from_pretrained(
+        self.tokenizer = AutoTokenizer.from_pretrained(
             model_name, do_lower_case=False)
         self.load_stream_or_file(stream_or_file)
         self.to_idx()

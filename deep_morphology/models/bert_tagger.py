@@ -9,7 +9,7 @@
 import torch
 import torch.nn as nn
 
-from pytorch_pretrained_bert import BertModel
+from transformers import AutoModel
 
 from deep_morphology.models.base import BaseModel
 from deep_morphology.models.seq2seq import compute_sequence_loss
@@ -31,7 +31,7 @@ class BERTTagger(BaseModel):
         self.dataset = dataset
         self.output_size = len(dataset.vocabs.pos)
         model_name = getattr(self.config, 'bert_model', 'bert-base-multilingual-cased')
-        self.bert = BertModel.from_pretrained(model_name)
+        self.bert = AutoModel.from_pretrained(model_name)
         self.bert_layer = self.config.bert_layer
         bert_size = 768 if 'base' in model_name else 1024
         n_layer = 12 if 'base' in model_name else 24
