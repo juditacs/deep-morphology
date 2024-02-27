@@ -51,7 +51,7 @@ class EncoderRNN(nn.Module):
         embedded = self.embedding(input)
         embedded = self.embedding_dropout(embedded)
         if self.config.use_packed_lstm:
-            outputs, hidden = self.cell(embedded, input_len)
+            outputs, hidden = self.cell(embedded, input_len.cpu())
         else:
             outputs, hidden = self.cell(embedded)
         outputs = outputs[:, :, :self.config.hidden_size] + \

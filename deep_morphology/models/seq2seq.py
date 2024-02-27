@@ -88,6 +88,7 @@ class LSTMDecoder(nn.Module):
                  lstm_cell=None,
                  lstm_num_layers=1,
                  lstm_dropout=0,
+                 use_one_hot_embedding=False,
                  embedding=None,
                  embedding_size=None,
                  embedding_dropout=None):
